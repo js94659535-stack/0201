@@ -677,7 +677,14 @@ function makeTextHash(text: string) {
   return `${text.length.toString(16)}_${a}_${b}`
 }
 
-function cacheKey(kind: string, mode: string, viewType: string, text: string, userId: string | null) {
+// ✅ V2: base cache (mode only) + derived cache (mode+viewType)
+function baseCacheKey(kind: string, mode: string, text: string, userId: string | null) {
+  const th = makeTextHash(text)
+  const u = userId || 'anon'
+  return `${kind}::${u}::${mode}::base::${th}`
+}
+
+function derivedCacheKey(kind: string, mode: string, viewType: string, text: string, userId: string | null) {
   const th = makeTextHash(text)
   const u = userId || 'anon'
   return `${kind}::${u}::${mode}::${viewType}::${th}`
@@ -742,34 +749,83 @@ function wantJson(viewType: string) {
   return viewType === 'structured' || viewType === 'mindmap' || viewType === 'selftest'
 }
 
-function buildGeminiPrompt(text: string, mode: 'brief'|'standard'|'detail', viewType: 'narrative'|'structured'|'mindmap'|'selftest') {
+// ✅ V2: 압축률 고정 (brief 10-15%, standard 25-30%, detail 45-55%)
+function buildGeminiPrompt(text: string, mode: 'brief'|'standard'|'detail') {
   const ratio =
-    mode === 'brief' ? '원문 길이의 약 15~20% 수준'
-    : mode === 'standard' ? '원문 길이의 약 25~35% 수준'
-    : '원문 길이의 약 40~55% 수준'
+    mode === 'brief' ? '원문 길이의 10~15%'
+    : mode === 'standard' ? '원문 길이의 25~30%'
+    : '원문 길이의 45~55%'
 
   const base = [
     `당신은 "학습 텍스트 압축 요약" 전문가입니다.`,
     `반드시 "중간 글자 자르기" 같은 방식은 금지합니다.`,
     `문장/의미 단위로 재구성하여 자연스러운 한국어로 요약하세요.`,
-    `압축률 목표: ${ratio}.`,
+    `**압축률 목표: ${ratio}** (필수)`,
     `중복 제거, 핵심 개념/관계/원인-결과/절차가 드러나게 요약하세요.`,
+    `원문에 없는 인용(괄호 숫자)이나 정보는 절대 추가하지 마세요.`,
   ].join('\n')
 
-  if (viewType === 'narrative') {
-    return `${base}\n\n[출력 형식]\n- 한국어 서술 요약 1개 문단\n\n[원문]\n${text}`
-  }
+  // ✅ V2: narrative만 생성 (viewType 전환은 로컬 처리)
+  const paragraphGuide = text.length < 300 ? '1~2개 문단'
+    : text.length < 600 ? '2~3개 문단'
+    : '3~4개 문단'
+  
+  return `${base}\n\n[출력 형식]\n- 한국어 서술 요약 (${paragraphGuide})\n- 원문 길이에 비례하여 단락 수 조정\n\n[원문]\n${text}`
+}
 
-  if (viewType === 'structured') {
-    return `${base}\n\n[출력 형식: JSON만]\n{\n  "title": "요약 제목",\n  "bullets": ["- ...", "- ..."]\n}\n\n[원문]\n${text}`
+// ✅ V2: Derived view 로컬 변환 함수들
+function narrativeToStructured(narrative: string): any {
+  // 문단을 bullet으로 변환
+  const paragraphs = narrative.split(/\n\n+/).filter(p => p.trim())
+  const bullets = paragraphs.length > 1 
+    ? paragraphs.map((p, i) => `- (${i + 1}) ${p}`)
+    : narrative.split(/[\.。]\s+/).filter(s => s.trim()).map((s, i) => `- (${i + 1}) ${s}.`)
+  
+  return {
+    kind: 'summary',
+    viewType: 'structured',
+    structured: {
+      title: '구조화 요약',
+      bullets
+    }
   }
+}
 
-  if (viewType === 'mindmap') {
-    return `${base}\n\n[출력 형식: JSON만]\n{\n  "center": "중심개념(짧게)",\n  "nodes": [ { "id": "c", "label": "center", "level": 0 }, { "id": "n1", "label": "하위개념", "level": 1 } ],\n  "edges": [ { "from": "c", "to": "n1" } ]\n}\n- nodes는 6~12개 정도\n\n[원문]\n${text}`
+function narrativeToMindmap(narrative: string): any {
+  // 첫 문장을 중심으로, 나머지를 노드로
+  const sentences = narrative.split(/[\.。]\s+/).filter(s => s.trim()).map(s => s.trim())
+  const center = (sentences[0] || '핵심').slice(0, 40)
+  const nodes = [{ id: 'c', label: center, level: 0 }]
+  const edges: Array<{ from: string; to: string }> = []
+  
+  sentences.slice(1).forEach((s, i) => {
+    const id = `n${i + 1}`
+    nodes.push({ id, label: s.slice(0, 60), level: 1 })
+    edges.push({ from: 'c', to: id })
+  })
+  
+  return {
+    kind: 'summary',
+    viewType: 'mindmap',
+    mindmap: { center, nodes, edges }
   }
+}
 
-  // selftest
-  return `${base}\n\n[출력 형식: JSON만]\n{\n  "title": "셀프테스트",\n  "questions": [\n    { "id": "q1", "type": "short", "question": "질문", "answerHint": "정답 힌트" }\n  ]\n}\n- questions는 5~10개\n\n[원문]\n${text}`
+function narrativeToSelftest(narrative: string): any {
+  // 문장별로 질문 생성
+  const sentences = narrative.split(/[\.。]\s+/).filter(s => s.trim()).map(s => s.trim())
+  const questions = sentences.map((s, i) => ({
+    id: `q${i + 1}`,
+    type: 'short',
+    question: `(${i + 1}) 다음 내용을 한 문장으로 설명해보세요: "${s.slice(0, 70)}"`,
+    answerHint: s
+  }))
+  
+  return {
+    kind: 'summary',
+    viewType: 'selftest',
+    selftest: { title: '셀프테스트', questions }
+  }
 }
 
 function extractJsonLoose(s: string) {
@@ -785,6 +841,66 @@ function extractJsonLoose(s: string) {
     return JSON.parse(slice)
   }
   return JSON.parse(candidate)
+}
+
+// ✅ V2: 압축률 검증 게이트
+function validateCompressionRatio(originalText: string, summaryText: string, mode: 'brief'|'standard'|'detail'): { valid: boolean; ratio: number; expected: string } {
+  const origLen = originalText.length
+  const summLen = summaryText.length
+  const ratio = origLen > 0 ? summLen / origLen : 0
+  
+  let minRatio = 0, maxRatio = 1
+  if (mode === 'brief') {
+    minRatio = 0.10
+    maxRatio = 0.15
+  } else if (mode === 'standard') {
+    minRatio = 0.25
+    maxRatio = 0.30
+  } else {
+    minRatio = 0.45
+    maxRatio = 0.55
+  }
+  
+  const valid = ratio >= minRatio && ratio <= maxRatio
+  const expected = `${(minRatio * 100).toFixed(0)}-${(maxRatio * 100).toFixed(0)}%`
+  
+  return { valid, ratio, expected }
+}
+
+// ✅ V2: 안전장치 - 원문에 없는 괄호 인용 제거
+function sanitizeCitations(originalText: string, summaryText: string): { cleaned: string; warnings: string[] } {
+  const warnings: string[] = []
+  
+  // 원문의 모든 괄호 패턴 추출
+  const origCitations = new Set<string>()
+  const citationPattern = /\(([^)]+)\)/g
+  let match
+  while ((match = citationPattern.exec(originalText)) !== null) {
+    origCitations.add(match[1].trim())
+  }
+  
+  // 요약문의 괄호를 검사하고 원문에 없으면 제거
+  let cleaned = summaryText
+  const summCitations: string[] = []
+  
+  cleaned = cleaned.replace(/\(([^)]+)\)/g, (fullMatch, inner) => {
+    const trimmed = inner.trim()
+    summCitations.push(trimmed)
+    
+    // 원문에 있으면 유지
+    if (origCitations.has(trimmed)) {
+      return fullMatch
+    }
+    
+    // 원문에 없으면 제거하고 경고
+    warnings.push(`제거됨: ${fullMatch}`)
+    return ''
+  })
+  
+  // 연속 공백 정리
+  cleaned = cleaned.replace(/\s{2,}/g, ' ').trim()
+  
+  return { cleaned, warnings }
 }
 
 async function callGemini(env: Bindings, prompt: string) {
@@ -1403,57 +1519,135 @@ app.post('/api/engine', async (c) => {
     return c.json({ ok: false, error: { code: 'NO_TEXT', message: '입력 텍스트가 없습니다.' } }, 200)
   }
 
-  const key = cacheKey(kind, mode, viewType, text, userId || null)
-  const cached = await getCache(db, key)
-  if (cached.hit) {
+  // ✅ V2: derived cache 먼저 확인
+  const derivedKey = derivedCacheKey(kind, mode, viewType, text, userId || null)
+  const derivedCached = await getCache(db, derivedKey)
+  if (derivedCached.hit) {
     return c.json(
       {
         ok: true,
-        data: cached.data,
-        meta: { cached: true, cacheStore: cached.store, engine: 'cache', elapsedMs: Date.now() - start }
+        data: derivedCached.data,
+        meta: { cached: true, cacheStore: derivedCached.store, cacheType: 'derived', engine: 'cache', elapsedMs: Date.now() - start }
+      },
+      200
+    )
+  }
+
+  // ✅ V2: base cache 확인
+  const baseKey = baseCacheKey(kind, mode, text, userId || null)
+  const baseCached = await getCache(db, baseKey)
+  
+  // ✅ Base cache가 있으면 로컬 변환 후 derived cache 저장
+  if (baseCached.hit && baseCached.data?.narrative) {
+    const baseNarrative = baseCached.data.narrative
+    let derivedData: any
+    
+    if (viewType === 'narrative') {
+      derivedData = { kind, mode, viewType, narrative: baseNarrative }
+    } else if (viewType === 'structured') {
+      derivedData = { kind, mode, ...narrativeToStructured(baseNarrative) }
+    } else if (viewType === 'mindmap') {
+      derivedData = { kind, mode, ...narrativeToMindmap(baseNarrative) }
+    } else {
+      derivedData = { kind, mode, ...narrativeToSelftest(baseNarrative) }
+    }
+    
+    await setCache(db, derivedKey, userId || 'anon', derivedData)
+    return c.json(
+      {
+        ok: true,
+        data: derivedData,
+        meta: { cached: true, cacheStore: 'derived', cacheType: 'converted', engine: 'local-convert', elapsedMs: Date.now() - start }
       },
       200
     )
   }
 
   // ----------------------------
-  // 1) Try Gemini if available
+  // ✅ V2: Gemini 호출 (narrative만 생성, 1회만)
   // ----------------------------
   const hasGemini = !!safeStr(c.env.GEMINI_API_KEY).trim()
   const useMock = safeStr(c.env.USE_MOCK).trim().toLowerCase() === 'true'
 
   if (kind === 'summary' && hasGemini && !useMock) {
     try {
-      const prompt = buildGeminiPrompt(text, mode, viewType)
-      const g = await callGemini(c.env, prompt)
-
-      let data: any
-      if (viewType === 'narrative') {
-        data = { kind: 'summary', mode, viewType, narrative: (g.text || '').trim() }
-      } else {
-        const parsed = extractJsonLoose(g.text || '')
-        if (viewType === 'structured') {
-          data = { kind: 'summary', mode, viewType, structured: { title: parsed.title || '구조화 요약', bullets: parsed.bullets || [] } }
-        } else if (viewType === 'mindmap') {
-          data = { kind: 'summary', mode, viewType, mindmap: parsed }
-        } else {
-          data = { kind: 'summary', mode, viewType, selftest: parsed }
+      const prompt = buildGeminiPrompt(text, mode)
+      let narrative = ''
+      let compressionValid = false
+      let retryCount = 0
+      
+      // ✅ 압축률 검증 게이트: 최대 2회 시도
+      while (retryCount < 2) {
+        const g = await callGemini(c.env, prompt)
+        narrative = (g.text || '').trim()
+        
+        // 압축률 검증
+        const validation = validateCompressionRatio(text, narrative, mode)
+        if (validation.valid) {
+          compressionValid = true
+          break
+        }
+        
+        retryCount++
+        if (retryCount < 2) {
+          // 재시도 프롬프트 조정
+          const adjustPrompt = `${prompt}\n\n[중요] 이전 시도의 압축률이 ${(validation.ratio * 100).toFixed(1)}%로 목표 범위(${validation.expected})를 벗어났습니다. 반드시 ${validation.expected} 범위로 요약하세요.`
+          const g2 = await callGemini(c.env, adjustPrompt)
+          narrative = (g2.text || '').trim()
         }
       }
-
-      await setCache(db, key, userId || 'anon', data)
+      
+      // ✅ 안전장치: 원문에 없는 인용 제거
+      const { cleaned, warnings } = sanitizeCitations(text, narrative)
+      if (warnings.length > 0) {
+        console.warn('[SAFETY] 원문에 없는 인용 제거:', warnings)
+      }
+      narrative = cleaned
+      
+      // ✅ Base narrative를 base cache에 저장
+      const baseData = { kind: 'summary', mode, viewType: 'narrative', narrative }
+      await setCache(db, baseKey, userId || 'anon', baseData)
+      
+      // ✅ 요청된 viewType에 맞게 derived 생성
+      let derivedData: any
+      if (viewType === 'narrative') {
+        derivedData = baseData
+      } else if (viewType === 'structured') {
+        derivedData = { kind, mode, ...narrativeToStructured(narrative) }
+      } else if (viewType === 'mindmap') {
+        derivedData = { kind, mode, ...narrativeToMindmap(narrative) }
+      } else {
+        derivedData = { kind, mode, ...narrativeToSelftest(narrative) }
+      }
+      
+      await setCache(db, derivedKey, userId || 'anon', derivedData)
+      
       return c.json(
         {
           ok: true,
-          data,
-          meta: { cached: false, engine: 'gemini', elapsedMs: Date.now() - start }
+          data: derivedData,
+          meta: { 
+            cached: false, 
+            engine: 'gemini', 
+            compressionValid,
+            retryCount,
+            citationWarnings: warnings.length,
+            elapsedMs: Date.now() - start 
+          }
         },
         200
       )
     } catch (e: any) {
-      // ✅ Gemini 실패 시 로컬 폴백 (죽지 않음)
+      // ✅ Gemini 실패 시 로컬 폴백
       const fallback = localSummary(text, mode, viewType)
-      await setCache(db, key, userId || 'anon', fallback)
+      await setCache(db, derivedKey, userId || 'anon', fallback)
+      
+      // Base narrative도 저장 (로컬)
+      if (fallback.narrative) {
+        const baseData = { kind: 'summary', mode, viewType: 'narrative', narrative: fallback.narrative }
+        await setCache(db, baseKey, userId || 'anon', baseData)
+      }
+      
       return c.json(
         {
           ok: true,
@@ -1471,12 +1665,18 @@ app.post('/api/engine', async (c) => {
   }
 
   // ----------------------------
-  // 2) Local engine (always works)
+  // ✅ V2: 로컬 엔진 (항상 동작)
   // ----------------------------
   let result: any
 
   if (kind === 'summary') {
     result = localSummary(text, mode, viewType)
+    
+    // Base narrative 저장
+    if (result.narrative) {
+      const baseData = { kind: 'summary', mode, viewType: 'narrative', narrative: result.narrative }
+      await setCache(db, baseKey, userId || 'anon', baseData)
+    }
   } else if (kind === 'concept') {
     const sents = splitSentences(text)
     const picked = pickTopByScore(sents, clamp(Math.round(sents.length * 0.25), 6, 10))
@@ -1512,7 +1712,7 @@ app.post('/api/engine', async (c) => {
     }
   }
 
-  await setCache(db, key, userId || 'anon', result)
+  await setCache(db, derivedKey, userId || 'anon', result)
   return c.json(
     {
       ok: true,
