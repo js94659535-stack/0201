@@ -373,6 +373,15 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
       citations: string[]
     }>>()
     
+    // ✅ "오감" 반복 추적을 위한 전역 카운터
+    const globalKeywordCount = new Map<string, number>()
+    const synonyms: Record<string, string[]> = {
+      '오감': ['감각', '감각적 경험', '직접 체험'],
+      '탐색': ['탐구', '관찰', '발견'],
+      '체험': ['경험', '활동', '학습'],
+      '자연': ['숲', '환경', '생태계']
+    }
+    
     for (const cluster of topClusters) {
       for (const sent of cluster.sentences) {
         const match = sent.clean.match(/^(.+?)[은는이가]\s*(.+)$/)
@@ -389,13 +398,33 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
           let cleanRest = rest.trim()
           cleanRest = cleanRest.replace(/[\.。\?\!]+$/g, '').trim()
           
+          // ✅ "오감" 등 반복 키워드 치환 (중복 제거 전에 수행)
+          for (const [keyword, alternatives] of Object.entries(synonyms)) {
+            if (cleanRest.includes(keyword)) {
+              const count = globalKeywordCount.get(keyword) || 0
+              globalKeywordCount.set(keyword, count + 1)
+              
+              // 2번째 이후 사용 시 동의어로 치환
+              if (count >= 1 && alternatives.length > 0) {
+                const altIndex = Math.min(count - 1, alternatives.length - 1)
+                cleanRest = cleanRest.replace(keyword, alternatives[altIndex])
+              }
+            }
+          }
+          
           // ✅ 원문 보존: 종결어미는 완전히 제거하지 않고 임시 저장
           // 이후 재조립 시 사용
           const rawKeywords = new Set(tokenize(cleanRest))
           const keywords = normalizeSemantics(rawKeywords)
           
+          // ✅ "오감" 등 반복 키워드는 중복 판단에서 제외
+          const excludeFromDup = new Set(['오감', '감각', '감각적', '체험', '경험', '활동', '학습'])
+          for (const ex of excludeFromDup) {
+            keywords.delete(ex)
+          }
+          
           bySubject.get(subject)!.push({ 
-            original: cleanRest,  // ✅ 원문 그대로 저장
+            original: cleanRest,  // ✅ 키워드 치환된 텍스트 저장
             keywords,
             citations: sent.citations 
           })
@@ -415,12 +444,48 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
       const josa = hasJongsung ? '은' : '는'
       
       if (predicates.length === 1) {
-        // ✅ 원문 그대로 사용
+        // ✅ 원문 그대로 사용 (단, 긴 문장은 분리)
         const orig = predicates[0].original
-        merged.push({ 
-          text: `${subject}${josa} ${orig}`, 
-          citations: allCitations 
-        })
+        
+        // ✅ 긴 문장 자동 분리 (80자 이상 + 쉼표 2개 이상)
+        const commaCount = (orig.match(/,/g) || []).length
+        
+        if (orig.length > 80 && commaCount >= 2) {
+          // 쉼표로 분리 (마지막 부분은 연결)
+          const parts = orig.split(',').map(p => p.trim()).filter(p => p.length > 0)
+          
+          if (parts.length >= 2) {
+            // 첫 번째 부분
+            merged.push({ 
+              text: `${subject}${josa} ${parts[0]}입니다`, 
+              citations: []
+            })
+            // 중간 부분들
+            for (let i = 1; i < parts.length - 1; i++) {
+              merged.push({ 
+                text: `이는 ${parts[i]}입니다`, 
+                citations: []
+              })
+            }
+            // 마지막 부분 (인용 포함)
+            merged.push({ 
+              text: `또한 ${parts[parts.length - 1]}`, 
+              citations: predicates[0].citations
+            })
+          } else {
+            // 분리 실패하면 원문 그대로
+            merged.push({ 
+              text: `${subject}${josa} ${orig}`, 
+              citations: allCitations 
+            })
+          }
+        } else {
+          // 짧은 문장은 그대로
+          merged.push({ 
+            text: `${subject}${josa} ${orig}`, 
+            citations: allCitations 
+          })
+        }
       } else {
         // 의미 중복 제거
         const unique: Array<{ original: string; keywords: Set<string>; citations: string[] }> = []
@@ -430,8 +495,10 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
           for (const u of unique) {
             const overlap = Array.from(pred.keywords).filter(k => u.keywords.has(k)).length
             const totalKeys = Math.max(pred.keywords.size, u.keywords.size)
-            // ✅ 임계값 상향: 0.4 → 0.6 (60% 이상 겹쳐야 중복)
-            if (totalKeys > 0 && overlap / totalKeys >= 0.6) {
+            // ✅ 임계값 상향: 0.6 → 0.8 (80% 이상 겹쳐야 중복)
+            // "오감" 반복을 보존하기 위해 임계값 강화
+            // ✅ totalKeys가 0이면 중복 판단 불가 (모두 다른 문장)
+            if (totalKeys > 0 && overlap / totalKeys >= 0.8) {
               if (pred.original.length > u.original.length) {
                 u.original = pred.original  // ✅ 원문 교체
                 u.keywords = pred.keywords
