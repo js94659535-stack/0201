@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MindStory - 학습 요약 도우미</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+  </style>
+</head>
+<body class="antialiased">
+  <div id="app" class="min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-4xl w-full">
+      <!-- Header -->
+      <div class="text-center mb-8">
+        <h1 class="text-4xl font-bold text-gray-800 mb-2">
+          <i class="fas fa-brain text-purple-600"></i>
+          MindStory
+        </h1>
+        <p class="text-gray-600">AI 기반 학습 요약 도우미</p>
+      </div>
+
+      <!-- Input Section -->
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-2">
+          <i class="fas fa-edit"></i> 학습할 내용을 입력하세요
+        </label>
+        <textarea 
+          id="inputText" 
+          class="w-full h-48 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+          placeholder="여기에 요약하고 싶은 텍스트를 입력하세요..."
+        ></textarea>
+        <div class="mt-2 text-sm text-gray-500">
+          <span id="charCount">0</span> 자
+        </div>
+      </div>
+
+      <!-- Mode Selection -->
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-2">
+          <i class="fas fa-sliders-h"></i> 요약 모드
+        </label>
+        <div class="grid grid-cols-3 gap-3">
+          <button class="mode-btn px-4 py-2 rounded-lg border-2 border-purple-300 hover:border-purple-500 hover:bg-purple-50 transition" data-mode="brief">
+            <i class="fas fa-bolt"></i> 간단
+          </button>
+          <button class="mode-btn px-4 py-2 rounded-lg border-2 border-purple-500 bg-purple-50 transition" data-mode="standard">
+            <i class="fas fa-balance-scale"></i> 표준
+          </button>
+          <button class="mode-btn px-4 py-2 rounded-lg border-2 border-purple-300 hover:border-purple-500 hover:bg-purple-50 transition" data-mode="detail">
+            <i class="fas fa-microscope"></i> 상세
+          </button>
+        </div>
+      </div>
+
+      <!-- View Type Selection -->
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-2">
+          <i class="fas fa-eye"></i> 보기 형식
+        </label>
+        <div class="grid grid-cols-4 gap-3">
+          <button class="view-btn px-4 py-2 rounded-lg border-2 border-blue-500 bg-blue-50 transition text-sm" data-view="narrative">
+            <i class="fas fa-book"></i> 서술형
+          </button>
+          <button class="view-btn px-4 py-2 rounded-lg border-2 border-blue-300 hover:border-blue-500 hover:bg-blue-50 transition text-sm" data-view="structured">
+            <i class="fas fa-list"></i> 구조화
+          </button>
+          <button class="view-btn px-4 py-2 rounded-lg border-2 border-blue-300 hover:border-blue-500 hover:bg-blue-50 transition text-sm" data-view="mindmap">
+            <i class="fas fa-project-diagram"></i> 마인드맵
+          </button>
+          <button class="view-btn px-4 py-2 rounded-lg border-2 border-blue-300 hover:border-blue-500 hover:bg-blue-50 transition text-sm" data-view="selftest">
+            <i class="fas fa-question-circle"></i> 자가테스트
+          </button>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex gap-3 mb-6">
+        <button id="summarizeBtn" class="flex-1 bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+          <i class="fas fa-magic"></i> 요약하기
+        </button>
+        <button id="clearBtn" class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+          <i class="fas fa-eraser"></i> 지우기
+        </button>
+      </div>
+
+      <!-- Result Section -->
+      <div id="resultSection" class="hidden mt-8 p-6 bg-gray-50 rounded-lg">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-2xl font-bold text-gray-800">
+            <i class="fas fa-check-circle text-green-500"></i> 요약 결과
+          </h2>
+          <button id="copyBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm">
+            <i class="fas fa-copy"></i> 복사
+          </button>
+        </div>
+        <div id="resultContent" class="prose max-w-none">
+          <!-- 결과가 여기에 표시됩니다 -->
+        </div>
+        <div class="mt-4 text-xs text-gray-500">
+          <i class="fas fa-info-circle"></i>
+          <span id="resultMeta"></span>
+        </div>
+      </div>
+
+      <!-- Loading Indicator -->
+      <div id="loadingIndicator" class="hidden text-center py-8">
+        <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+        <p class="mt-4 text-gray-600">요약 중입니다...</p>
+      </div>
+
+      <!-- Error Message -->
+      <div id="errorMessage" class="hidden mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span id="errorText"></span>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    // State
+    let currentMode = 'standard';
+    let currentView = 'narrative';
+
+    // DOM Elements
+    const inputText = document.getElementById('inputText');
+    const charCount = document.getElementById('charCount');
+    const summarizeBtn = document.getElementById('summarizeBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const resultSection = document.getElementById('resultSection');
+    const resultContent = document.getElementById('resultContent');
+    const resultMeta = document.getElementById('resultMeta');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const errorMessage = document.getElementById('errorMessage');
+    const errorText = document.getElementById('errorText');
+    const copyBtn = document.getElementById('copyBtn');
+
+    // Update character count
+    inputText.addEventListener('input', () => {
+      const count = inputText.value.length;
+      charCount.textContent = count;
+      summarizeBtn.disabled = count === 0;
+    });
+
+    // Mode selection
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.mode-btn').forEach(b => {
+          b.classList.remove('border-purple-500', 'bg-purple-50');
+          b.classList.add('border-purple-300');
+        });
+        btn.classList.remove('border-purple-300');
+        btn.classList.add('border-purple-500', 'bg-purple-50');
+        currentMode = btn.dataset.mode;
+      });
+    });
+
+    // View selection
+    document.querySelectorAll('.view-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.view-btn').forEach(b => {
+          b.classList.remove('border-blue-500', 'bg-blue-50');
+          b.classList.add('border-blue-300');
+        });
+        btn.classList.remove('border-blue-300');
+        btn.classList.add('border-blue-500', 'bg-blue-50');
+        currentView = btn.dataset.view;
+      });
+    });
+
+    // Clear button
+    clearBtn.addEventListener('click', () => {
+      inputText.value = '';
+      charCount.textContent = '0';
+      summarizeBtn.disabled = true;
+      resultSection.classList.add('hidden');
+      errorMessage.classList.add('hidden');
+    });
+
+    // Copy button
+    copyBtn.addEventListener('click', async () => {
+      const text = resultContent.innerText;
+      try {
+        await navigator.clipboard.writeText(text);
+        copyBtn.innerHTML = '<i class="fas fa-check"></i> 복사됨!';
+        setTimeout(() => {
+          copyBtn.innerHTML = '<i class="fas fa-copy"></i> 복사';
+        }, 2000);
+      } catch (err) {
+        alert('복사에 실패했습니다.');
+      }
+    });
+
+    // Show error
+    function showError(message) {
+      errorText.textContent = message;
+      errorMessage.classList.remove('hidden');
+      loadingIndicator.classList.add('hidden');
+    }
+
+    // Render result
+    function renderResult(data) {
+      const { summary, meta, title } = data;
+      let html = `<h3 class="text-xl font-bold mb-4">${title || '요약 결과'}</h3>`;
+
+      if (currentView === 'narrative') {
+        html += `<div class="space-y-3">`;
+        html += `<div><strong>핵심 포인트:</strong></div>`;
+        html += `<ul class="list-disc list-inside space-y-1">`;
+        summary.bullets.forEach(bullet => {
+          html += `<li>${bullet}</li>`;
+        });
+        html += `</ul>`;
+        html += `<div class="mt-4"><strong>전체 요약:</strong></div>`;
+        html += `<p class="text-gray-700">${summary.narrative}</p>`;
+        html += `</div>`;
+      } else if (currentView === 'structured' && summary.structured) {
+        html += `<div class="space-y-4">`;
+        summary.structured.headings.forEach(heading => {
+          html += `<div>`;
+          html += `<h4 class="font-bold text-lg mb-2">${heading.title}</h4>`;
+          html += `<ul class="list-disc list-inside space-y-1">`;
+          heading.items.forEach(item => {
+            html += `<li>${item}</li>`;
+          });
+          html += `</ul>`;
+          html += `</div>`;
+        });
+        html += `</div>`;
+      } else if (currentView === 'mindmap' && summary.mindmap) {
+        html += `<div class="text-center">`;
+        html += `<div class="inline-block p-4 bg-purple-100 rounded-lg mb-4">`;
+        html += `<strong>${summary.mindmap.nodes[0].label}</strong>`;
+        html += `</div>`;
+        html += `<div class="grid grid-cols-3 gap-3">`;
+        summary.mindmap.nodes.slice(1).forEach(node => {
+          html += `<div class="p-3 bg-blue-50 rounded-lg">${node.label}</div>`;
+        });
+        html += `</div>`;
+        html += `</div>`;
+      } else if (currentView === 'selftest' && summary.selftest) {
+        html += `<div class="space-y-4">`;
+        summary.selftest.questions.forEach((q, i) => {
+          html += `<div class="p-4 bg-white rounded-lg">`;
+          html += `<p class="font-medium mb-2">Q${i + 1}. ${q.q}</p>`;
+          html += `<p class="text-sm text-gray-600">A: ${q.answer || '답변을 작성해보세요'}</p>`;
+          html += `</div>`;
+        });
+        html += `</div>`;
+      }
+
+      resultContent.innerHTML = html;
+      resultMeta.textContent = `엔진: ${meta?.engine || 'local'} | 캐시: ${meta?.cache || 'none'}`;
+      resultSection.classList.remove('hidden');
+    }
+
+    // Summarize button
+    summarizeBtn.addEventListener('click', async () => {
+      const text = inputText.value.trim();
+      if (!text) return;
+
+      // Hide previous results and errors
+      resultSection.classList.add('hidden');
+      errorMessage.classList.add('hidden');
+      loadingIndicator.classList.remove('hidden');
+
+      try {
+        const response = await fetch('/api/engine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            kind: 'summary',
+            text,
+            mode: currentMode,
+            viewType: currentView,
+            options: { userId: 'web_user' }
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (!data.ok) {
+          throw new Error(data.error || 'Unknown error');
+        }
+
+        loadingIndicator.classList.add('hidden');
+        renderResult(data);
+      } catch (error) {
+        console.error('Error:', error);
+        showError(error.message || '요약 중 오류가 발생했습니다.');
+      }
+    });
+
+    // Initialize
+    summarizeBtn.disabled = true;
+  </script>
+</body>
+</html>
