@@ -755,7 +755,7 @@ function enforceRatio(text: string, mode: 'brief'|'standard'|'detail', totalLen:
 }
 
 /**
- * ✅ 젠스 전용: 발전적 서술형 요약 조립기 (중복 제거 + 연결어 삽입 + 시제 통일)
+ * ✅ 젠스 전용: 발전적 서술형 요약 조립기 (최종 정제 버전)
  * @param picked - 추출된 원문 문장 배열
  * @param mode - 'brief' | 'standard' | 'detail'
  * @param totalLen - 원문 전체 글자수 (공백제외)
@@ -763,54 +763,125 @@ function enforceRatio(text: string, mode: 'brief'|'standard'|'detail', totalLen:
 function buildGensNarrative(picked: string[], mode: 'brief'|'standard'|'detail', totalLen: number): string {
   if (!picked || picked.length === 0) return "요약할 수 있는 문장이 없습니다."
   
-  // 1. 중복 제거 및 문장 파편 정제 (De-duplication)
-  const unique: string[] = []
-  const seen = new Set<string>()
-  picked.forEach(s => {
-    const clean = s.trim().replace(/^[^가-힣]+/, "") // 문장 앞 특수문자/찌꺼기 제거
-    const fingerprint = clean.substring(0, 15) // 앞 15자로 중복 판단
-    if (clean.length > 15 && !seen.has(fingerprint)) {
-      unique.push(clean)
-      seen.add(fingerprint)
+  // ============================================
+  // STEP 1: 1차 정제 - 문장 분리 및 불완전 서두 제거
+  // ============================================
+  let sentences = picked
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+    .flatMap(s => s.split(/(?<=[.!?])\s+/))  // 문장 단위로 재분리
+    .map(s => s.trim())
+    .filter(s => s.length > 15)  // 너무 짧은 파편 제거
+  
+  // ✅ 파편 제거: 불완전한 서두 정제
+  sentences = sentences.map(s => {
+    // "음", "며", "고", "므로", "또한", "하지만" 등으로 시작하는 파편 제거
+    let cleaned = s
+      .replace(/^(음|며|고|므로|하며|하고|되며|되고|있으며|있고)\s+/g, "")
+      .replace(/^(또한|그러므로|따라서|결과적으로|이에|이와|더불어|나아가)\s+/g, "")
+      .replace(/^[^가-힣]+/, "")  // 한글 아닌 문자로 시작하는 경우 제거
+      .trim()
+    
+    // 조사로만 시작하는 경우 (예: "는 ~", "이 ~")
+    if (/^[은는이가을를에도만]\s/.test(cleaned)) {
+      cleaned = cleaned.replace(/^[은는이가을를에도만]\s+/, "")
     }
-  })
+    
+    return cleaned
+  }).filter(s => s.length > 10)  // 정제 후에도 의미 있는 길이 확보
   
-  if (unique.length === 0) return "요약할 수 있는 문장이 없습니다."
+  if (sentences.length === 0) return "요약할 수 있는 문장이 없습니다."
   
-  // 2. 모드별 연결 로직 및 흐름 제어 (Contextual Flow)
-  const connectors = {
-    add: ["또한", "이와 함께", "더불어", "나아가"],
-    contrast: ["하지만", "반면", "그럼에도 불구하고"],
-    result: ["따라서", "이에 따라", "결과적으로"]
+  // ============================================
+  // STEP 2: 중복 제거 - 80% 이상 유사도 검사
+  // ============================================
+  const deduped: string[] = []
+  const usedFingerprints = new Set<string>()
+  
+  for (const sent of sentences) {
+    // 완전 중복 체크 (문장 전체)
+    if (deduped.includes(sent)) continue
+    
+    // Fingerprint 중복 체크 (앞 15자)
+    const fingerprint = sent.substring(0, 15)
+    if (usedFingerprints.has(fingerprint)) continue
+    
+    // 유사도 검사 (80% 이상 겹치면 제외)
+    let isDuplicate = false
+    for (const existing of deduped) {
+      const similarity = calculateSimilarity(sent, existing)
+      if (similarity >= 0.80) {
+        isDuplicate = true
+        break
+      }
+    }
+    
+    if (!isDuplicate) {
+      deduped.push(sent)
+      usedFingerprints.add(fingerprint)
+    }
   }
   
-  const processed = unique.map((sent, i) => {
+  if (deduped.length === 0) return "요약할 수 있는 문장이 없습니다."
+  
+  // ============================================
+  // STEP 3: 지능형 연결어 할당 (논리 흐름 고려)
+  // ============================================
+  const refined = deduped.map((sent, i) => {
+    // 첫 문장: 그대로
     if (i === 0) return sent
     
-    // 앞 문장과 주어가 일치하는지 확인
-    const prevMatch = unique[i-1].match(/^(.+?[은는이가])/)
-    const currMatch = sent.match(/^(.+?[은는이가])/)
-    const prevSub = prevMatch ? prevMatch[1] : null
-    const currSub = currMatch ? currMatch[1] : null
+    // 두 번째 문장: "이와 함께" 또는 "이와 더불어"
+    if (i === 1) return `이와 더불어 ${sent}`
     
-    if (currSub && prevSub && currSub === prevSub) {
-      return `이러한 ${sent.replace(/^.+?[은는이가]\s+/, "")}`
+    // 마지막 문장: 결론 연결어
+    if (i === deduped.length - 1) {
+      // "결과적으로", "따라서" 중 하나
+      return `결과적으로 ${sent}`
     }
     
-    // 일반적인 연결어 삽입 (순환 배정)
-    const conn = connectors.add[i % connectors.add.length]
-    return `${conn} ${sent}`
+    // 중간 문장: "또한"
+    return `또한 ${sent}`
   })
   
-  // 3. 최종 조립 및 학술적 시제 통일
-  let resultText = processed.join(" ")
-    .replace(/합니다|함|했다$/g, "하였다")
-    .replace(/입니다|임$/g, "이다")
-    .replace(/\s{2,}/g, " ")
+  // ============================================
+  // STEP 4: 학술적 시제 통일
+  // ============================================
+  let resultText = refined.join(" ")
+    .replace(/합니다/g, "한다")
+    .replace(/했다/g, "하였다")
+    .replace(/입니다/g, "이다")
+    .replace(/있습니다/g, "있다")
+    .replace(/\s{2,}/g, " ")  // 연속 공백 제거
     .trim()
   
-  // 4. 요약율 가이드 적용 (Length Control)
+  // ============================================
+  // STEP 5: 연결어 과잉 제거 (중복 연결어 검사)
+  // ============================================
+  // "또한 그러므로", "또한 따라서", "또한 또한" 등 제거
+  resultText = resultText
+    .replace(/또한\s+(그러므로|따라서|결과적으로|이에|이와)/g, "$1")
+    .replace(/또한\s+또한/g, "또한")
+    .replace(/이와\s+또한/g, "이와")
+    .trim()
+  
+  // ============================================
+  // STEP 6: 요약율 강제 적용
+  // ============================================
   return enforceRatio(resultText, mode, totalLen)
+}
+
+/**
+ * ✅ 두 문장의 유사도 계산 (0.0 ~ 1.0)
+ */
+function calculateSimilarity(s1: string, s2: string): number {
+  const words1 = new Set(s1.split(/\s+/))
+  const words2 = new Set(s2.split(/\s+/))
+  
+  const intersection = new Set([...words1].filter(w => words2.has(w)))
+  const union = new Set([...words1, ...words2])
+  
+  return union.size > 0 ? intersection.size / union.size : 0
 }
 
 // ========================================
