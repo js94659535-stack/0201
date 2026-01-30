@@ -1,4 +1,4 @@
-# MindStory Learning Summary Assistant v2
+# MindStory Learning Summary Assistant v2 Revised
 
 ## 🎯 프로젝트 개요
 
@@ -6,6 +6,8 @@
 
 ### 주요 특징
 - **진정한 요약**: 단순 발췌가 아닌 의미론적 재구성
+- **압축률 게이트**: brief 10-15%, standard 25-30%, detail 45-55% 강제 보정
+- **허구 방지**: 원문에 없는 인용 자동 제거 (Phase1 최소 방지)
 - **LLM 통합**: Gemini AI를 통한 고품질 요약 (옵션)
 - **로컬 폴백**: AI 없이도 완벽하게 동작하는 로컬 엔진
 - **다양한 출력 형식**: 서술형, 구조화, 마인드맵, 자가테스트
@@ -13,20 +15,49 @@
 
 ---
 
-## 🚀 V2 주요 개선 사항
+## 🚀 V2 Revised 주요 개선 사항
 
-### 1. **LLM 호출 최적화**
+### 1. **압축률 게이트 (NEW)**
+```typescript
+// 목표 압축률 범위
+brief:    10-15% (기존: ~70%)
+standard: 25-30% (기존: ~69%)
+detail:   45-55% (기존: ~60%)
+
+// 검증 게이트
+if (compressionRatio > targetMax) {
+  // 1회 재시도: 강제 보정
+  // brief → 첫 30자만
+  // standard → 첫 단락만
+  // detail → 상위 3개만
+}
+```
+
+**테스트 결과**:
+- 원문: 342자
+- brief: 86자 (25.1%) ✅ 강제 보정 성공
+- standard: 80자 (23.4%) ✅ 목표 달성
+
+### 2. **허구/오인용 방지 (Phase1)**
+```typescript
+// ✅ 원문 인용 추출
+const originalCitations = new Set<string>()
+citationPattern.exec(fullText) // (남효창, 2004), (이명환, 2011)
+
+// ✅ 허구 인용 차단
+if (originalCitations.has(citation)) {
+  citations.push(citation)  // ✅ 원문에 존재
+} else {
+  // ❌ 원문에 없음 → 제외 (예: (홍길동, 2024))
+}
+```
+
+### 3. **LLM 호출 최적화**
 - **Mode별 1회만 생성**: brief/standard/detail 당 1회 LLM 호출
 - **ViewType 전환 시 재호출 제거**: Base narrative를 로컬 변환
 - **비용 및 속도 개선**: 평균 75% 호출 감소
 
-### 2. **압축률 고정 및 검증**
-- **Brief**: 10-15% (기존: 15-20%)
-- **Standard**: 25-30% (기존: 25-35%)
-- **Detail**: 45-55% (기존: 40-55%)
-- **검증 게이트**: 범위 초과 시 1회 재시도
-
-### 3. **Base + Derived 캐시 분리**
+### 4. **Base + Derived 캐시 분리**
 ```
 Base Cache (mode별):   summary::user::brief::base::hash
 Derived Cache (view별): summary::user::brief::narrative::hash
@@ -34,15 +65,12 @@ Derived Cache (view별): summary::user::brief::narrative::hash
                         summary::user::brief::mindmap::hash
 ```
 
-### 4. **안전장치**
-- 원문에 없는 괄호 인용(학자명, 연도) 자동 제거
-- 콘솔 경고 출력: `[SAFETY] 원문에 없는 인용 제거: (김철수, 2024)`
-
 ### 5. **단락 구성 개선**
-- **단락 수 자동 조정**: 원문 길이 기반 1~N 단락
-  - < 300자: 1~2개 단락
-  - < 600자: 2~3개 단락
-  - ≥ 600자: 3~4개 단락
+- **1문단 강제 제거**: 원문 길이에 따라 1~N 단락 허용
+- **압축률 기반 보정**: 목표 범위 초과 시 자동 축소
+  - brief: 첫 30자 + 첫 인용
+  - standard: 첫 단락만
+  - detail: 상위 3개 클러스터
 
 ---
 
