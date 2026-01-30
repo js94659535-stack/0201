@@ -724,16 +724,19 @@ function connectSentences(sentences: string[]): string {
 }
 
 /**
- * ✅ 젠스 전용: 요약율 강제 적용 (길이 제어)
+ * ✅ 젠스 전용: 요약율 강제 적용 (엄격 모드)
+ * @param text - 요약 텍스트
+ * @param mode - 요약 모드
+ * @param totalLen - 원문 전체 글자수 (공백 제외)
  */
 function enforceRatio(text: string, mode: 'brief'|'standard'|'detail', totalLen: number): string {
   const currentLen = charLenNoSpace(text)
   const ratio = currentLen / totalLen
   
   const targetRanges = {
-    brief: { min: 0.10, max: 0.15 },
-    standard: { min: 0.25, max: 0.30 },
-    detail: { min: 0.45, max: 0.55 }
+    brief: { min: 0.10, max: 0.15, strictMax: 0.16 },      // 엄격 최대 16%
+    standard: { min: 0.25, max: 0.30, strictMax: 0.32 },   // 엄격 최대 32%
+    detail: { min: 0.45, max: 0.55, strictMax: 0.58 }      // 엄격 최대 58%
   }
   
   const target = targetRanges[mode]
@@ -743,14 +746,51 @@ function enforceRatio(text: string, mode: 'brief'|'standard'|'detail', totalLen:
     return text
   }
   
-  // 너무 길면 문장 단위로 축소
+  // ============================================
+  // ✅ 엄격 제어: 5% 이상 초과 시 강제 축소
+  // ============================================
+  if (ratio > target.strictMax) {
+    const sentences = text.split(/(?<=다\.)\s+/).filter(s => s.trim().length > 0)
+    
+    // 중요도 기반 문장 제거 (연결어가 많은 문장 우선 제거)
+    const scoredSentences = sentences.map((s, i) => {
+      let score = 100 - i  // 기본 점수: 앞 문장이 우선
+      
+      // 연결어로 시작하면 점수 감소
+      if (/^(또한|더불어|이와|나아가|아울러)/.test(s)) score -= 20
+      
+      // 결론 연결어면 점수 증가 (보존 우선)
+      if (/^(결과적으로|따라서)/.test(s)) score += 50
+      
+      return { text: s, score, index: i }
+    })
+    
+    // 점수 순으로 정렬 후 문장 선택
+    scoredSentences.sort((a, b) => b.score - a.score)
+    const targetSentences = Math.max(2, Math.ceil(sentences.length * (target.max / ratio)))
+    const selectedSentences = scoredSentences.slice(0, targetSentences)
+    
+    // 원래 순서대로 재정렬
+    selectedSentences.sort((a, b) => a.index - b.index)
+    
+    return selectedSentences.map(s => s.text).join(' ')
+  }
+  
+  // 목표보다 약간 길면 (max ~ strictMax 사이) 마지막 문장 제거
   if (ratio > target.max) {
     const sentences = text.split(/(?<=다\.)\s+/).filter(s => s.trim().length > 0)
+    
+    // 마지막 문장이 연결어로 시작하면 제거
+    if (sentences.length > 2 && /^(또한|더불어|이와|나아가)/.test(sentences[sentences.length - 1])) {
+      return sentences.slice(0, -1).join(' ')
+    }
+    
+    // 그렇지 않으면 비율 기반 축소
     const targetSentences = Math.ceil(sentences.length * (target.max / ratio))
     return sentences.slice(0, Math.max(1, targetSentences)).join(' ')
   }
   
-  // 너무 짧으면 그대로 반환 (추가 생성은 하지 않음)
+  // 너무 짧으면 그대로 반환 (추가 생성은 하지 않음 - 할루시네이션 방지)
   return text
 }
 
@@ -773,18 +813,39 @@ function buildGensNarrative(picked: string[], mode: 'brief'|'standard'|'detail',
     .map(s => s.trim())
     .filter(s => s.length > 15)  // 너무 짧은 파편 제거
   
-  // ✅ 파편 제거: 불완전한 서두 정제
+  // ============================================
+  // ✅ 파편 제거 강화: 불완전한 서두 정제
+  // ============================================
   sentences = sentences.map(s => {
-    // "음", "며", "고", "므로", "또한", "하지만" 등으로 시작하는 파편 제거
-    let cleaned = s
-      .replace(/^(음|며|고|므로|하며|하고|되며|되고|있으며|있고)\s+/g, "")
-      .replace(/^(또한|그러므로|따라서|결과적으로|이에|이와|더불어|나아가)\s+/g, "")
-      .replace(/^[^가-힣]+/, "")  // 한글 아닌 문자로 시작하는 경우 제거
-      .trim()
+    let cleaned = s.trim()
     
-    // 조사로만 시작하는 경우 (예: "는 ~", "이 ~")
-    if (/^[은는이가을를에도만]\s/.test(cleaned)) {
-      cleaned = cleaned.replace(/^[은는이가을를에도만]\s+/, "")
+    // 1. 연결어/접속사 파편 제거
+    cleaned = cleaned
+      .replace(/^(음|며|고|므로|면서|지만|거나|든지|듯이)\s+/g, "")
+      .replace(/^(하며|하고|되며|되고|있으며|있고|되어|이며|이고)\s+/g, "")
+      .replace(/^(또한|그러므로|따라서|결과적으로|이에|이와|더불어|나아가|아울러)\s+/g, "")
+      .replace(/^(그러나|하지만|그렇지만|그런데|반면|한편)\s+/g, "")
+    
+    // 2. 조사로만 시작하는 경우 제거
+    if (/^[은는이가을를에도만과와의로부터까지]\s/.test(cleaned)) {
+      cleaned = cleaned.replace(/^[은는이가을를에도만과와의로부터까지]\s+/, "")
+    }
+    
+    // 3. 특수 케이스: "음 과업에서도" → "다음 과업에서도" (패턴 복원)
+    cleaned = cleaned.replace(/^음\s*과업/g, "다음 과업")
+    
+    // 4. 한글 아닌 문자로 시작하는 경우 제거
+    cleaned = cleaned.replace(/^[^가-힣]+/, "")
+    
+    // 5. 불필요한 공백 제거
+    cleaned = cleaned.replace(/\s{2,}/g, " ").trim()
+    
+    // 6. 잘린 문장 복원 시도 (주어가 없으면 "이는" 추가)
+    if (cleaned.length > 0 && !/^[가-힣]+?[은는이가]/.test(cleaned.substring(0, 10))) {
+      // 주어가 없고 동사로 시작하면 "이는" 추가
+      if (/^(보여주|나타내|의미하|시사하|제공하|요구하|필요하)/.test(cleaned)) {
+        cleaned = `이는 ${cleaned}`
+      }
     }
     
     return cleaned
@@ -1464,13 +1525,28 @@ function localSummary(text: string, mode: 'brief'|'standard'|'detail', viewType:
     detail: 7
   }
   
-  // 재료용 문장 추출 (기존 로직 유지)
+  // ============================================
+  // ✅ 중복 출력 차단 로직 (Anti-Duplicate)
+  // ============================================
+  // 재료용 문장 추출: 모드별 차등 비율 강화
   const targetCount =
-    mode === 'brief' ? clamp(Math.round(sents.length * 0.18), 2, 4)
-    : mode === 'standard' ? clamp(Math.round(sents.length * 0.28), 4, 8)
-    : clamp(Math.round(sents.length * 0.40), 7, 14)
+    mode === 'brief' ? clamp(Math.round(sents.length * 0.15), 2, 4)      // 15% - 간단
+    : mode === 'standard' ? clamp(Math.round(sents.length * 0.30), 5, 9)  // 30% - 표준
+    : clamp(Math.round(sents.length * 0.55), 10, 18)                      // 55% - 상세 (추가 확보)
 
-  const picked = pickTopByScore(sents, targetCount)
+  let picked = pickTopByScore(sents, targetCount)
+  
+  // ✅ 상세 모드: 추가 논거 및 연구 변인(성별, 학년) 문장 우선 확보
+  if (mode === 'detail') {
+    const detailKeywords = ['성별', '학년', '남학생', '여학생', '초등', '중학', '고학년', '저학년', '변인', '차이', '비교']
+    const additionalSents = sents.filter(s => {
+      return detailKeywords.some(kw => s.includes(kw)) && !picked.includes(s)
+    }).slice(0, 5)  // 최대 5개 추가
+    
+    if (additionalSents.length > 0) {
+      picked = [...picked, ...additionalSents]
+    }
+  }
 
   if (viewType === 'narrative') {
     // ✅ 진짜 요약: 발췌 금지, 재진술 + 통합 + 압축
