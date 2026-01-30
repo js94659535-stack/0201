@@ -218,6 +218,54 @@ function splitSentences(text: string) {
   return parts.length ? parts : [t]
 }
 
+// ========================================
+// 📦 Korean PDF 줄바꿈/단어쪼개짐 복구
+// ========================================
+/**
+ * ✅ 한국어 PDF 텍스트 정규화
+ * - "접 근 / 필 요 / 작 용 / 음 과업" 같은 단어 내부 공백 제거
+ * - 문장 파편/미완성/중복 요약 악화의 1차 원인 제거
+ */
+function normalizeKoreanWrappedText(raw: string): string {
+  if (!raw) return '';
+  let t = String(raw);
+
+  // 1) (가-힣) 단어 내부 줄바꿈 복구: "접\n근" -> "접근"
+  t = t.replace(/([가-힣])\r?\n([가-힣])/g, '$1$2');
+
+  // 2) 영문 하이픈 줄바꿈 복구: "strat-\negy" -> "strategy"
+  t = t.replace(/([A-Za-z])-\r?\n([A-Za-z])/g, '$1$2');
+
+  // 3) 나머지 줄바꿈은 공백으로 (문단 단위 과다 줄바꿈은 축소)
+  t = t.replace(/\r/g, '');
+  t = t.replace(/\n{2,}/g, '\n');
+  t = t.replace(/\n/g, ' ');
+
+  // 4) 연속 공백 정리
+  t = t.replace(/[ \t]{2,}/g, ' ');
+
+  // 5) 구두점 앞 공백 제거
+  t = t.replace(/\s+([,.;:!?])/g, '$1');
+
+  return t.trim();
+}
+
+/**
+ * ✅ 문장 파편 제거: "… 주요." 같은 짧은 조각 컷
+ */
+function dropSentenceFragments(sents: string[]): string[] {
+  return (sents || []).filter(s => {
+    const t = (s || '').trim();
+    if (!t) return false;
+    // 너무 짧은 조각 제거
+    if (t.length < 18) return false;
+    // 문장 끝이 애매하고 짧으면 제거(완화)
+    const hasEnd = /[.!?]$/.test(t) || /다\.$/.test(t) || /이다\.$/.test(t) || /하였다\.$/.test(t);
+    if (!hasEnd && t.length < 45) return false;
+    return true;
+  });
+}
+
 // 로컬 요약: "중간 자르기" 금지. 문장 중요도 기반 추출(압축)
 const KO_STOP = new Set([
   '그리고','그러나','하지만','또한','및','또','또는','즉','때문에','따라서','그래서','한편','이것','그것','저것',
@@ -1512,7 +1560,15 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
 }
 
 function localSummary(text: string, mode: 'brief'|'standard'|'detail', viewType: 'narrative'|'structured'|'mindmap'|'selftest') {
-  const sents = splitSentences(text)
+  // ========================================
+  // ✅ PATCH: 입력 정규화 강제
+  // ========================================
+  // (1) 원문을 먼저 정규화: 단어쪼개짐/줄바꿈 문제를 여기서 제거
+  const normalizedText = normalizeKoreanWrappedText(text)
+
+  // (2) 문장 분해도 정규화된 원문으로
+  let sents = splitSentences(normalizedText)
+  sents = dropSentenceFragments(sents)
   
   // ✅ 주의: MIN_SENTENCES/MAX_SENTENCES는 "형태 안정화"용 (보조 규칙)
   // ✅ 요약률 계산/검증과는 무관하며, 공백 제외 글자 수만이 유일한 기준
@@ -1551,10 +1607,13 @@ function localSummary(text: string, mode: 'brief'|'standard'|'detail', viewType:
     }
   }
 
+  // ✅ 정규화된 원문 기준으로 길이 계산
+  const totalLen = charLenNoSpace(normalizedText)
+
   if (viewType === 'narrative') {
     // ✅ 진짜 요약: 발췌 금지, 재진술 + 통합 + 압축
-    // ✅ 젠스 전용 로직 선택 (환경 변수 USE_GENS_NARRATIVE로 제어)
-    const useGensNarrative = false // 기본값: 기존 로직 사용 (필요 시 true로 변경)
+    // ✅ 젠스 전용 로직 기본 활성화 (buildNarrativeSummary는 깨진 텍스트에 약함)
+    const useGensNarrative = true // ← 기존 false를 true로 교체
     
     let narrative: string
     let mindmapData: any = null
@@ -1562,14 +1621,13 @@ function localSummary(text: string, mode: 'brief'|'standard'|'detail', viewType:
     
     if (useGensNarrative) {
       // 젠스 전용: 중복 제거 + 연결어 삽입 + 시제 통일 + 마인드맵 키워드
-      const totalLen = charLenNoSpace(text)
       const result = buildGensNarrative(picked, mode, totalLen)
       narrative = result.summary
       mindmapData = result.mindmap
       metaData = result.meta
     } else {
-      // 기존 로직: 클러스터링 + 의미 통합
-      narrative = buildNarrativeSummary(picked, text, mode)
+      // 기존 로직: 클러스터링 + 의미 통합 (정규화된 원문 사용)
+      narrative = buildNarrativeSummary(picked, normalizedText, mode)
     }
     
     // ✅ NEW: 한국어 정제 적용
@@ -1582,7 +1640,13 @@ function localSummary(text: string, mode: 'brief'|'standard'|'detail', viewType:
       viewType,
       narrative,
       ...(mindmapData && { mindmapKeywords: mindmapData }),
-      ...(metaData && { meta: metaData })
+      ...(metaData && { 
+        meta: {
+          ...metaData,
+          inputNormalized: true,
+          originalLen: totalLen
+        }
+      })
     }
   }
   if (viewType === 'structured') {
