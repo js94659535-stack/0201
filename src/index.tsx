@@ -3377,188 +3377,52 @@ app.get('/', (c) => {
     </div>
   </div>
 
+  <!-- =======================================================
+       MindStory Engine Scripts (ORDER MATTERS)
+       위치: </body> 직전
+  ======================================================= -->
+
+  <!-- 0) 번들 (이미 라우트로 제공됨 /static/ms-engine-bundle.js) -->
   <script src="/static/ms-engine-bundle.js"></script>
+
+  <!-- 1) API 호출 래퍼 -->
+  <script src="/static/engine-api-client.js"></script>
+
+  <!-- 2) 파이프라인(캐시/중복방지/자동 base 준비) -->
+  <script src="/static/summary-pipeline.js"></script>
+
+  <!-- 3) UI 탭/렌더링/이벤트 바인딩 -->
+  <script src="/static/result-ui.js"></script>
+
+  <!-- 4) Health check (독립 유지) -->
   <script>
-    let currentMode = 'standard';
-    let currentView = 'narrative';
+    (function(){
+      const healthDot = document.getElementById('healthDot');
+      const healthText = document.getElementById('healthText');
+      const healthMeta = document.getElementById('healthMeta');
 
-    const elInput = document.getElementById('inputText');
-    const elChar = document.getElementById('charCount');
-    const elSumm = document.getElementById('summarizeBtn');
-    const elClear = document.getElementById('clearBtn');
-    const elOut = document.getElementById('out');
-    const elErr = document.getElementById('errBox');
-    const elMeta = document.getElementById('resultMeta');
-    const elCopy = document.getElementById('copyBtn');
-    const elRunBadge = document.getElementById('runBadge');
-    const elRunText = document.getElementById('runText');
-    const elSpin = document.getElementById('spin');
-
-    const healthDot = document.getElementById('healthDot');
-    const healthText = document.getElementById('healthText');
-    const healthMeta = document.getElementById('healthMeta');
-
-    function setErr(msg){
-      if(!msg){ elErr.style.display='none'; elErr.textContent=''; return; }
-      elErr.style.display='block';
-      elErr.textContent = msg;
-    }
-    function setRunning(r){
-      elSpin.style.display = r ? 'inline-block' : 'none';
-      elRunText.textContent = r ? '실행 중' : '대기';
-    }
-
-    function pickActive(seg, key, value){
-      seg.querySelectorAll('.btn').forEach(b=>{
-        const v = b.dataset[key];
-        if(v === value) b.classList.add('active');
-        else b.classList.remove('active');
-      });
-    }
-
-    document.getElementById('modeSeg').addEventListener('click', (e)=>{
-      const btn = e.target.closest('.btn');
-      if(!btn) return;
-      currentMode = btn.dataset.mode;
-      pickActive(document.getElementById('modeSeg'), 'mode', currentMode);
-    });
-
-    document.getElementById('viewSeg').addEventListener('click', (e)=>{
-      const btn = e.target.closest('.btn');
-      if(!btn) return;
-      currentView = btn.dataset.view;
-      pickActive(document.getElementById('viewSeg'), 'view', currentView);
-    });
-
-    elInput.addEventListener('input', ()=>{
-      const n = elInput.value.length;
-      elChar.textContent = n;
-      elSumm.disabled = n < 5;
-      setErr('');
-    });
-
-    elClear.addEventListener('click', ()=>{
-      elInput.value = '';
-      elChar.textContent = '0';
-      elSumm.disabled = true;
-      setErr('');
-      elOut.innerHTML = '<div class="meta">초기화되었습니다.</div>';
-      elMeta.textContent = '—';
-    });
-
-    elCopy.addEventListener('click', async ()=>{
-      const text = elOut.innerText || '';
-      try{
-        await navigator.clipboard.writeText(text);
-        elCopy.textContent = '✅ 복사됨';
-        setTimeout(()=> elCopy.textContent='📋 복사', 1200);
-      }catch{
-        alert('복사에 실패했습니다.');
-      }
-    });
-
-    function render(data){
-      // data: { kind, mode, viewType, narrative|structured|mindmap|selftest }
-      const v = currentView;
-      if(v === 'narrative' && data.narrative){
-        elOut.innerHTML = '<h3>서술형 요약</h3><div>' + escapeHtml(data.narrative) + '</div>';
-        return;
-      }
-      if(v === 'structured' && data.structured){
-        const bullets = data.structured.bullets || [];
-        elOut.innerHTML = '<h3>' + escapeHtml(data.structured.title || '구조화 요약') + '</h3><ul>' +
-          bullets.map(b=>'<li>' + escapeHtml(String(b).replace(/^[-•]\\s*/,'')) + '</li>').join('') +
-        '</ul>';
-        return;
-      }
-      if(v === 'mindmap' && data.mindmap){
-        const center = data.mindmap.center || '핵심';
-        const nodes = (data.mindmap.nodes || []).filter(n=>n.id !== 'c');
-        elOut.innerHTML =
-          '<h3>마인드맵(간이)</h3>' +
-          '<div style="display:flex; flex-direction:column; gap:10px;">' +
-            '<div class="badge">🌟 ' + escapeHtml(center) + '</div>' +
-            '<ul>' + nodes.map(n=>'<li>' + escapeHtml(n.label || '') + '</li>').join('') + '</ul>' +
-          '</div>';
-        return;
-      }
-      if(v === 'selftest' && data.selftest){
-        const qs = data.selftest.questions || [];
-        elOut.innerHTML = '<h3>' + escapeHtml(data.selftest.title || '셀프테스트') + '</h3>' +
-          qs.map((q,i)=>(
-            '<div style="padding:10px 12px; border:1px solid rgba(255,255,255,.10); border-radius:12px; background:rgba(255,255,255,.04); margin:10px 0;">' +
-              '<div style="font-weight:700; margin-bottom:6px;">Q' + (i+1) + '. ' + escapeHtml(q.question || '') + '</div>' +
-              '<div class="meta">힌트: ' + escapeHtml(q.answerHint || '') + '</div>' +
-            '</div>'
-          )).join('');
-        return;
-      }
-      elOut.innerHTML = '<div class="meta">선택한 보기 형식에 해당 결과가 없습니다.</div>';
-    }
-
-    function escapeHtml(s){
-      return String(s).replace(/[&<>"']/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-    }
-
-    async function health(){
-      try{
-        const r = await fetch('/api/health');
-        const j = await r.json();
-        if(j.ok){
-          healthDot.className = 'dot ok';
-          healthText.textContent = '엔진 OK · ' + (j.engineMode || 'unknown');
-          healthMeta.textContent = 'db:' + (j.hasDB ? 'on' : 'off') + ' · ' + (j.ts || '');
-        }else{
+      async function health(){
+        try{
+          const r = await fetch('/api/health');
+          const j = await r.json();
+          if(j.ok){
+            healthDot.className = 'dot ok';
+            healthText.textContent = '엔진 OK · ' + (j.engineMode || 'unknown');
+            healthMeta.textContent = 'db:' + (j.hasDB ? 'on' : 'off') + ' · ' + (j.ts || '');
+          }else{
+            healthDot.className = 'dot bad';
+            healthText.textContent = '엔진 응답 비정상';
+            healthMeta.textContent = '';
+          }
+        }catch{
           healthDot.className = 'dot bad';
-          healthText.textContent = '엔진 응답 비정상';
+          healthText.textContent = '엔진 연결 실패';
           healthMeta.textContent = '';
         }
-      }catch{
-        healthDot.className = 'dot bad';
-        healthText.textContent = '엔진 연결 실패';
-        healthMeta.textContent = '';
       }
-    }
-    health();
-    setInterval(health, 8000);
-
-    elSumm.addEventListener('click', async ()=>{
-      const text = (elInput.value || '').trim();
-      if(text.length < 5) return;
-
-      setErr('');
-      setRunning(true);
-      elMeta.textContent = '—';
-
-      try{
-        const res = await fetch('/api/engine', {
-          method:'POST',
-          headers:{'content-type':'application/json'},
-          body: JSON.stringify({
-            kind: 'summary',
-            text,
-            mode: currentMode,
-            viewType: currentView,
-            options: { userId: 'web_user' }
-          })
-        });
-        const j = await res.json();
-        if(!j.ok){
-          throw new Error(j.error?.message || '요약 실패');
-        }
-        render(j.data);
-        const m = j.meta || {};
-        elMeta.textContent =
-          'engine: ' + (m.engine || 'unknown') +
-          ' · cached: ' + (m.cached ? 'true' : 'false') +
-          (m.cacheStore ? ('(' + m.cacheStore + ')') : '') +
-          ' · ' + (m.elapsedMs != null ? (m.elapsedMs + 'ms') : '');
-      }catch(e){
-        setErr(e && e.message ? e.message : '요약 중 오류가 발생했습니다.');
-      }finally{
-        setRunning(false);
-      }
-    });
+      health();
+      setInterval(health, 8000);
+    })();
   </script>
 </body>
 </html>`)
