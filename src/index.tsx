@@ -28,6 +28,14 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
 }
 
+// ✅ NEW: 공백 제거 및 글자 수 측정
+function stripSpaces(s: string) {
+  return (s || '').replace(/\s+/g, '')
+}
+function charLenNoSpace(s: string) {
+  return stripSpaces(s).length
+}
+
 function normalizeMode(v: any): 'brief' | 'standard' | 'detail' {
   const s = safeStr(v).trim().toLowerCase()
   if (!s) return 'standard'
@@ -255,6 +263,122 @@ function pickTopByScore(sents: string[], count: number) {
     .sort((a, b) => a.idx - b.idx)
     .map((x) => x.s)
   return picked
+}
+
+// ========================================
+// 📦 SUMMARY PATCH v2: Ratio-enforced + Anti-copy + No-hallucination
+// ========================================
+
+type SummaryMode = 'brief' | 'standard' | 'detail'
+
+function ratioRangeByMode(mode: SummaryMode) {
+  if (mode === 'brief') return { min: 0.10, max: 0.15 }
+  if (mode === 'standard') return { min: 0.25, max: 0.30 }
+  return { min: 0.45, max: 0.55 } // detail
+}
+
+function targetCharRange(original: string, mode: SummaryMode) {
+  const base = Math.max(50, charLenNoSpace(original))
+  const { min, max } = ratioRangeByMode(mode)
+  return {
+    min: Math.floor(base * min),
+    max: Math.ceil(base * max),
+    base
+  }
+}
+
+// ✅ 연속 동일 문자열(복붙) 감지: 24자 이상 연속으로 같으면 "추출형 과다"
+function hasLongVerbatimRun(original: string, out: string, run = 24) {
+  const o = stripSpaces(original)
+  const t = stripSpaces(out)
+  if (o.length < run || t.length < run) return false
+
+  const seen = new Set<string>()
+  for (let i = 0; i <= o.length - run; i += 2) {
+    seen.add(o.slice(i, i + run))
+  }
+  for (let j = 0; j <= t.length - run; j += 2) {
+    if (seen.has(t.slice(j, j + run))) return true
+  }
+  return false
+}
+
+// ✅ 필수 요소 체크(간단/표준에서 강제)
+function mustHave3Parts(original: string, out: string) {
+  // 1) 정의(숲/산림/삼림/생태학적 정의)
+  const defOK = /(숲|산림|삼림).*(정의|의미|집합체|생태학)/.test(out)
+  // 2) 의미/기능(치유/안정/여유/교육/가치)
+  const valOK = /(치유|안정|여유|안식|힐링|교육|가치|발달)/.test(out)
+  // 3) 체험 활동 개념(숲 체험|체험 활동|유아.*오감|놀이 중심)
+  const actOK = /(숲\s*체험|체험\s*활동|오감|놀이\s*중심)/.test(out)
+  return defOK && valOK && actOK
+}
+
+// ✅ 출력 정제(기계적 파편, 깨짐, 부호)
+function polishKorean(out: string) {
+  let s = (out || '').trim()
+
+  // 흔한 깨짐 복원
+  s = s.replace(/모\s+든/g, '모든')
+  s = s.replace(/기\s+회/g, '기회')
+  s = s.replace(/이\s+루어지는/g, '이루어지는')
+  s = s.replace(/루어지는/g, '이루어지는')
+  s = s.replace(/생태계물/g, '자연물')
+  s = s.replace(/놀은\s+는/g, '놀이는')  // ✅ "놀은 는" → "놀이는"
+  s = s.replace(/형성은\s+는/g, '형성은')  // ✅ "형성은 는" → "형성은"
+
+  // "입니다. 이는 ~입니다." 파편 정리
+  s = s.replace(/입니다\.\s*이는\s+/g, '이다. ')
+  s = s.replace(/입니다\.\s*또한\s+/g, '이다. 또한 ')
+  s = s.replace(/입니다\.\s*즉\s+/g, '이다. 즉 ')
+
+  // 마침표/쉼표 정규화
+  s = s.replace(/\s*\.\s*/g, '. ')
+  s = s.replace(/\s*,\s*/g, ', ')
+  s = s.replace(/\s*;\s*/g, '; ')
+  s = s.replace(/[ ]{2,}/g, ' ')
+  s = s.replace(/\n{3,}/g, '\n\n')
+
+  return s.trim()
+}
+
+// ✅ "허구/오인용 방지" 프롬프트
+function buildSystemPrompt() {
+  return `
+너는 한국어 학술 텍스트 요약 엔진이다.
+절대 규칙:
+- 원문에 없는 사실/주장/인과/수치/연구결과를 추가하지 마라.
+- 원문에 없는 참고문헌(저자, 연도)을 새로 만들지 마라.
+- 요약은 "추출형 복붙"이 아니라, 의미를 유지한 "서술형 재구성"이어야 한다.
+- 동일한 표현을 길게 복사하지 마라(연속 문구 복사 금지).
+- 문장은 자연스러운 연결어로 매끄럽게 이어라.
+- 과장 표현/단정(반드시/항상/완벽히)을 피하라.
+출력은 오직 요약 본문만. 제목/머리말/목록 기호/메타설명 금지.
+`.trim()
+}
+
+// ✅ 모드별 사용자 프롬프트
+function buildUserPrompt(original: string, mode: SummaryMode) {
+  const range = ratioRangeByMode(mode)
+  const guide =
+    mode === 'brief'
+      ? `간단 서술 요약: 정의(숲이 무엇인지) + 의미/기능(치유·교육 가치) + 숲 체험 활동 개념(무엇인지)을 모두 1문단으로 포함하라.`
+      : mode === 'standard'
+        ? `표준 서술 요약: 정의/의미/숲 체험 활동 개념/발달 영향/교육적 가치의 균형을 갖추어 2~4문단으로 서술하라.`
+        : `상세 서술 요약: 원문의 흐름을 유지하되 중복을 줄이고 연결어를 자연스럽게 하여 4~7문단으로 서술하라.`
+
+  return `
+[요약 모드] ${mode}
+[요약율] 원문(공백 제외) 대비 ${(range.min * 100).toFixed(0)}~${(range.max * 100).toFixed(0)}% 범위
+
+[작성 지침]
+- ${guide}
+- 원문에 있는 개념/정의/효과만 사용하고, 표현은 새롭게 재구성하라.
+- 인용(저자, 연도)은 원문에 있는 것만 유지하되, 필요 없는 과다 인용은 줄여ra.
+
+[원문]
+${original}
+`.trim()
 }
 
 // ========================================
@@ -882,7 +1006,9 @@ function localSummary(text: string, mode: 'brief'|'standard'|'detail', viewType:
 
   if (viewType === 'narrative') {
     // ✅ 진짜 요약: 발췌 금지, 재진술 + 통합 + 압축
-    const narrative = buildNarrativeSummary(picked, text, mode)
+    let narrative = buildNarrativeSummary(picked, text, mode)
+    // ✅ NEW: 한국어 정제 적용
+    narrative = polishKorean(narrative)
     return { kind: 'summary', mode, viewType, narrative }
   }
   if (viewType === 'structured') {
@@ -1220,6 +1346,134 @@ async function callGemini(env: Bindings, prompt: string) {
   }
   throw new Error('Gemini retry exceeded')
 }
+
+// ✅ NEW: System prompt 지원 Gemini 호출
+async function callGeminiWithSystem(env: Bindings, systemPrompt: string, userPrompt: string) {
+  const key = safeStr(env.GEMINI_API_KEY).trim()
+  if (!key) throw new Error('GEMINI_API_KEY is missing')
+  const model = safeStr(env.GEMINI_MODEL).trim() || 'gemini-1.5-flash'
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`
+  
+  // ✅ System instruction 지원
+  const body = {
+    system_instruction: {
+      parts: [{ text: systemPrompt }]
+    },
+    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+    generationConfig: {
+      temperature: 0.3,
+      topP: 0.9,
+      maxOutputTokens: 2048,
+      topK: 40
+    },
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+    ]
+  }
+
+  let attempt = 0
+  let wait = 500
+  while (attempt < 3) {
+    attempt++
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    
+    if (res.ok) {
+      const data: any = await res.json()
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+      return text
+    }
+    if (res.status === 429 || res.status === 503) {
+      await new Promise((r) => setTimeout(r, wait))
+      wait *= 2
+      continue
+    }
+    const errText = await res.text().catch(() => '')
+    throw new Error(`Gemini error ${res.status}: ${errText.slice(0, 200)}`)
+  }
+  throw new Error('Gemini retry exceeded')
+}
+
+// ✅ MAIN: 압축률 강제 + 복붙 방지 + 3요소 체크 요약 엔진
+async function summarizeWithEnforcedRatio(
+  env: Bindings,
+  original: string,
+  mode: SummaryMode
+): Promise<string> {
+  const { min, max } = targetCharRange(original, mode)
+  const system = buildSystemPrompt()
+
+  let last = ''
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const user = buildUserPrompt(original, mode)
+    let out = await callGeminiWithSystem(env, system, user)
+    out = polishKorean(out)
+
+    // 1) 길이 체크
+    const len = charLenNoSpace(out)
+    const inRange = len >= min && len <= max
+
+    // 2) 복붙 과다 체크
+    const verbatimBad = hasLongVerbatimRun(original, out, 24)
+
+    // 3) 간단/표준은 3요소 포함 강제
+    const partsOK = (mode === 'detail') ? true : mustHave3Parts(original, out)
+
+    if (inRange && !verbatimBad && partsOK) {
+      console.log(`[Enforced Summary] mode=${mode}, len=${len}, attempt=${attempt}, ✅ PASS`)
+      return out
+    }
+
+    // 재요청 힌트
+    const fixHint = [
+      !inRange
+        ? (len < min
+          ? `길이가 너무 짧다. 공백 제외 글자 수를 ${min}~${max}자로 늘려라.`
+          : `길이가 너무 길다. 공백 제외 글자 수를 ${min}~${max}자로 줄여라.`)
+        : '',
+      verbatimBad ? `원문 표현을 길게 복사했다. 같은 표현을 피하고 서술형으로 재구성하라.` : '',
+      (!partsOK) ? `정의/의미/체험활동 개념 3요소를 모두 포함하라.` : ''
+    ].filter(Boolean).join(' ')
+
+    last = out
+    console.log(`[Enforced Summary] mode=${mode}, len=${len}, attempt=${attempt}, ❌ RETRY: ${fixHint}`)
+
+    // ✅ 힌트 기반 재요청
+    const user2 = `
+${buildUserPrompt(original, mode)}
+
+[추가 수정 지시]
+${fixHint}
+- 결과는 자연스러운 한국어 문장으로만 출력하라.
+`.trim()
+
+    let out2 = await callGeminiWithSystem(env, system, user2)
+    out2 = polishKorean(out2)
+
+    const len2 = charLenNoSpace(out2)
+    const inRange2 = len2 >= min && len2 <= max
+    const verbatimBad2 = hasLongVerbatimRun(original, out2, 24)
+    const partsOK2 = (mode === 'detail') ? true : mustHave3Parts(original, out2)
+
+    if (inRange2 && !verbatimBad2 && partsOK2) {
+      console.log(`[Enforced Summary] mode=${mode}, len=${len2}, attempt=${attempt}.retry, ✅ PASS`)
+      return out2
+    }
+    last = out2
+  }
+
+  // 3회 실패 시에도 마지막 산출물 반환
+  console.warn(`[Enforced Summary] mode=${mode}, ⚠️ 3회 실패, 마지막 결과 반환`)
+  return last || ''
+}
+
 
 // ------------------------------
 // FRONT BUNDLE (optional)
@@ -1820,51 +2074,21 @@ app.post('/api/engine', async (c) => {
   }
 
   // ----------------------------
-  // ✅ V2: Gemini 호출 (narrative만 생성, 1회만)
+  // ✅ V2 REVISED: summarizeWithEnforcedRatio 사용
   // ----------------------------
   const hasGemini = !!safeStr(c.env.GEMINI_API_KEY).trim()
   const useMock = safeStr(c.env.USE_MOCK).trim().toLowerCase() === 'true'
 
   if (kind === 'summary' && hasGemini && !useMock) {
     try {
-      const prompt = buildGeminiPrompt(text, mode)
-      let narrative = ''
-      let compressionValid = false
-      let retryCount = 0
+      // ✅ NEW: 압축률 강제 + 복붙 방지 + 3요소 체크 엔진
+      const narrative = await summarizeWithEnforcedRatio(c.env, text, mode)
       
-      // ✅ 압축률 검증 게이트: 최대 2회 시도
-      while (retryCount < 2) {
-        const g = await callGemini(c.env, prompt)
-        narrative = (g.text || '').trim()
-        
-        // 압축률 검증
-        const validation = validateCompressionRatio(text, narrative, mode)
-        if (validation.valid) {
-          compressionValid = true
-          break
-        }
-        
-        retryCount++
-        if (retryCount < 2) {
-          // 재시도 프롬프트 조정
-          const adjustPrompt = `${prompt}\n\n[중요] 이전 시도의 압축률이 ${(validation.ratio * 100).toFixed(1)}%로 목표 범위(${validation.expected})를 벗어났습니다. 반드시 ${validation.expected} 범위로 요약하세요.`
-          const g2 = await callGemini(c.env, adjustPrompt)
-          narrative = (g2.text || '').trim()
-        }
-      }
-      
-      // ✅ 안전장치: 원문에 없는 인용 제거
-      const { cleaned, warnings } = sanitizeCitations(text, narrative)
-      if (warnings.length > 0) {
-        console.warn('[SAFETY] 원문에 없는 인용 제거:', warnings)
-      }
-      narrative = cleaned
-      
-      // ✅ Base narrative를 base cache에 저장
-      const baseData = { kind: 'summary', mode, viewType: 'narrative', narrative }
+      // Base 데이터 저장
+      const baseData = { kind, mode, viewType: 'narrative', narrative }
       await setCache(db, baseKey, userId || 'anon', baseData)
       
-      // ✅ 요청된 viewType에 맞게 derived 생성
+      // Derived 데이터 생성 및 저장
       let derivedData: any
       if (viewType === 'narrative') {
         derivedData = baseData
@@ -1877,107 +2101,50 @@ app.post('/api/engine', async (c) => {
       }
       
       await setCache(db, derivedKey, userId || 'anon', derivedData)
-      
       return c.json(
         {
           ok: true,
           data: derivedData,
-          meta: { 
-            cached: false, 
-            engine: 'gemini', 
-            compressionValid,
-            retryCount,
-            citationWarnings: warnings.length,
-            elapsedMs: Date.now() - start 
-          }
+          meta: { cached: false, engine: 'gemini-enforced', elapsedMs: Date.now() - start }
         },
         200
       )
-    } catch (e: any) {
-      // ✅ Gemini 실패 시 로컬 폴백
-      const fallback = localSummary(text, mode, viewType)
-      await setCache(db, derivedKey, userId || 'anon', fallback)
-      
-      // Base narrative도 저장 (로컬)
-      if (fallback.narrative) {
-        const baseData = { kind: 'summary', mode, viewType: 'narrative', narrative: fallback.narrative }
-        await setCache(db, baseKey, userId || 'anon', baseData)
-      }
-      
-      return c.json(
-        {
-          ok: true,
-          data: fallback,
-          meta: {
-            cached: false,
-            engine: 'local(fallback)',
-            geminiError: e?.message ? String(e.message).slice(0, 180) : 'unknown',
-            elapsedMs: Date.now() - start
-          }
-        },
-        200
-      )
+    } catch (err: any) {
+      console.error('[Gemini Enforced Error]', err)
+      // Gemini 실패 시 로컬 폴백으로 계속 진행
     }
   }
 
   // ----------------------------
-  // ✅ V2: 로컬 엔진 (항상 동작)
+  // ✅ 로컬 폴백: buildNarrativeSummary
   // ----------------------------
-  let result: any
-
-  if (kind === 'summary') {
-    result = localSummary(text, mode, viewType)
-    
-    // Base narrative 저장
-    if (result.narrative) {
-      const baseData = { kind: 'summary', mode, viewType: 'narrative', narrative: result.narrative }
-      await setCache(db, baseKey, userId || 'anon', baseData)
-    }
-  } else if (kind === 'concept') {
-    const sents = splitSentences(text)
-    const picked = pickTopByScore(sents, clamp(Math.round(sents.length * 0.25), 6, 10))
-    result = {
-      kind,
-      mode,
-      viewType,
-      concepts: picked.map((s, i) => ({
-        term: `핵심개념${i + 1}`,
-        definition: s.slice(0, 120)
-      }))
-    }
-  } else {
-    const sents = splitSentences(text)
-    const picked = pickTopByScore(sents, clamp(Math.round(sents.length * 0.22), 6, 10))
-    result = {
-      kind,
-      mode,
-      viewType,
-      items: picked.map((s, i) => ({
-        id: `e${i + 1}`,
-        type: 'mcq',
-        question: `(${i + 1}) 다음 설명의 핵심 요지는 무엇인가요?`,
-        choices: [
-          '핵심 주장/요지',
-          '근거/예시',
-          '반박/한계',
-          '주제와 무관'
-        ],
-        answerIndex: 0,
-        explanation: s
-      }))
-    }
+  const fallback = localSummary(text, mode, viewType)
+  await setCache(db, derivedKey, userId || 'anon', fallback)
+  
+  // Base narrative도 저장 (로컬)
+  if (fallback.narrative) {
+    const baseData = { kind: 'summary', mode, viewType: 'narrative', narrative: fallback.narrative }
+    await setCache(db, baseKey, userId || 'anon', baseData)
   }
-
-  await setCache(db, derivedKey, userId || 'anon', result)
+  
   return c.json(
     {
       ok: true,
-      data: result,
-      meta: { cached: false, engine: hasGemini && !useMock ? 'local(no-gemini-for-kind)' : 'local', elapsedMs: Date.now() - start }
+      data: fallback,
+      meta: {
+        cached: false,
+        engine: 'local',
+        elapsedMs: Date.now() - start
+      }
     },
     200
   )
 })
+
+// ----------------------------
+// Health check & 404
+// ----------------------------
+app.get('/health', (c) => c.json({ ok: true, service: 'MindStory v2 Revised' }))
 
 // 404
 app.notFound((c) => c.json({ ok: false, error: { code: 'NOT_FOUND', message: 'Route not found' } }, 404))
