@@ -55,6 +55,91 @@ const RATIO = {
   detail:  { min: 0.45, max: 0.55 }
 } as const
 
+// ------------------------------
+// 🔹 A. 요약 모드별 "필수 포함 요소 게이트"
+// ------------------------------
+const REQUIRED_ANCHORS = {
+  brief: [
+    '연구 목적',
+    '연구 방법',
+    '핵심 결론'
+  ],
+  standard: [
+    '연구 목적',
+    '연구 문제',
+    '연구 방법',
+    '주요 결과',
+    '결론'
+  ],
+  detail: [
+    '연구 목적',
+    '연구 문제',
+    '연구 대상',
+    '연구 절차',
+    '결과',
+    '해석',
+    '교육적 의의'
+  ]
+} as const
+
+// ------------------------------
+// 🔹 D. 학술 노이즈 제거 (줄바꿈/각주/페이지 번호)
+// ------------------------------
+function cleanAcademicNoise(text: string): string {
+  return (text || '')
+    .replace(/-\s*[ivxIVX]+-\s*/gi, '')   // - vii -, - III -
+    .replace(/\(p\.\s*\d+\)/gi, '')        // (p. 123)
+    .replace(/\[p\.\s*\d+\]/gi, '')        // [p. 123]
+    .replace(/p\.\s*\d+/gi, '')            // p. 123
+    .replace(/\n+/g, ' ')                  // 줄바꿈 → 공백
+    .replace(/\s{2,}/g, ' ')               // 연속 공백 제거
+    .trim()
+}
+
+// ------------------------------
+// 🔹 B. "결과 단독 발췌" 금지 규칙
+// ------------------------------
+const BRAIN_REGION_KEYWORDS = [
+  'DLPFC', 'VLPFC', 'OFC', 'ACC', 'PFC', 'vmPFC', 'dmPFC',
+  '전두엽', '측두엽', '두정엽', '후두엽', '편도체', '해마'
+]
+
+function validateSummaryStructure(summary: string, mode: SummaryMode): { valid: boolean; error?: string } {
+  if (mode === 'brief') {
+    // 간단요약에는 세부 뇌영역 단독 등장 금지
+    for (const keyword of BRAIN_REGION_KEYWORDS) {
+      if (summary.includes(keyword)) {
+        return { 
+          valid: false, 
+          error: `간단요약에 세부 뇌영역(${keyword}) 단독 등장 금지. 일반적 설명만 포함하세요.`
+        }
+      }
+    }
+  }
+  
+  // 필수 앵커 검증
+  const requiredAnchors = REQUIRED_ANCHORS[mode] || REQUIRED_ANCHORS.standard
+  const missing: string[] = []
+  
+  for (const anchor of requiredAnchors) {
+    // 앵커의 핵심 키워드가 요약에 포함되어 있는지 확인
+    const keywords = anchor.split(' ')
+    const hasAnyKeyword = keywords.some(kw => summary.includes(kw))
+    if (!hasAnyKeyword) {
+      missing.push(anchor)
+    }
+  }
+  
+  if (missing.length > 0) {
+    return {
+      valid: false,
+      error: `필수 요소 누락: ${missing.join(', ')}. 이 항목들을 반드시 포함하세요.`
+    }
+  }
+  
+  return { valid: true }
+}
+
 function ratioRangeByMode(mode: SummaryMode) {
   return RATIO[mode] || RATIO.standard
 }
@@ -417,29 +502,49 @@ function getSummaryTargets(originalText: string) {
 
 function buildSummaryPrompt(originalText: string): string {
   const t = getSummaryTargets(originalText)
+  const cleanedText = cleanAcademicNoise(originalText)
 
   return `
-당신은 교육/학습 연구 텍스트를 3단계(간단/표준/상세)로 "생성적 요약(Abstractive Summarization)" 방식으로 요약하는 전문 엔진입니다.
+당신은 학술 논문을 3단계(간단/표준/상세)로 "생성적 요약(Abstractive Summarization)" 방식으로 요약하는 전문 엔진입니다.
 
-[입력 원문]
-"""${originalText}"""
+[입력 원문 - 학술 논문]
+"""${cleanedText}"""
 
-[요약 작업 전 세팅 규칙 - 반드시 준수]
+[🔹 C. 논문형 텍스트 전용 요약 구조 - 반드시 준수]
+이 텍스트는 학술 논문입니다.
+요약 시 반드시 다음 순서를 유지하세요:
+
+1. 연구 목적 (무엇을 연구했는가?)
+2. 연구 설계 및 방법 (어떻게 연구했는가?)
+3. 핵심 결과 (무엇을 발견했는가?)
+4. 결과 해석 (결과가 의미하는 바는?)
+5. 교육적 의의 (실무/교육에 어떤 시사점을 주는가?)
+
+각 단계는 1문단 이상을 넘지 마세요.
+
+[요약 모드별 필수 포함 요소]
+- 간단 요약: 연구 목적, 연구 방법, 핵심 결론 (세부 뇌 영역 금지)
+- 표준 요약: 연구 목적, 연구 문제, 연구 방법, 주요 결과, 결론
+- 상세 요약: 연구 목적, 연구 문제, 연구 대상, 연구 절차, 결과, 해석, 교육적 의의
+
+[요약 작업 전 세팅 규칙]
 1. 비율 준수: 간단 10~15%, 표준 25~30%, 상세 45~55% (공백 제외 글자수 기준 엄수)
-2. 텍스트 정제: 원문의 잡음(페이지 번호, 오타, 특수기호, 질문형 문장) 제거 및 자연스러운 학술적 평서문으로 재구성
-3. 정보 계층화: 상세 요약으로 갈수록 정보의 양뿐만 아니라 '학술적 논거'와 '세부 지표'의 깊이를 더할 것
-4. 퀴즈 최적화: 퀴즈 출제가 가능하도록 핵심 키워드와 인과관계를 문장 내에 전략적으로 배치할 것
+2. 텍스트 정제: 페이지 번호(p.XX), 각주 번호, 특수기호, 질문형 문장 제거 → 학술적 평서문으로 재구성
+3. 정보 계층화: 상세로 갈수록 '학술적 논거'와 '세부 지표'의 깊이를 더할 것
+4. 퀴즈 최적화: 핵심 키워드와 인과관계를 문장 내에 전략적으로 배치
 
 [요약 원칙]
 1) "간단 < 표준 < 상세" 글자수 단조 증가는 절대적 기준. 역전 금지.
-2) 단순 추출/복붙 금지: 원문 문장을 그대로 길게 가져오지 말고 생성적으로 재구성하여 매끄러운 글 작성
-3) 원문에 없는 정보/인용/사례 추가 금지 (할루시네이션 금지)
+2) 단순 추출/복붙 금지: 원문을 생성적으로 재구성하여 매끄러운 글 작성
+3) 원문에 없는 정보 추가 금지 (할루시네이션 금지)
 4) 세 요약은 내용과 표현이 "거의 동일"하면 실패 (중복 금지)
-5) 스마트 편집:
-   - 원문의 중복 표현은 하나로 통합
-   - 전문 용어는 일관성 있게 통일
-   - 한 문장이 2줄을 넘지 않도록 단문 위주로 리드미컬하게 끊어서 작성
-   - 페이지 번호(p.XX), 특수기호 제거, 질문형 문장은 평서문으로 전환
+5) 🔹 B. 결과 단독 발췌 금지:
+   - 간단 요약: DLPFC, VLPFC, OFC 등 세부 뇌 영역 명칭 사용 금지 (일반적 설명만)
+   - 표준/상세 요약: 세부 뇌 영역 허용 (단, 맥락과 함께 설명)
+6) 스마트 편집:
+   - 중복 표현 통합
+   - 전문 용어 일관성 유지
+   - 한 문장 2줄 이내로 단문 위주 작성
 
 [길이 목표(공백 제외 글자수)]
 - 간단: ${t.brief}자 내외 (원문 10~15%, 핵심만 간결하게)
@@ -452,10 +557,10 @@ function buildSummaryPrompt(originalText: string): string {
 - 교육적 가치
 
 [퀴즈 연동 강조]
-모든 요약문은 향후 퀴즈 생성의 근거가 됩니다. 특히 상세 요약에서는:
-- 전문 용어(예: DLPFC, OFC 등)와 개념 간의 **인과관계**를 생략하지 말 것
-- 학습 유형, 뇌 영역, 발달 단계 등의 **지식 앵커(Anchors)**를 명확히 확보할 것
-- 퀴즈 문항으로 변환 가능한 구체적 사실과 관계를 문장 내에 배치할 것
+모든 요약문은 향후 퀴즈 생성의 근거입니다. 특히 상세 요약에서는:
+- 전문 용어(DLPFC, OFC 등)와 개념 간의 **인과관계**를 생략하지 말 것
+- 학습 유형, 뇌 영역, 발달 단계 등의 **지식 앵커(Anchors)**를 명확히 확보
+- 퀴즈 문항으로 변환 가능한 구체적 사실과 관계를 배치
 
 [출력 형식 - JSON만 출력]
 {
@@ -1567,6 +1672,31 @@ async function summarizeWithJSON(env: Bindings, original: string): Promise<Summa
         console.warn('[SummaryJSON] monotonic violated', { bLen, sLen, dLen, attempt })
       }
 
+      // 🔹 구조 검증 (필수 앵커 + 결과 단독 발췌 금지)
+      const briefValidation = validateSummaryStructure(parsed.brief, 'brief')
+      const standardValidation = validateSummaryStructure(parsed.standard, 'standard')
+      const detailText = parsed.detail.개념 + ' ' + parsed.detail.영향 + ' ' + parsed.detail['교육적 가치']
+      const detailValidation = validateSummaryStructure(detailText, 'detail')
+
+      if (!briefValidation.valid) {
+        console.warn('[SummaryJSON] brief validation failed:', briefValidation.error)
+        if (attempt === 1) {
+          throw new Error(`Brief validation: ${briefValidation.error}`)
+        }
+      }
+      if (!standardValidation.valid) {
+        console.warn('[SummaryJSON] standard validation failed:', standardValidation.error)
+        if (attempt === 1) {
+          throw new Error(`Standard validation: ${standardValidation.error}`)
+        }
+      }
+      if (!detailValidation.valid) {
+        console.warn('[SummaryJSON] detail validation failed:', detailValidation.error)
+        if (attempt === 1) {
+          throw new Error(`Detail validation: ${detailValidation.error}`)
+        }
+      }
+
       return parsed
     } catch (e: any) {
       console.error('[SummaryJSON] attempt failed', attempt, e?.message)
@@ -1709,6 +1839,7 @@ const GENS = (() => {
 
   function buildSummaryPrompt({ originalText, mode, format }: any) {
     const tgt = computeCharTargets(originalText, mode)
+    const cleanedText = cleanAcademicNoise(originalText)
     const formatGuide =
       format === 'narrative'
         ? '서술형: 연결어를 사용해 흐름/인과가 보이도록 1~3문단으로 구성'
@@ -1717,17 +1848,28 @@ const GENS = (() => {
           : '마인드맵: 텍스트로 표현된 노드-관계 목록(중심노드/하위노드/연결라벨) 형태'
 
     return [
-      '[TASK] 아래 원문을 생성적 요약(Abstractive Summarization) 방식으로 지정된 형식에 맞춰 요약하라.',
+      '[TASK] 아래 학술 논문을 생성적 요약(Abstractive Summarization) 방식으로 지정된 형식에 맞춰 요약하라.',
       `- 모드: ${mode} (간단/표준/상세)`,
       `- 형식: ${format} (${formatGuide})`,
       `- 문자수 목표(공백 제외): 최소 ${tgt.min}자 ~ 최대 ${tgt.max}자`,
       '',
+      '[🔹 C. 논문형 텍스트 전용 요약 구조 - 반드시 준수]',
+      '이 텍스트는 학술 논문입니다.',
+      '요약 시 반드시 다음 순서를 유지하세요:',
+      '1. 연구 목적 (무엇을 연구했는가?)',
+      '2. 연구 설계 및 방법 (어떻게 연구했는가?)',
+      '3. 핵심 결과 (무엇을 발견했는가?)',
+      '4. 결과 해석 (결과가 의미하는 바는?)',
+      '5. 교육적 의의 (실무/교육에 어떤 시사점을 주는가?)',
+      '각 단계는 1문단 이상을 넘지 마세요.',
+      '',
       '[요약 품질 규칙]',
       '1. 단순 추출/복붙 금지: 원문 문장을 그대로 나열하지 말고 생성적으로 재구성하여 매끄러운 글 작성',
-      '2. 텍스트 정제: 페이지 번호(p.XX), 특수기호, 질문형 문장 제거 → 학술적 평서문으로 전환',
+      '2. 텍스트 정제: 페이지 번호(p.XX), 각주, 특수기호, 질문형 문장 제거 → 학술적 평서문으로 전환',
       '3. 스마트 편집: 중복 표현 통합, 전문 용어 일관성 유지, 한 문장 2줄 이내로 단문 위주',
       '4. 퀴즈 연동: 핵심 키워드와 인과관계를 문장 내에 전략적으로 배치 (퀴즈 앵커 확보)',
       '5. 할루시네이션 금지: 원문에 없는 주장/사례/인과/수치 추가 절대 금지',
+      '6. 🔹 B. 결과 단독 발췌 금지: 간단 모드에서는 DLPFC, VLPFC, OFC 등 세부 뇌 영역 명칭 사용 금지',
       '',
       '[비율 엄수]',
       '- 간단 10~15%, 표준 25~30%, 상세 45~55% 글자수 비율은 절대적 기준',
@@ -1735,7 +1877,7 @@ const GENS = (() => {
       '- 각 단계마다 정보의 깊이와 양을 계층적으로 명확히 차별화',
       '',
       '[ORIGINAL]',
-      originalText
+      cleanedText
     ].join('\n')
   }
 
