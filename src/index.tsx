@@ -258,6 +258,62 @@ function pickTopByScore(sents: string[], count: number) {
 }
 
 // ========================================
+// 📦 BLOCK 2.5: 역할 슬롯 시스템 (패치 2)
+// ========================================
+type Role = 'definition' | 'meaning' | 'activity'
+
+const ROLE_KEYWORDS: Record<Role, string[]> = {
+  definition: ['의미', '정의', '사전', '생태학적', '개념', '이란', '무엇', '장소'],
+  meaning: ['의미', '가치', '치유', '안정', '교육적', '기능', '중요', '효과'],
+  activity: ['체험', '활동', '교육', '놀이', '경험', '학습', '탐색', '참여']
+}
+
+function classifyRole(sentence: string): Role | null {
+  // 점수 계산
+  const scores: Record<Role, number> = {
+    definition: 0,
+    meaning: 0,
+    activity: 0
+  }
+  
+  for (const [role, keywords] of Object.entries(ROLE_KEYWORDS)) {
+    for (const kw of keywords) {
+      if (sentence.includes(kw)) {
+        scores[role as Role]++
+      }
+    }
+  }
+  
+  // 최고 점수 역할 반환
+  const maxScore = Math.max(scores.definition, scores.meaning, scores.activity)
+  if (maxScore === 0) return null
+  
+  if (scores.definition === maxScore) return 'definition'
+  if (scores.meaning === maxScore) return 'meaning'
+  return 'activity'
+}
+
+// ✅ 패치 5: 요약율 검증 함수
+function checkCompression(original: string, summary: string, mode: 'brief'|'standard'|'detail'): {
+  ratio: number;
+  passed: boolean;
+  targetMin: number;
+  targetMax: number;
+} {
+  const ratio = (summary.length / original.length) * 100
+  
+  const targetMin = mode === 'brief' ? 10 : mode === 'standard' ? 25 : 45
+  const targetMax = mode === 'brief' ? 15 : mode === 'standard' ? 30 : 55
+  
+  return {
+    ratio,
+    passed: ratio >= targetMin && ratio <= targetMax,
+    targetMin,
+    targetMax
+  }
+}
+
+// ========================================
 // 📦 BLOCK 3: 서술형(narrative) 요약 생성 - v2 Revised
 // ========================================
 // ✅ MindStory Summary Engine v2: 압축률 게이트 + LLM 호출 최소화 + 허구 방지
@@ -314,6 +370,11 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
     
     const keywords = tokenize(clean).slice(0, 8)
     cleanedSentences.push({ original: s, clean, keywords, citations })
+    
+    // ✅ 디버깅: 인용 제거 확인
+    if (clean.includes('(')) {
+      console.log('[DEBUG] 인용 미제거:', clean.slice(0, 100))
+    }
   }
 
   if (cleanedSentences.length === 0) return '요약할 내용이 부족합니다.'
@@ -361,24 +422,109 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
     return { ...cluster, originalIdx }
   })
 
-  // 5. 모드별 요약 생성
+  // 5. 모드별 요약 생성 + 역할 슬롯 검증
   let summary = ''
   
+  // ✅ 패치 3: 간단서술 3요소(정의·의미·체험) 압축
   if (mode === 'brief') {
-    const mainCluster = clusterWithIdx.sort((a, b) => b.sentences.length - a.sentences.length)[0]
-    const sent = mainCluster.sentences[0]
-    // 인용 통합
-    const allCitations = mainCluster.sentences.flatMap(s => s.citations).filter(Boolean)
-    const citationStr = allCitations.length > 0 ? `(${allCitations.join('; ')})` : ''
-    summary = `${sent.clean}${citationStr}.`
+    // 역할별 문장 분류
+    const roleMap: Record<Role, Array<{ clean: string; citations: string[] }>> = {
+      definition: [],
+      meaning: [],
+      activity: []
+    }
+    
+    for (const cluster of clusterWithIdx) {
+      for (const sent of cluster.sentences) {
+        const role = classifyRole(sent.clean)
+        if (role) {
+          roleMap[role].push(sent)
+        }
+      }
+    }
+    
+    // 각 역할에서 1개씩 선택
+    const defSent = roleMap.definition[0]
+    const meanSent = roleMap.meaning[0]
+    const actSent = roleMap.activity[0]
+    
+    // 3요소를 1~2문장으로 압축
+    const parts: string[] = []
+    const allCitations: string[] = []
+    
+    if (defSent) {
+      parts.push(defSent.clean)
+      allCitations.push(...defSent.citations.filter(Boolean))
+    }
+    if (meanSent) {
+      parts.push(meanSent.clean)
+      allCitations.push(...meanSent.citations.filter(Boolean))
+    }
+    if (actSent) {
+      parts.push(actSent.clean)
+      allCitations.push(...actSent.citations.filter(Boolean))
+    }
+    
+    // 부족하면 클러스터 첫 문장 사용
+    if (parts.length === 0) {
+      const mainCluster = clusterWithIdx.sort((a, b) => b.sentences.length - a.sentences.length)[0]
+      const sent = mainCluster.sentences[0]
+      parts.push(sent.clean)
+      allCitations.push(...sent.citations.filter(Boolean))
+    }
+    
+    // 인용 중복 제거
+    const uniqueCitations = Array.from(new Set(allCitations))
+    const citStr = uniqueCitations.length > 0 
+      ? `(${uniqueCitations.join('; ')})` 
+      : ''
+    
+    // ✅ 패치: 모든 괄호 제거 (중첩 괄호 포함)
+    const cleanParts = parts.map(p => {
+      let cleaned = p
+      // 모든 괄호 반복 제거
+      while (cleaned.includes('(')) {
+        cleaned = cleaned.replace(/\([^)]*\)/g, '')
+      }
+      return cleaned.trim()
+    })
+    
+    if (cleanParts.length === 1) {
+      summary = `${cleanParts[0]}${citStr}.`
+    } else if (cleanParts.length === 2) {
+      // 정의+의미, 체험
+      summary = `${cleanParts[0]}. ${cleanParts[1]}${citStr}.`
+    } else {
+      // 3개 → 2문장으로 압축
+      summary = `${cleanParts[0]}하며 ${cleanParts[1]}. ${cleanParts[2]}${citStr}.`
+    }
     
     // ✅ 압축률 체크 및 보정
     const compressionRatio = (summary.length / originalLength) * 100
     if (compressionRatio > 15) {
-      // brief가 너무 길면 → 첫 문장의 첫 30자만
-      const firstSentence = sent.clean.slice(0, 30) + '.'
-      const cit = allCitations.length > 0 ? `(${allCitations[0]})` : ''
-      summary = `${firstSentence}${cit}`
+      // brief가 너무 길면 → 첫 60자 + 인용
+      let firstPart = summary.slice(0, 60)
+      // 잘린 부분에 괄호가 있으면 제거
+      while (firstPart.includes('(')) {
+        firstPart = firstPart.replace(/\([^)]*\)/g, '')
+      }
+      summary = firstPart.trim() + (citStr ? ` ${citStr}.` : '.')
+    }
+    
+    // ✅ 패치 7: 검증 로그 (메타 정보)
+    const rolesFilled: Role[] = []
+    if (defSent) rolesFilled.push('definition')
+    if (meanSent) rolesFilled.push('meaning')
+    if (actSent) rolesFilled.push('activity')
+    
+    // 디버깅용 콘솔 로그 (개발 환경에서만)
+    if (typeof console !== 'undefined') {
+      console.log('[Brief Summary Meta]', {
+        rolesFilled,
+        sentenceCount: parts.length,
+        compressionRatio: (summary.length / originalLength * 100).toFixed(1) + '%',
+        passed: compressionRatio <= 15
+      })
     }
     
     return summary
@@ -486,21 +632,22 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
           const parts = orig.split(',').map(p => p.trim()).filter(p => p.length > 0)
           
           if (parts.length >= 2) {
+            // ✅ 패치 4: "입니다" 자동 삽입 제거
             // 첫 번째 부분
             merged.push({ 
-              text: `${subject}${josa} ${parts[0]}입니다`, 
+              text: `${subject}${josa} ${parts[0]}`, 
               citations: []
             })
             // 중간 부분들
             for (let i = 1; i < parts.length - 1; i++) {
               merged.push({ 
-                text: `이는 ${parts[i]}입니다`, 
+                text: `${parts[i]}`, 
                 citations: []
               })
             }
             // 마지막 부분 (인용 포함)
             merged.push({ 
-              text: `또한 ${parts[parts.length - 1]}`, 
+              text: `${parts[parts.length - 1]}`, 
               citations: predicates[0].citations
             })
           } else {
@@ -631,8 +778,35 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
     // ✅ 압축률 체크 및 보정
     const compressionRatio = (summary.length / originalLength) * 100
     if (compressionRatio > 30) {
-      // standard가 너무 길면 → 첫 단락만
-      summary = paragraphs[0]
+      // standard가 너무 길면 → 문장 축소 (단, 최소 3문장 유지)
+      if (paragraphs.length > 3) {
+        summary = paragraphs.slice(0, 3).join('\n\n')
+      } else {
+        // 3문장 이하면 그대로 유지
+        summary = paragraphs.join('\n\n')
+      }
+    }
+    
+    // ✅ 패치 7: 검증 로그 (standard 모드)
+    // 역할 슬롯 확인
+    const rolesFilled: Role[] = []
+    for (const cluster of topClusters) {
+      for (const sent of cluster.sentences) {
+        const role = classifyRole(sent.clean)
+        if (role && !rolesFilled.includes(role)) {
+          rolesFilled.push(role)
+        }
+      }
+    }
+    
+    if (typeof console !== 'undefined') {
+      console.log('[Standard Summary Meta]', {
+        rolesFilled,
+        sentenceCount: merged.length,
+        paragraphCount: paragraphs.length,
+        compressionRatio: (summary.length / originalLength * 100).toFixed(1) + '%',
+        passed: compressionRatio >= 25 && compressionRatio <= 30
+      })
     }
     
     return summary
@@ -684,6 +858,21 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
 
 function localSummary(text: string, mode: 'brief'|'standard'|'detail', viewType: 'narrative'|'structured'|'mindmap'|'selftest') {
   const sents = splitSentences(text)
+  
+  // ✅ 패치 1: 문장 개수 고정 최소치
+  const MIN_SENTENCES = {
+    brief: 1,
+    standard: 3,
+    detail: 5
+  }
+  
+  const MAX_SENTENCES = {
+    brief: 2,
+    standard: 4,
+    detail: 7
+  }
+  
+  // 재료용 문장 추출 (기존 로직 유지, 나중에 역할 슬롯으로 대체)
   const targetCount =
     mode === 'brief' ? clamp(Math.round(sents.length * 0.18), 2, 4)
     : mode === 'standard' ? clamp(Math.round(sents.length * 0.28), 4, 8)
