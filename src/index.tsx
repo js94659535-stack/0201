@@ -723,6 +723,96 @@ function connectSentences(sentences: string[]): string {
   return result.join(' ')
 }
 
+/**
+ * ✅ 젠스 전용: 요약율 강제 적용 (길이 제어)
+ */
+function enforceRatio(text: string, mode: 'brief'|'standard'|'detail', totalLen: number): string {
+  const currentLen = charLenNoSpace(text)
+  const ratio = currentLen / totalLen
+  
+  const targetRanges = {
+    brief: { min: 0.10, max: 0.15 },
+    standard: { min: 0.25, max: 0.30 },
+    detail: { min: 0.45, max: 0.55 }
+  }
+  
+  const target = targetRanges[mode]
+  
+  // 목표 범위 내면 그대로 반환
+  if (ratio >= target.min && ratio <= target.max) {
+    return text
+  }
+  
+  // 너무 길면 문장 단위로 축소
+  if (ratio > target.max) {
+    const sentences = text.split(/(?<=다\.)\s+/).filter(s => s.trim().length > 0)
+    const targetSentences = Math.ceil(sentences.length * (target.max / ratio))
+    return sentences.slice(0, Math.max(1, targetSentences)).join(' ')
+  }
+  
+  // 너무 짧으면 그대로 반환 (추가 생성은 하지 않음)
+  return text
+}
+
+/**
+ * ✅ 젠스 전용: 발전적 서술형 요약 조립기 (중복 제거 + 연결어 삽입 + 시제 통일)
+ * @param picked - 추출된 원문 문장 배열
+ * @param mode - 'brief' | 'standard' | 'detail'
+ * @param totalLen - 원문 전체 글자수 (공백제외)
+ */
+function buildGensNarrative(picked: string[], mode: 'brief'|'standard'|'detail', totalLen: number): string {
+  if (!picked || picked.length === 0) return "요약할 수 있는 문장이 없습니다."
+  
+  // 1. 중복 제거 및 문장 파편 정제 (De-duplication)
+  const unique: string[] = []
+  const seen = new Set<string>()
+  picked.forEach(s => {
+    const clean = s.trim().replace(/^[^가-힣]+/, "") // 문장 앞 특수문자/찌꺼기 제거
+    const fingerprint = clean.substring(0, 15) // 앞 15자로 중복 판단
+    if (clean.length > 15 && !seen.has(fingerprint)) {
+      unique.push(clean)
+      seen.add(fingerprint)
+    }
+  })
+  
+  if (unique.length === 0) return "요약할 수 있는 문장이 없습니다."
+  
+  // 2. 모드별 연결 로직 및 흐름 제어 (Contextual Flow)
+  const connectors = {
+    add: ["또한", "이와 함께", "더불어", "나아가"],
+    contrast: ["하지만", "반면", "그럼에도 불구하고"],
+    result: ["따라서", "이에 따라", "결과적으로"]
+  }
+  
+  const processed = unique.map((sent, i) => {
+    if (i === 0) return sent
+    
+    // 앞 문장과 주어가 일치하는지 확인
+    const prevMatch = unique[i-1].match(/^(.+?[은는이가])/)
+    const currMatch = sent.match(/^(.+?[은는이가])/)
+    const prevSub = prevMatch ? prevMatch[1] : null
+    const currSub = currMatch ? currMatch[1] : null
+    
+    if (currSub && prevSub && currSub === prevSub) {
+      return `이러한 ${sent.replace(/^.+?[은는이가]\s+/, "")}`
+    }
+    
+    // 일반적인 연결어 삽입 (순환 배정)
+    const conn = connectors.add[i % connectors.add.length]
+    return `${conn} ${sent}`
+  })
+  
+  // 3. 최종 조립 및 학술적 시제 통일
+  let resultText = processed.join(" ")
+    .replace(/합니다|함|했다$/g, "하였다")
+    .replace(/입니다|임$/g, "이다")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+  
+  // 4. 요약율 가이드 적용 (Length Control)
+  return enforceRatio(resultText, mode, totalLen)
+}
+
 // ========================================
 // 📦 BLOCK 3: 서술형(narrative) 요약 생성 - v2 Revised
 // ========================================
@@ -1313,7 +1403,19 @@ function localSummary(text: string, mode: 'brief'|'standard'|'detail', viewType:
 
   if (viewType === 'narrative') {
     // ✅ 진짜 요약: 발췌 금지, 재진술 + 통합 + 압축
-    let narrative = buildNarrativeSummary(picked, text, mode)
+    // ✅ 젠스 전용 로직 선택 (환경 변수 USE_GENS_NARRATIVE로 제어)
+    const useGensNarrative = false // 기본값: 기존 로직 사용 (필요 시 true로 변경)
+    
+    let narrative: string
+    if (useGensNarrative) {
+      // 젠스 전용: 중복 제거 + 연결어 삽입 + 시제 통일
+      const totalLen = charLenNoSpace(text)
+      narrative = buildGensNarrative(picked, mode, totalLen)
+    } else {
+      // 기존 로직: 클러스터링 + 의미 통합
+      narrative = buildNarrativeSummary(picked, text, mode)
+    }
+    
     // ✅ NEW: 한국어 정제 적용
     narrative = polishKorean(narrative)
     return { kind: 'summary', mode, viewType, narrative }
