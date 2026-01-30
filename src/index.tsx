@@ -800,136 +800,139 @@ function enforceRatio(text: string, mode: 'brief'|'standard'|'detail', totalLen:
  * @param mode - 'brief' | 'standard' | 'detail'
  * @param totalLen - 원문 전체 글자수 (공백제외)
  */
-function buildGensNarrative(picked: string[], mode: 'brief'|'standard'|'detail', totalLen: number): string {
-  if (!picked || picked.length === 0) return "요약할 수 있는 문장이 없습니다."
-  
-  // ============================================
-  // STEP 1: 1차 정제 - 문장 분리 및 불완전 서두 제거
-  // ============================================
-  let sentences = picked
-    .map(s => s.trim())
-    .filter(s => s.length > 0)
-    .flatMap(s => s.split(/(?<=[.!?])\s+/))  // 문장 단위로 재분리
-    .map(s => s.trim())
-    .filter(s => s.length > 15)  // 너무 짧은 파편 제거
-  
-  // ============================================
-  // ✅ 파편 제거 강화: 불완전한 서두 정제
-  // ============================================
-  sentences = sentences.map(s => {
-    let cleaned = s.trim()
-    
-    // 1. 연결어/접속사 파편 제거
-    cleaned = cleaned
-      .replace(/^(음|며|고|므로|면서|지만|거나|든지|듯이)\s+/g, "")
-      .replace(/^(하며|하고|되며|되고|있으며|있고|되어|이며|이고)\s+/g, "")
-      .replace(/^(또한|그러므로|따라서|결과적으로|이에|이와|더불어|나아가|아울러)\s+/g, "")
-      .replace(/^(그러나|하지만|그렇지만|그런데|반면|한편)\s+/g, "")
-    
-    // 2. 조사로만 시작하는 경우 제거
-    if (/^[은는이가을를에도만과와의로부터까지]\s/.test(cleaned)) {
-      cleaned = cleaned.replace(/^[은는이가을를에도만과와의로부터까지]\s+/, "")
-    }
-    
-    // 3. 특수 케이스: "음 과업에서도" → "다음 과업에서도" (패턴 복원)
-    cleaned = cleaned.replace(/^음\s*과업/g, "다음 과업")
-    
-    // 4. 한글 아닌 문자로 시작하는 경우 제거
-    cleaned = cleaned.replace(/^[^가-힣]+/, "")
-    
-    // 5. 불필요한 공백 제거
-    cleaned = cleaned.replace(/\s{2,}/g, " ").trim()
-    
-    // 6. 잘린 문장 복원 시도 (주어가 없으면 "이는" 추가)
-    if (cleaned.length > 0 && !/^[가-힣]+?[은는이가]/.test(cleaned.substring(0, 10))) {
-      // 주어가 없고 동사로 시작하면 "이는" 추가
-      if (/^(보여주|나타내|의미하|시사하|제공하|요구하|필요하)/.test(cleaned)) {
-        cleaned = `이는 ${cleaned}`
-      }
-    }
-    
-    return cleaned
-  }).filter(s => s.length > 10)  // 정제 후에도 의미 있는 길이 확보
-  
-  if (sentences.length === 0) return "요약할 수 있는 문장이 없습니다."
-  
-  // ============================================
-  // STEP 2: 중복 제거 - 80% 이상 유사도 검사
-  // ============================================
-  const deduped: string[] = []
-  const usedFingerprints = new Set<string>()
-  
-  for (const sent of sentences) {
-    // 완전 중복 체크 (문장 전체)
-    if (deduped.includes(sent)) continue
-    
-    // Fingerprint 중복 체크 (앞 15자)
-    const fingerprint = sent.substring(0, 15)
-    if (usedFingerprints.has(fingerprint)) continue
-    
-    // 유사도 검사 (80% 이상 겹치면 제외)
-    let isDuplicate = false
-    for (const existing of deduped) {
-      const similarity = calculateSimilarity(sent, existing)
-      if (similarity >= 0.80) {
-        isDuplicate = true
-        break
-      }
-    }
-    
-    if (!isDuplicate) {
-      deduped.push(sent)
-      usedFingerprints.add(fingerprint)
+/**
+ * ✅ 젠스 전용: 발전적 서술형 요약 조립기 (안전 버전 - 치명적 오류 수정)
+ * @param picked - 추출된 원문 문장 배열
+ * @param mode - 'brief' | 'standard' | 'detail'
+ * @param totalLen - 원문 전체 글자수 (공백제외)
+ * @returns {{ summary: string, mindmap: object, meta: object }}
+ */
+function buildGensNarrative(picked: string[], mode: 'brief'|'standard'|'detail', totalLen: number): { summary: string, mindmap: any, meta: any } {
+  if (!Array.isArray(picked) || picked.length === 0) {
+    return {
+      summary: "요약할 내용이 부족합니다.",
+      mindmap: { keywords: [], nodes: [], edges: [] },
+      meta: { ratio: 0, target: { min: 0, max: 0 } }
     }
   }
-  
-  if (deduped.length === 0) return "요약할 수 있는 문장이 없습니다."
-  
-  // ============================================
-  // STEP 3: 지능형 연결어 할당 (논리 흐름 고려)
-  // ============================================
-  const refined = deduped.map((sent, i) => {
-    // 첫 문장: 그대로
-    if (i === 0) return sent
-    
-    // 두 번째 문장: "이와 함께" 또는 "이와 더불어"
-    if (i === 1) return `이와 더불어 ${sent}`
-    
-    // 마지막 문장: 결론 연결어
-    if (i === deduped.length - 1) {
-      // "결과적으로", "따라서" 중 하나
-      return `결과적으로 ${sent}`
+
+  const baseLen = Math.max(1, Number(totalLen) || 1)
+
+  // 모드별 목표(최소/최대)
+  const target = mode === 'brief'
+    ? { min: 10, max: 15 }
+    : mode === 'detail'
+      ? { min: 45, max: 55 }
+      : { min: 25, max: 30 } // standard
+
+  const linkersSame = ["또한", "아울러", "더불어"]
+  const linkersDiff = ["한편", "이와 함께", "이와 더불어", "또 다른 측면에서"]
+
+  // ✅ 가벼운 주어 추출(오탐 방지 - 앞 20자 이내)
+  const getSubject = (s: string): string | null => {
+    const head = String(s || "").trim().slice(0, 24)
+    // 부사/접속부사로 시작하면 주어로 보지 않음
+    if (/^(또한|아울러|더불어|한편|이와\s|그리고|그러나|하지만)\b/.test(head)) return null
+    const m = head.match(/^(.{1,20}?(은|는|이|가))\s+/)
+    return m ? m[1] : null
+  }
+
+  // ✅ 마침표 중복 방지
+  const ensurePunct = (s: string): string => {
+    const t = String(s || "").trim()
+    if (!t) return t
+    return /[.!?…]$/.test(t) ? t : (t + ".")
+  }
+
+  // ✅ 종결어미 정규화 (의미 왜곡 금지 + 마침표 고려)
+  const normalizeEnding = (s: string): string => {
+    let t = String(s || "").trim()
+
+    // 끝의 문장부호 분리해서 처리
+    let punct = ""
+    const pm = t.match(/([.!?…])$/)
+    if (pm) {
+      punct = pm[1]
+      t = t.slice(0, -1).trim()
     }
-    
-    // 중간 문장: "또한"
-    return `또한 ${sent}`
-  })
-  
-  // ============================================
-  // STEP 4: 학술적 시제 통일
-  // ============================================
-  let resultText = refined.join(" ")
-    .replace(/합니다/g, "한다")
-    .replace(/했다/g, "하였다")
-    .replace(/입니다/g, "이다")
-    .replace(/있습니다/g, "있다")
-    .replace(/\s{2,}/g, " ")  // 연속 공백 제거
-    .trim()
-  
-  // ============================================
-  // STEP 5: 연결어 과잉 제거 (중복 연결어 검사)
-  // ============================================
-  // "또한 그러므로", "또한 따라서", "또한 또한" 등 제거
-  resultText = resultText
-    .replace(/또한\s+(그러므로|따라서|결과적으로|이에|이와)/g, "$1")
-    .replace(/또한\s+또한/g, "또한")
-    .replace(/이와\s+또한/g, "이와")
-    .trim()
-  
-  // ============================================
-  // STEP 6: 요약율 강제 적용
-  // ============================================
-  return enforceRatio(resultText, mode, totalLen)
+
+    // ✅ 의미 왜곡 금지: '나타났다→분석되었다' 같은 강제 치환 제거
+    // 존댓말을 평서로만 변환
+    t = t
+      .replace(/합니다$/, "한다")
+      .replace(/되었습니다$/, "되었다")
+      .replace(/입니다$/, "이다")
+      .replace(/습니다$/, "다")
+
+    return (t + (punct || ".")).trim()
+  }
+
+  // 1) 연결 + (동일 주어면 주어 생략/지시어 처리)
+  let refined = picked.map((sent, i) => {
+    const text = String(sent || "").trim()
+    if (!text) return ""
+
+    if (i === 0) return normalizeEnding(ensurePunct(text))
+
+    const prev = String(picked[i - 1] || "").trim()
+    const prevSub = getSubject(prev)
+    const currSub = getSubject(text)
+
+    // 결정적 선택 (인덱스 기반)
+    const pick = (arr: string[]) => arr[i % arr.length]
+
+    if (currSub && prevSub && currSub === prevSub) {
+      // 동일 주어: 주어 제거 + 연결어
+      const withoutSubject = text.replace(/^(.{1,40}?(은|는|이|가))\s+/, "")
+      return normalizeEnding(ensurePunct(`${pick(linkersSame)} ${withoutSubject}`.trim()))
+    } else {
+      // 다른 주어: 연결어만
+      return normalizeEnding(ensurePunct(`${pick(linkersDiff)} ${text}`.trim()))
+    }
+  }).filter(Boolean)
+
+  // ✅ 2) 요약율 제어 - while 버그 수정 (길이 재계산)
+  const lenNoSpace = (s: string) => String(s || "").replace(/\s+/g, "").length
+
+  let finalSummary = refined.join(" ")
+  let ratio = (lenNoSpace(finalSummary) / baseLen) * 100
+
+  // ✅ 너무 길면 pop (길이 재계산 필수)
+  while (ratio > target.max && refined.length > 1) {
+    refined.pop()
+    finalSummary = refined.join(" ")
+    ratio = (lenNoSpace(finalSummary) / baseLen) * 100  // ✅ 재계산
+  }
+
+  // ✅ 너무 짧으면 경고 (추가 생성은 하지 않음 - 할루시네이션 방지)
+  if (ratio < target.min) {
+    console.warn(`[젠스] 요약율 ${ratio.toFixed(1)}%가 목표 최소치 ${target.min}% 미만입니다.`)
+  }
+
+  // 3) 마인드맵 키워드 (간단 추출: 빈도 기반, 길이 2~6자)
+  const textAll = refined.join(" ")
+  const tokens = textAll
+    .replace(/[0-9]/g, " ")
+    .replace(/[^\uAC00-\uD7A3a-zA-Z\s]/g, " ")
+    .split(/\s+/)
+    .map(t => t.trim())
+    .filter(t => t.length >= 2 && t.length <= 6)
+
+  const freq = new Map<string, number>()
+  for (const t of tokens) freq.set(t, (freq.get(t) || 0) + 1)
+
+  const keywords = [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([k]) => k)
+
+  const mindmap = {
+    keywords,
+    nodes: keywords.map((k, idx) => ({ id: `k${idx}`, label: k })),
+    edges: [] // 연결은 추후 확장
+  }
+
+  return { summary: finalSummary, mindmap, meta: { ratio, target } }
 }
 
 /**
@@ -1554,10 +1557,16 @@ function localSummary(text: string, mode: 'brief'|'standard'|'detail', viewType:
     const useGensNarrative = false // 기본값: 기존 로직 사용 (필요 시 true로 변경)
     
     let narrative: string
+    let mindmapData: any = null
+    let metaData: any = null
+    
     if (useGensNarrative) {
-      // 젠스 전용: 중복 제거 + 연결어 삽입 + 시제 통일
+      // 젠스 전용: 중복 제거 + 연결어 삽입 + 시제 통일 + 마인드맵 키워드
       const totalLen = charLenNoSpace(text)
-      narrative = buildGensNarrative(picked, mode, totalLen)
+      const result = buildGensNarrative(picked, mode, totalLen)
+      narrative = result.summary
+      mindmapData = result.mindmap
+      metaData = result.meta
     } else {
       // 기존 로직: 클러스터링 + 의미 통합
       narrative = buildNarrativeSummary(picked, text, mode)
@@ -1565,7 +1574,16 @@ function localSummary(text: string, mode: 'brief'|'standard'|'detail', viewType:
     
     // ✅ NEW: 한국어 정제 적용
     narrative = polishKorean(narrative)
-    return { kind: 'summary', mode, viewType, narrative }
+    
+    // ✅ 마인드맵 데이터 포함 반환
+    return {
+      kind: 'summary',
+      mode,
+      viewType,
+      narrative,
+      ...(mindmapData && { mindmapKeywords: mindmapData }),
+      ...(metaData && { meta: metaData })
+    }
   }
   if (viewType === 'structured') {
     return {
