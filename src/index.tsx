@@ -257,9 +257,15 @@ function pickTopByScore(sents: string[], count: number) {
   return picked
 }
 
-// ✅ 서술형 요약 V7: 학술 인용 정리 + 주제별 통합
+// ========================================
+// 📦 BLOCK 3: 서술형(narrative) 요약 생성 - v2 Revised
+// ========================================
+// ✅ MindStory Summary Engine v2: 압축률 게이트 + LLM 호출 최소화 + 허구 방지
 function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'|'standard'|'detail'): string {
-  // 1. 텍스트 정제 + 학술 인용 분리
+  // ✅ 원문 길이 계산 (압축률 게이트용)
+  const originalLength = fullText.length
+  
+  // 1. 문장 전처리 및 인용 추출
   const cleanedSentences: Array<{ 
     original: string; 
     clean: string; 
@@ -267,13 +273,25 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
     citations: string[] 
   }> = []
   
+  // ✅ 원문 인용 추출 (허구 방지용)
+  const originalCitations = new Set<string>()
+  const citationPattern = /\(([^)]+,?\s*\d{4})\)/g
+  let globalMatch
+  while ((globalMatch = citationPattern.exec(fullText)) !== null) {
+    originalCitations.add(globalMatch[1])
+  }
+  
   for (const s of picked) {
     // 학술 인용 추출 (예: "(학자명, 연도)" 또는 "(학자명)" )
-    const citationPattern = /\(([^)]+,?\s*\d{4})\)/g
     const citations: string[] = []
     let match
-    while ((match = citationPattern.exec(s)) !== null) {
-      citations.push(match[1])
+    const citPattern = /\(([^)]+,?\s*\d{4})\)/g
+    while ((match = citPattern.exec(s)) !== null) {
+      const citation = match[1]
+      // ✅ Phase1 최소 방지: 원문에 없는 인용은 제외
+      if (originalCitations.has(citation)) {
+        citations.push(citation)
+      }
     }
     
     // 인용 제거 및 정제
@@ -344,13 +362,26 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
   })
 
   // 5. 모드별 요약 생성
+  let summary = ''
+  
   if (mode === 'brief') {
     const mainCluster = clusterWithIdx.sort((a, b) => b.sentences.length - a.sentences.length)[0]
     const sent = mainCluster.sentences[0]
     // 인용 통합
     const allCitations = mainCluster.sentences.flatMap(s => s.citations).filter(Boolean)
     const citationStr = allCitations.length > 0 ? `(${allCitations.join('; ')})` : ''
-    return `${sent.clean}${citationStr}.`
+    summary = `${sent.clean}${citationStr}.`
+    
+    // ✅ 압축률 체크 및 보정
+    const compressionRatio = (summary.length / originalLength) * 100
+    if (compressionRatio > 15) {
+      // brief가 너무 길면 → 첫 문장의 첫 30자만
+      const firstSentence = sent.clean.slice(0, 30) + '.'
+      const cit = allCitations.length > 0 ? `(${allCitations[0]})` : ''
+      summary = `${firstSentence}${cit}`
+    }
+    
+    return summary
   }
 
   if (mode === 'standard') {
@@ -595,16 +626,25 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
     }
     
     // ✅ 단락 구분: \n\n으로 명확히 분리
-    return paragraphs.join('\n\n')
+    summary = paragraphs.join('\n\n')
+    
+    // ✅ 압축률 체크 및 보정
+    const compressionRatio = (summary.length / originalLength) * 100
+    if (compressionRatio > 30) {
+      // standard가 너무 길면 → 첫 단락만
+      summary = paragraphs[0]
+    }
+    
+    return summary
   }
 
-  // 상세 모드
+  // detail 모드
   const topClusters = clusterWithIdx
     .sort((a, b) => b.sentences.length - a.sentences.length)
     .slice(0, 5)
     .sort((a, b) => a.originalIdx - b.originalIdx)
   
-  return topClusters.map((cluster, i) => {
+  let summaryResult = topClusters.map((cluster, i) => {
     const sent = cluster.sentences[0]
     const citations = cluster.sentences.flatMap(s => s.citations).filter(Boolean)
     const citStr = citations.length > 0 ? `(${citations.join('; ')})` : ''
@@ -613,6 +653,33 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
     if (i === topClusters.length - 1) return `마지막으로 ${sent.clean}${citStr}.`
     return `또한 ${sent.clean}${citStr}.`
   }).join(' ')
+  
+  // ✅ 압축률 게이트 적용
+  const summaryLength = summaryResult.length
+  const compressionRatio = (summaryLength / originalLength) * 100
+  
+  // 목표 압축률
+  const targetMin = mode === 'brief' ? 10 : mode === 'standard' ? 25 : 45
+  const targetMax = mode === 'brief' ? 15 : mode === 'standard' ? 30 : 55
+  
+  // ✅ 압축률이 벗어나면 1회 재시도: 강제 보정
+  if (compressionRatio > targetMax) {
+    if (mode === 'detail') {
+      // detail이 너무 길면 → 상위 3개만
+      const reduced = topClusters.slice(0, 3).map((cluster, i) => {
+        const sent = cluster.sentences[0]
+        const citations = cluster.sentences.flatMap(s => s.citations).filter(Boolean)
+        const citStr = citations.length > 0 ? `(${citations.join('; ')})` : ''
+        
+        if (i === 0) return `${sent.clean}${citStr}.`
+        if (i === 2) return `마지막으로 ${sent.clean}${citStr}.`
+        return `또한 ${sent.clean}${citStr}.`
+      }).join(' ')
+      return reduced
+    }
+  }
+  
+  return summaryResult
 }
 
 function localSummary(text: string, mode: 'brief'|'standard'|'detail', viewType: 'narrative'|'structured'|'mindmap'|'selftest') {
