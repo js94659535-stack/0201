@@ -36,6 +36,35 @@ function charLenNoSpace(s: string) {
   return stripSpaces(s).length
 }
 
+/* =========================================================
+   SUMMARY RATIO SINGLE SOURCE + LLM RETURN TYPE FIX
+   - Unify ratios: brief 10-15%, standard 25-30%, detail 45-55%
+   - Fix callGemini return type usage (always string for text)
+   - Add final ratio normalization (shrink/expand using picked sentences only)
+   - Reduce token usage: at most 1 repair call (optional)
+========================================================= */
+
+// ------------------------------
+// 0) Ratio single source of truth
+// ------------------------------
+type SummaryMode = 'brief' | 'standard' | 'detail'
+
+const RATIO = {
+  brief:   { min: 0.10, max: 0.15 },
+  standard:{ min: 0.25, max: 0.30 },
+  detail:  { min: 0.45, max: 0.55 }
+} as const
+
+function ratioRangeByMode(mode: SummaryMode) {
+  return RATIO[mode] || RATIO.standard
+}
+
+function targetCharRange(original: string, mode: SummaryMode) {
+  const base = Math.max(50, charLenNoSpace(original))
+  const { min, max } = ratioRangeByMode(mode)
+  return { base, min: Math.floor(base * min), max: Math.ceil(base * max) }
+}
+
 function normalizeMode(v: any): 'brief' | 'standard' | 'detail' {
   const s = safeStr(v).trim().toLowerCase()
   if (!s) return 'standard'
@@ -269,24 +298,6 @@ function pickTopByScore(sents: string[], count: number) {
 // 📦 SUMMARY PATCH v2: Ratio-enforced + Anti-copy + No-hallucination
 // ========================================
 
-type SummaryMode = 'brief' | 'standard' | 'detail'
-
-function ratioRangeByMode(mode: SummaryMode) {
-  if (mode === 'brief') return { min: 0.10, max: 0.15 }
-  if (mode === 'standard') return { min: 0.25, max: 0.30 }
-  return { min: 0.45, max: 0.55 } // detail
-}
-
-function targetCharRange(original: string, mode: SummaryMode) {
-  const base = Math.max(50, charLenNoSpace(original))
-  const { min, max } = ratioRangeByMode(mode)
-  return {
-    min: Math.floor(base * min),
-    max: Math.ceil(base * max),
-    base
-  }
-}
-
 // ✅ 연속 동일 문자열(복붙) 감지: 24자 이상 연속으로 같으면 "추출형 과다"
 function hasLongVerbatimRun(original: string, out: string, run = 24) {
   const o = stripSpaces(original)
@@ -388,65 +399,48 @@ function polishKorean(out: string) {
 // ========================================
 // 📦 NEW: JSON 기반 3단계 요약 프롬프트 시스템
 // ========================================
-function countKoreanFriendlyChars(s: string): number {
-  return (s || '').replace(/\s+/g, '').length
-}
 
+// ✅ getSummaryTargets(5%/14%/32%)는 충돌 원인 → 아래로 교체
 function getSummaryTargets(originalText: string) {
-  // 공백 제외 글자수 기준
-  const base = Math.max(400, countKoreanFriendlyChars(originalText))
+  const base = Math.max(200, charLenNoSpace(originalText))
+  const b = targetCharRange(originalText, 'brief')
+  const s = targetCharRange(originalText, 'standard')
+  const d = targetCharRange(originalText, 'detail')
 
-  // ✅ 비율 + 절대 범위(클램프) 동시 적용
-  const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
+  // 단조 증가 안전장치(역전 방지)
+  const brief = clamp(b.min + Math.round((b.max - b.min) * 0.5), b.min, b.max)
+  const standard = clamp(Math.max(s.min, brief + 40), s.min, s.max)
+  const detail = clamp(Math.max(d.min, standard + 120), d.min, d.max)
 
-  const briefMin = 120, briefMax = 220
-  const standardMin = 350, standardMax = 700
-  const detailMin = 900, detailMax = 1600
-
-  const brief = clamp(Math.round(base * 0.05), briefMin, briefMax)      // 3~6% 근처
-  const standard = clamp(Math.round(base * 0.14), standardMin, standardMax) // 10~18% 근처
-  const detail = clamp(Math.round(base * 0.32), detailMin, detailMax)   // 25~40% 근처
-
-  // ✅ 단조 증가 강제 (역전 방지)
-  const b = Math.min(brief, standard - 40)
-  const s = Math.max(standard, b + 80)
-  const d = Math.max(detail, s + 200)
-
-  return { base, brief: b, standard: s, detail: d }
+  return { base, brief, standard, detail }
 }
 
 function buildSummaryPrompt(originalText: string): string {
   const t = getSummaryTargets(originalText)
 
-  // ✅ "3블록 구조" 강제 + "단계별 분량" 강제 + "중복 금지" 강제
   return `
-당신은 교육/유아교육 연구 텍스트를 '요약 원칙'에 따라 3단계(간단/표준/상세)로 요약하는 엔진이다.
+당신은 교육/학습 텍스트를 3단계(간단/표준/상세)로 "의미 단위" 요약하는 엔진이다.
 
 [입력 원문]
 """${originalText}"""
 
 [요약 원칙 - 반드시 준수]
-1) "간단 < 표준 < 상세" 글자수 단조 증가를 반드시 지켜라. (역전 금지)
-2) 세 요약 모두 아래 3영역을 반드시 포함하라:
-   - 개념(숲체험 활동이 무엇인지)
-   - 영향(유아 발달에 어떤 영향인지)
-   - 교육적 가치(교육적으로 어떤 가치인지)
-3) 발췌/복붙 금지: 원문 문장을 그대로 길게 가져오지 말고 의미를 재구성하라.
-4) 인용(저자, 연도)은 요약을 방해하면 제거하라. 꼭 필요하면 최대 1회만.
-5) 문장부호는 한국어 기준으로 정리하고, 지나치게 긴 한 문장을 만들지 말라.
-6) 세 요약은 서로 문장/구성이 '거의 동일'하면 실패로 간주한다(중복 금지).
+1) "간단 < 표준 < 상세" 글자수 단조 증가(역전 금지)
+2) 복붙/발췌 금지: 원문 문장을 길게 그대로 가져오지 말고 재구성
+3) 원문에 없는 정보/인용/사례 추가 금지(할루시네이션 금지)
+4) 간단/표준/상세는 내용과 표현이 "거의 동일"하면 실패(중복 금지)
 
 [길이 목표(공백 제외 글자수)]
-- 간단: 약 ${t.brief}자 (2문장 이내)
-- 표준: 약 ${t.standard}자 (6~8문장)
-- 상세: 약 ${t.detail}자 (아래 소제목 3개 포함)
+- 간단: ${t.brief}자 내외 (원문 10~15%)
+- 표준: ${t.standard}자 내외 (원문 25~30%)
+- 상세: ${t.detail}자 내외 (원문 45~55%, 아래 소제목 3개)
 
-[상세 요약 소제목(반드시 그대로 사용)]
+[상세 요약 소제목(반드시 그대로)]
 - 개념
 - 영향
 - 교육적 가치
 
-[출력 형식 - JSON만 출력]
+[출력 형식 - JSON만]
 {
   "meta": {
     "base_chars_no_space": ${t.base},
@@ -461,7 +455,7 @@ function buildSummaryPrompt(originalText: string): string {
   }
 }
 
-※ JSON 외의 어떤 문장도 출력하지 마라.
+※ JSON 외 어떤 문장도 출력하지 마라.
 `.trim()
 }
 
@@ -737,6 +731,8 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
       })
     }
     
+    // ✅ normalizeToRatioRange 적용 (brief 모드)
+    summary = normalizeToRatioRange(fullText, summary, 'brief', picked)
     return summary
   }
 
@@ -1020,6 +1016,8 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
       })
     }
     
+    // ✅ normalizeToRatioRange 적용 (standard 모드)
+    summary = normalizeToRatioRange(fullText, summary, 'standard', picked)
     return summary
   }
 
@@ -1064,6 +1062,8 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
     }
   }
   
+  // ✅ normalizeToRatioRange 적용 (detail 모드)
+  summaryResult = normalizeToRatioRange(fullText, summaryResult, 'detail', picked)
   return summaryResult
 }
 
@@ -1490,6 +1490,16 @@ async function callGeminiWithSystem(env: Bindings, systemPrompt: string, userPro
   throw new Error('Gemini retry exceeded')
 }
 
+// ------------------------------
+// 1) Gemini call helpers (ALWAYS return string text)
+// ------------------------------
+async function callGeminiText(env: Bindings, prompt: string): Promise<string> {
+  const r = await callGemini(env, prompt) as any
+  // callGemini가 {ok,text,raw} 형태면 text만 추출
+  if (typeof r === 'string') return r
+  return (r?.text ?? '').toString()
+}
+
 // ✅ NEW: JSON 기반 3단계 요약 엔진 (단조증가 + 3블록 구조 강제)
 interface SummaryJSON {
   meta: {
@@ -1505,75 +1515,99 @@ interface SummaryJSON {
   }
 }
 
+// ------------------------------
+// 3) summarizeWithJSON 타입 버그 수정 + 최소 호출(2회까지)
+// ------------------------------
 async function summarizeWithJSON(env: Bindings, original: string): Promise<SummaryJSON> {
   const prompt = buildSummaryPrompt(original)
-  
-  // 최대 2회 시도 (JSON 파싱 실패 시 재시도)
+
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const rawOutput = await callGemini(env, prompt)
-      
-      // JSON 추출 (코드 블록 제거)
-      let jsonText = rawOutput.trim()
-      if (jsonText.startsWith('```json')) {
-        jsonText = jsonText.replace(/^```json\s*/i, '').replace(/```\s*$/, '')
-      } else if (jsonText.startsWith('```')) {
-        jsonText = jsonText.replace(/^```\s*/, '').replace(/```\s*$/, '')
+      const rawText = await callGeminiText(env, prompt) // ✅ string
+      let jsonText = (rawText || '').trim()
+
+      // 코드블록 제거
+      if (jsonText.startsWith('```')) {
+        jsonText = jsonText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
       }
-      
+
       const parsed: SummaryJSON = JSON.parse(jsonText)
-      
-      // ✅ 기본 검증: 필수 필드 존재 여부
-      if (!parsed.brief || !parsed.standard || !parsed.detail) {
-        throw new Error('Missing required fields: brief/standard/detail')
+
+      // 필수 필드
+      if (!parsed?.brief || !parsed?.standard || !parsed?.detail) {
+        throw new Error('Missing required fields')
       }
-      
       if (!parsed.detail.개념 || !parsed.detail.영향 || !parsed.detail['교육적 가치']) {
-        throw new Error('Missing required detail fields: 개념/영향/교육적 가치')
+        throw new Error('Missing detail fields')
       }
-      
-      // ✅ 단조 증가 검증
-      const bLen = countKoreanFriendlyChars(parsed.brief)
-      const sLen = countKoreanFriendlyChars(parsed.standard)
-      const dLen = countKoreanFriendlyChars(parsed.detail.개념 + parsed.detail.영향 + parsed.detail['교육적 가치'])
-      
+
+      // 단조 증가 검사(경고만)
+      const bLen = charLenNoSpace(parsed.brief)
+      const sLen = charLenNoSpace(parsed.standard)
+      const dLen = charLenNoSpace(parsed.detail.개념 + parsed.detail.영향 + parsed.detail['교육적 가치'])
       if (bLen >= sLen || sLen >= dLen) {
-        console.warn(`[Summary JSON] 단조증가 위반: brief=${bLen}, standard=${sLen}, detail=${dLen}, attempt=${attempt}`)
-        if (attempt === 2) {
-          // 2회 실패 시에도 반환 (경고만)
-          console.warn(`[Summary JSON] ⚠️ 단조증가 위반이지만 반환`)
-        } else {
-          throw new Error('Monotonic increase violation')
-        }
+        console.warn('[SummaryJSON] monotonic violated', { bLen, sLen, dLen, attempt })
       }
-      
-      console.log(`[Summary JSON] ✅ PASS - brief=${bLen}, standard=${sLen}, detail=${dLen}`)
+
       return parsed
-      
-    } catch (err: any) {
-      console.error(`[Summary JSON] attempt=${attempt}, error:`, err.message)
+    } catch (e: any) {
+      console.error('[SummaryJSON] attempt failed', attempt, e?.message)
       if (attempt === 2) {
-        // 2회 실패 시 폴백: 로컬 엔진 기반 구조 생성
-        const targets = getSummaryTargets(original)
+        const t = getSummaryTargets(original)
         return {
-          meta: {
-            base_chars_no_space: targets.base,
-            target: { brief: targets.brief, standard: targets.standard, detail: targets.detail }
-          },
-          brief: `[JSON 파싱 실패] 원문 요약을 생성할 수 없습니다.`,
-          standard: `[JSON 파싱 실패] 원문 요약을 생성할 수 없습니다.`,
-          detail: {
-            개념: '[파싱 실패]',
-            영향: '[파싱 실패]',
-            '교육적 가치': '[파싱 실패]'
-          }
+          meta: { base_chars_no_space: t.base, target: { brief: t.brief, standard: t.standard, detail: t.detail } },
+          brief: '[JSON 실패] 요약 생성 실패',
+          standard: '[JSON 실패] 요약 생성 실패',
+          detail: { 개념: '[실패]', 영향: '[실패]', '교육적 가치': '[실패]' }
         }
       }
     }
   }
-  
-  // TypeScript: 여기 도달 불가능하지만 타입 안정성을 위해
-  throw new Error('Unexpected: summarizeWithJSON failed')
+  throw new Error('summarizeWithJSON failed')
+}
+
+// ------------------------------
+// 4) Final ratio normalization (NO hallucination)
+// - 늘릴 때도 "picked 문장"만 사용 (원문 근거 기반)
+// ------------------------------
+function normalizeToRatioRange(originalText: string, summaryText: string, mode: SummaryMode, picked: string[]) {
+  const { min, max } = targetCharRange(originalText, mode)
+  let out = (summaryText || '').trim()
+
+  const len = () => charLenNoSpace(out)
+  const clampText = () => {
+    out = polishKorean(out)
+    out = out.replace(/\s{2,}/g, ' ').trim()
+  }
+
+  clampText()
+
+  // 너무 길면: 문장 단위로 뒤에서부터 제거
+  if (len() > max) {
+    const sents = splitSentences(out)
+    while (sents.length > 1 && charLenNoSpace(sents.join(' ')) > max) {
+      sents.pop()
+    }
+    out = sents.join(' ')
+    clampText()
+  }
+
+  // 너무 짧으면: picked 문장을 "추가" (원문에서 뽑힌 문장이라 안전)
+  if (len() < min) {
+    const adds = (picked || []).map(s => s.trim()).filter(Boolean)
+    for (const a of adds) {
+      if (len() >= min) break
+      // 중복 방지: 이미 포함된 문장/구절이면 패스
+      const key = stripSpaces(a).slice(0, 24)
+      if (key && stripSpaces(out).includes(key)) continue
+      out = (out ? (out + ' ') : '') + a.replace(/[\.。\?\!]+$/g, '') + '.'
+      clampText()
+      if (len() > max) break
+    }
+    // 추가했는데도 미달이면 그대로(추가 LLM 호출은 토큰 낭비 + 할루시네이션 리스크)
+  }
+
+  return out
 }
 
 // ========================================
@@ -2685,16 +2719,17 @@ app.post('/api/gens/run', async (c) => {
   }
   
   // GENS용 llmCall 어댑터
+  // ------------------------------
+  // 6) /api/gens/run llmCall(json:true) 타입 버그 수정
+  // ------------------------------
   const llmCall = async ({ system, user, json }: any) => {
     if (json) {
-      // JSON 출력 요청
       const prompt = `${system}\n\n${user}\n\n출력은 반드시 JSON만 출력하라. 다른 텍스트 금지.`
-      const result = await callGemini(c.env, prompt)
-      return result
+      const t = await callGeminiText(c.env, prompt) // ✅ string
+      return t
     } else {
-      // 일반 텍스트
-      const result = await callGeminiWithSystem(c.env, system, user)
-      return result
+      const t = await callGeminiWithSystem(c.env, system, user) // 이미 string
+      return (t || '').toString()
     }
   }
   
