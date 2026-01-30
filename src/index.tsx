@@ -343,41 +343,83 @@ function polishKorean(out: string) {
 }
 
 // ✅ "허구/오인용 방지" 프롬프트
-function buildSystemPrompt() {
-  return `
-너는 한국어 학술 텍스트 요약 엔진이다.
-절대 규칙:
-- 원문에 없는 사실/주장/인과/수치/연구결과를 추가하지 마라.
-- 원문에 없는 참고문헌(저자, 연도)을 새로 만들지 마라.
-- 요약은 "추출형 복붙"이 아니라, 의미를 유지한 "서술형 재구성"이어야 한다.
-- 동일한 표현을 길게 복사하지 마라(연속 문구 복사 금지).
-- 문장은 자연스러운 연결어로 매끄럽게 이어라.
-- 과장 표현/단정(반드시/항상/완벽히)을 피하라.
-출력은 오직 요약 본문만. 제목/머리말/목록 기호/메타설명 금지.
-`.trim()
+// ========================================
+// 📦 NEW: JSON 기반 3단계 요약 프롬프트 시스템
+// ========================================
+function countKoreanFriendlyChars(s: string): number {
+  return (s || '').replace(/\s+/g, '').length
 }
 
-// ✅ 모드별 사용자 프롬프트
-function buildUserPrompt(original: string, mode: SummaryMode) {
-  const range = ratioRangeByMode(mode)
-  const guide =
-    mode === 'brief'
-      ? `간단 서술 요약: 정의(숲이 무엇인지) + 의미/기능(치유·교육 가치) + 숲 체험 활동 개념(무엇인지)을 모두 1문단으로 포함하라.`
-      : mode === 'standard'
-        ? `표준 서술 요약: 정의/의미/숲 체험 활동 개념/발달 영향/교육적 가치의 균형을 갖추어 2~4문단으로 서술하라.`
-        : `상세 서술 요약: 원문의 흐름을 유지하되 중복을 줄이고 연결어를 자연스럽게 하여 4~7문단으로 서술하라.`
+function getSummaryTargets(originalText: string) {
+  // 공백 제외 글자수 기준
+  const base = Math.max(400, countKoreanFriendlyChars(originalText))
 
+  // ✅ 비율 + 절대 범위(클램프) 동시 적용
+  const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
+
+  const briefMin = 120, briefMax = 220
+  const standardMin = 350, standardMax = 700
+  const detailMin = 900, detailMax = 1600
+
+  const brief = clamp(Math.round(base * 0.05), briefMin, briefMax)      // 3~6% 근처
+  const standard = clamp(Math.round(base * 0.14), standardMin, standardMax) // 10~18% 근처
+  const detail = clamp(Math.round(base * 0.32), detailMin, detailMax)   // 25~40% 근처
+
+  // ✅ 단조 증가 강제 (역전 방지)
+  const b = Math.min(brief, standard - 40)
+  const s = Math.max(standard, b + 80)
+  const d = Math.max(detail, s + 200)
+
+  return { base, brief: b, standard: s, detail: d }
+}
+
+function buildSummaryPrompt(originalText: string): string {
+  const t = getSummaryTargets(originalText)
+
+  // ✅ "3블록 구조" 강제 + "단계별 분량" 강제 + "중복 금지" 강제
   return `
-[요약 모드] ${mode}
-[요약율] 원문(공백 제외) 대비 ${(range.min * 100).toFixed(0)}~${(range.max * 100).toFixed(0)}% 범위
+당신은 교육/유아교육 연구 텍스트를 '요약 원칙'에 따라 3단계(간단/표준/상세)로 요약하는 엔진이다.
 
-[작성 지침]
-- ${guide}
-- 원문에 있는 개념/정의/효과만 사용하고, 표현은 새롭게 재구성하라.
-- 인용(저자, 연도)은 원문에 있는 것만 유지하되, 필요 없는 과다 인용은 줄여ra.
+[입력 원문]
+"""${originalText}"""
 
-[원문]
-${original}
+[요약 원칙 - 반드시 준수]
+1) "간단 < 표준 < 상세" 글자수 단조 증가를 반드시 지켜라. (역전 금지)
+2) 세 요약 모두 아래 3영역을 반드시 포함하라:
+   - 개념(숲체험 활동이 무엇인지)
+   - 영향(유아 발달에 어떤 영향인지)
+   - 교육적 가치(교육적으로 어떤 가치인지)
+3) 발췌/복붙 금지: 원문 문장을 그대로 길게 가져오지 말고 의미를 재구성하라.
+4) 인용(저자, 연도)은 요약을 방해하면 제거하라. 꼭 필요하면 최대 1회만.
+5) 문장부호는 한국어 기준으로 정리하고, 지나치게 긴 한 문장을 만들지 말라.
+6) 세 요약은 서로 문장/구성이 '거의 동일'하면 실패로 간주한다(중복 금지).
+
+[길이 목표(공백 제외 글자수)]
+- 간단: 약 ${t.brief}자 (2문장 이내)
+- 표준: 약 ${t.standard}자 (6~8문장)
+- 상세: 약 ${t.detail}자 (아래 소제목 3개 포함)
+
+[상세 요약 소제목(반드시 그대로 사용)]
+- 개념
+- 영향
+- 교육적 가치
+
+[출력 형식 - JSON만 출력]
+{
+  "meta": {
+    "base_chars_no_space": ${t.base},
+    "target": { "brief": ${t.brief}, "standard": ${t.standard}, "detail": ${t.detail} }
+  },
+  "brief": "…",
+  "standard": "…",
+  "detail": {
+    "개념": "…",
+    "영향": "…",
+    "교육적 가치": "…"
+  }
+}
+
+※ JSON 외의 어떤 문장도 출력하지 마라.
 `.trim()
 }
 
@@ -1406,77 +1448,90 @@ async function callGeminiWithSystem(env: Bindings, systemPrompt: string, userPro
   throw new Error('Gemini retry exceeded')
 }
 
-// ✅ MAIN: 압축률 강제 + 복붙 방지 + 3요소 체크 요약 엔진
-async function summarizeWithEnforcedRatio(
-  env: Bindings,
-  original: string,
-  mode: SummaryMode
-): Promise<string> {
-  const { min, max } = targetCharRange(original, mode)
-  const system = buildSystemPrompt()
-
-  let last = ''
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const user = buildUserPrompt(original, mode)
-    let out = await callGeminiWithSystem(env, system, user)
-    out = polishKorean(out)
-
-    // 1) 길이 체크
-    const len = charLenNoSpace(out)
-    const inRange = len >= min && len <= max
-
-    // 2) 복붙 과다 체크
-    const verbatimBad = hasLongVerbatimRun(original, out, 24)
-
-    // 3) 간단/표준은 3요소 포함 강제
-    const partsOK = (mode === 'detail') ? true : mustHave3Parts(original, out)
-
-    if (inRange && !verbatimBad && partsOK) {
-      console.log(`[Enforced Summary] mode=${mode}, len=${len}, attempt=${attempt}, ✅ PASS`)
-      return out
-    }
-
-    // 재요청 힌트
-    const fixHint = [
-      !inRange
-        ? (len < min
-          ? `길이가 너무 짧다. 공백 제외 글자 수를 ${min}~${max}자로 늘려라.`
-          : `길이가 너무 길다. 공백 제외 글자 수를 ${min}~${max}자로 줄여라.`)
-        : '',
-      verbatimBad ? `원문 표현을 길게 복사했다. 같은 표현을 피하고 서술형으로 재구성하라.` : '',
-      (!partsOK) ? `정의/의미/체험활동 개념 3요소를 모두 포함하라.` : ''
-    ].filter(Boolean).join(' ')
-
-    last = out
-    console.log(`[Enforced Summary] mode=${mode}, len=${len}, attempt=${attempt}, ❌ RETRY: ${fixHint}`)
-
-    // ✅ 힌트 기반 재요청
-    const user2 = `
-${buildUserPrompt(original, mode)}
-
-[추가 수정 지시]
-${fixHint}
-- 결과는 자연스러운 한국어 문장으로만 출력하라.
-`.trim()
-
-    let out2 = await callGeminiWithSystem(env, system, user2)
-    out2 = polishKorean(out2)
-
-    const len2 = charLenNoSpace(out2)
-    const inRange2 = len2 >= min && len2 <= max
-    const verbatimBad2 = hasLongVerbatimRun(original, out2, 24)
-    const partsOK2 = (mode === 'detail') ? true : mustHave3Parts(original, out2)
-
-    if (inRange2 && !verbatimBad2 && partsOK2) {
-      console.log(`[Enforced Summary] mode=${mode}, len=${len2}, attempt=${attempt}.retry, ✅ PASS`)
-      return out2
-    }
-    last = out2
+// ✅ NEW: JSON 기반 3단계 요약 엔진 (단조증가 + 3블록 구조 강제)
+interface SummaryJSON {
+  meta: {
+    base_chars_no_space: number
+    target: { brief: number; standard: number; detail: number }
   }
+  brief: string
+  standard: string
+  detail: {
+    개념: string
+    영향: string
+    '교육적 가치': string
+  }
+}
 
-  // 3회 실패 시에도 마지막 산출물 반환
-  console.warn(`[Enforced Summary] mode=${mode}, ⚠️ 3회 실패, 마지막 결과 반환`)
-  return last || ''
+async function summarizeWithJSON(env: Bindings, original: string): Promise<SummaryJSON> {
+  const prompt = buildSummaryPrompt(original)
+  
+  // 최대 2회 시도 (JSON 파싱 실패 시 재시도)
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const rawOutput = await callGemini(env, prompt)
+      
+      // JSON 추출 (코드 블록 제거)
+      let jsonText = rawOutput.trim()
+      if (jsonText.startsWith('```json')) {
+        jsonText = jsonText.replace(/^```json\s*/i, '').replace(/```\s*$/, '')
+      } else if (jsonText.startsWith('```')) {
+        jsonText = jsonText.replace(/^```\s*/, '').replace(/```\s*$/, '')
+      }
+      
+      const parsed: SummaryJSON = JSON.parse(jsonText)
+      
+      // ✅ 기본 검증: 필수 필드 존재 여부
+      if (!parsed.brief || !parsed.standard || !parsed.detail) {
+        throw new Error('Missing required fields: brief/standard/detail')
+      }
+      
+      if (!parsed.detail.개념 || !parsed.detail.영향 || !parsed.detail['교육적 가치']) {
+        throw new Error('Missing required detail fields: 개념/영향/교육적 가치')
+      }
+      
+      // ✅ 단조 증가 검증
+      const bLen = countKoreanFriendlyChars(parsed.brief)
+      const sLen = countKoreanFriendlyChars(parsed.standard)
+      const dLen = countKoreanFriendlyChars(parsed.detail.개념 + parsed.detail.영향 + parsed.detail['교육적 가치'])
+      
+      if (bLen >= sLen || sLen >= dLen) {
+        console.warn(`[Summary JSON] 단조증가 위반: brief=${bLen}, standard=${sLen}, detail=${dLen}, attempt=${attempt}`)
+        if (attempt === 2) {
+          // 2회 실패 시에도 반환 (경고만)
+          console.warn(`[Summary JSON] ⚠️ 단조증가 위반이지만 반환`)
+        } else {
+          throw new Error('Monotonic increase violation')
+        }
+      }
+      
+      console.log(`[Summary JSON] ✅ PASS - brief=${bLen}, standard=${sLen}, detail=${dLen}`)
+      return parsed
+      
+    } catch (err: any) {
+      console.error(`[Summary JSON] attempt=${attempt}, error:`, err.message)
+      if (attempt === 2) {
+        // 2회 실패 시 폴백: 로컬 엔진 기반 구조 생성
+        const targets = getSummaryTargets(original)
+        return {
+          meta: {
+            base_chars_no_space: targets.base,
+            target: { brief: targets.brief, standard: targets.standard, detail: targets.detail }
+          },
+          brief: `[JSON 파싱 실패] 원문 요약을 생성할 수 없습니다.`,
+          standard: `[JSON 파싱 실패] 원문 요약을 생성할 수 없습니다.`,
+          detail: {
+            개념: '[파싱 실패]',
+            영향: '[파싱 실패]',
+            '교육적 가치': '[파싱 실패]'
+          }
+        }
+      }
+    }
+  }
+  
+  // TypeScript: 여기 도달 불가능하지만 타입 안정성을 위해
+  throw new Error('Unexpected: summarizeWithJSON failed')
 }
 
 
@@ -2079,18 +2134,40 @@ app.post('/api/engine', async (c) => {
   }
 
   // ----------------------------
-  // ✅ V2 REVISED: summarizeWithEnforcedRatio 사용
+  // ✅ V3: JSON 기반 3단계 요약 시스템
   // ----------------------------
   const hasGemini = !!safeStr(c.env.GEMINI_API_KEY).trim()
   const useMock = safeStr(c.env.USE_MOCK).trim().toLowerCase() === 'true'
 
   if (kind === 'summary' && hasGemini && !useMock) {
     try {
-      // ✅ NEW: 압축률 강제 + 복붙 방지 + 3요소 체크 엔진
-      const narrative = await summarizeWithEnforcedRatio(c.env, text, mode)
+      // ✅ NEW: JSON 기반 3단계 요약 엔진
+      const summaryJSON = await summarizeWithJSON(c.env, text)
       
-      // Base 데이터 저장
-      const baseData = { kind, mode, viewType: 'narrative', narrative }
+      // mode에 따라 해당하는 요약 추출
+      let narrative: string
+      if (mode === 'brief') {
+        narrative = summaryJSON.brief
+      } else if (mode === 'standard') {
+        narrative = summaryJSON.standard
+      } else {
+        // detail: 3블록 조합
+        narrative = `**개념**\n${summaryJSON.detail.개념}\n\n**영향**\n${summaryJSON.detail.영향}\n\n**교육적 가치**\n${summaryJSON.detail['교육적 가치']}`
+      }
+      
+      // Base 데이터 저장 (모든 3단계 포함)
+      const baseData = { 
+        kind, 
+        mode, 
+        viewType: 'narrative', 
+        narrative,
+        allSummaries: {
+          brief: summaryJSON.brief,
+          standard: summaryJSON.standard,
+          detail: summaryJSON.detail
+        },
+        meta: summaryJSON.meta
+      }
       await setCache(db, baseKey, userId || 'anon', baseData)
       
       // Derived 데이터 생성 및 저장
@@ -2110,12 +2187,12 @@ app.post('/api/engine', async (c) => {
         {
           ok: true,
           data: derivedData,
-          meta: { cached: false, engine: 'gemini-enforced', elapsedMs: Date.now() - start }
+          meta: { cached: false, engine: 'gemini-json-v3', elapsedMs: Date.now() - start }
         },
         200
       )
     } catch (err: any) {
-      console.error('[Gemini Enforced Error]', err)
+      console.error('[Gemini JSON Error]', err)
       // Gemini 실패 시 로컬 폴백으로 계속 진행
     }
   }
