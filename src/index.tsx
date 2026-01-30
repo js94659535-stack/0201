@@ -1534,6 +1534,539 @@ async function summarizeWithJSON(env: Bindings, original: string): Promise<Summa
   throw new Error('Unexpected: summarizeWithJSON failed')
 }
 
+// ========================================
+// 📦 GENS ENGINE v3 (Token-Saving + Anti-Hallucination)
+// ========================================
+/**
+ * GENS ENGINE v3 (Token-Saving + Anti-Hallucination)
+ * - Summary first (strict char budget)
+ * - Anchors from summary only
+ * - Quiz from anchors only
+ * - Validation layer: evidence must be substring of summary sentence
+ * - Mastery learning: >=90 pass, 3-attempt per item, wrong-only retry set
+ */
+const GENS = (() => {
+  const PASS_SCORE = 90
+
+  const LENGTH_RATIO = {
+    brief: { min: 0.10, max: 0.15 },
+    standard: { min: 0.25, max: 0.30 },
+    detail: { min: 0.45, max: 0.55 }
+  }
+
+  const QUIZ_COUNT_BY_MODE = {
+    brief: 6,
+    standard: 10,
+    detail: 14
+  }
+
+  const FORMATS = ['narrative', 'structured', 'mindmap']
+  const PURPOSES = ['preview', 'exam']
+
+  function stripSpaces(s: string) {
+    return (s || '').replace(/\s+/g, '')
+  }
+
+  function clampNum(n: number, a: number, b: number) {
+    return Math.max(a, Math.min(b, n))
+  }
+
+  function computeCharTargets(originalText: string, mode: string) {
+    const raw = originalText || ''
+    const base = Math.max(200, stripSpaces(raw).length)
+    const r = (LENGTH_RATIO as any)[mode] || LENGTH_RATIO.standard
+    const min = Math.floor(base * r.min)
+    const max = Math.ceil(base * r.max)
+    return { base, min: Math.max(80, min), max: Math.max(120, max) }
+  }
+
+  function splitSentencesKR(text: string) {
+    const t = (text || '').trim()
+    if (!t) return []
+    const parts = t
+      .replace(/\r/g, '')
+      .split(/(?<=[\.\?\!])\s+|\n+/)
+      .map(s => s.trim())
+      .filter(Boolean)
+    return parts
+  }
+
+  function makeSentenceTable(summaryText: string) {
+    const sentences = splitSentencesKR(summaryText)
+    return sentences.map((s, i) => ({ sid: `S${i + 1}`, text: s }))
+  }
+
+  function evidenceExists(sentTable: any[], sid: string, quote: string) {
+    const row = sentTable.find(x => x.sid === sid)
+    if (!row) return false
+    if (!quote || typeof quote !== 'string') return false
+    return row.text.includes(quote.trim())
+  }
+
+  function sysRole() {
+    return [
+      '당신은 교육공학 기반 요약·셀프테스트 생성 엔진이다.',
+      '추출형 복붙 금지. 반드시 의미 단위로 재구성하라.',
+      '가장 중요한 1순위는 문자수(공백 제외) 제한 준수다.',
+      '허위 정보(원문/요약에 없는 내용) 생성 금지.',
+      'JSON 출력이 요구되면 JSON만 출력하라.'
+    ].join('\n')
+  }
+
+  function buildSummaryPrompt({ originalText, mode, format }: any) {
+    const tgt = computeCharTargets(originalText, mode)
+    const formatGuide =
+      format === 'narrative'
+        ? '서술형: 연결어를 사용해 흐름/인과가 보이도록 1~3문단으로 구성'
+        : format === 'structured'
+          ? '구조화: 상위-하위 위계가 드러나는 조목(가/나/다 또는 ①②③) 형태'
+          : '마인드맵: 텍스트로 표현된 노드-관계 목록(중심노드/하위노드/연결라벨) 형태'
+
+    return [
+      '[TASK] 아래 원문을 지정된 형식으로 요약하라.',
+      `- 모드: ${mode} (간단/표준/상세)`,
+      `- 형식: ${format} (${formatGuide})`,
+      `- 문자수 목표(공백 제외): 최소 ${tgt.min}자 ~ 최대 ${tgt.max}자`,
+      '- 주의: 숫자 맞추기 위해 중간을 자르는 행위 금지. 자연스러운 문장으로 재작성.',
+      '- 주의: 원문에 없는 주장/사례/인과 추가 금지.',
+      '',
+      '[ORIGINAL]',
+      originalText
+    ].join('\n')
+  }
+
+  function buildAnchorsPrompt({ summaryText, format }: any) {
+    return [
+      '[TASK] 아래 요약문에서 학습 앵커(핵심 개념/관계)를 추출하라.',
+      '- 출력은 JSON만. 한국어로.',
+      '- 앵커 수: 6~14개 범위(요약 길이에 맞춰 적절히).',
+      '- 각 앵커는 요약문에 실제로 등장하는 표현을 근거(quote)로 가져와야 한다.',
+      '- quote는 요약문 일부를 그대로 복사(짧게 8~25자).',
+      '',
+      '[OUTPUT JSON SCHEMA]',
+      `{
+  "anchors":[
+    {
+      "id":"A1",
+      "label":"핵심 개념/관계 이름",
+      "type":"concept|relation|claim",
+      "sid":"S1",
+      "quote":"요약문에서 그대로 인용한 짧은 구절",
+      "note":"학습 포인트(1문장)"
+    }
+  ]
+}`,
+      '',
+      '[SUMMARY]',
+      summaryText
+    ].join('\n')
+  }
+
+  function buildQuizPrompt({ mode, purpose, format, summaryText, sentTable, anchors }: any) {
+    const n = (QUIZ_COUNT_BY_MODE as any)[mode] || 10
+    const purposeGuide =
+      purpose === 'preview'
+        ? '예습용 셀프테스트: 요약문 안에서 바로 확인 가능한 재인 중심(스키마 형성). 과도한 추론 금지.'
+        : '시험대비 셀프테스트: 요약문에 있는 근거를 바탕으로 인과/관계/분류를 인출하는 회상 중심. 요약에 없는 정보 금지.'
+    const styleGuide =
+      format === 'narrative'
+        ? '문항 스타일: 문장 빈칸, 문장 순서 배열, 인과관계 단답/서술(요약 근거 필수)'
+        : format === 'structured'
+          ? '문항 스타일: 항목-정의 매칭, 분류 채우기, 상하위 체계, 사례-범주 매칭(요약 근거 필수)'
+          : '문항 스타일: 노드 라벨 맞추기, 연결 라벨링, 누락 노드/연결 복원, 관계 이유 단답(요약 근거 필수)'
+
+    return [
+      '[TASK] 아래 요약문과 앵커만을 근거로 셀프테스트 문항을 생성하라.',
+      `- 모드: ${mode} (문항수 ${n})`,
+      `- 목적: ${purpose} (${purposeGuide})`,
+      `- 요약 형식: ${format} (${styleGuide})`,
+      '- 규칙1: 요약문에 없는 정보로 문제 만들지 말 것(할루시네이션 금지).',
+      '- 규칙2: 각 문항은 반드시 evidence를 포함: sid + quote(요약 문장 일부 8~25자).',
+      '- 규칙3: quote는 반드시 해당 sid 문장에 실제로 포함되어야 한다.',
+      '- 규칙4: 정답/해설은 간결하게. 해설은 evidence와 연결되게.',
+      '',
+      '[OUTPUT JSON ONLY]',
+      `{
+  "items":[
+    {
+      "id":"Q1",
+      "type":"blank|match|order|label|short|mcq",
+      "question":"문항",
+      "choices":["보기1","보기2","보기3","보기4"], 
+      "answer":"정답(choices 기반이면 보기 텍스트 그대로)",
+      "explanation":"해설(1~2문장)",
+      "evidence": { "sid":"S1", "quote":"요약 문장 일부" },
+      "anchorIds":["A1","A3"]
+    }
+  ]
+}`,
+      '',
+      '[SUMMARY SENTENCES WITH ID]',
+      JSON.stringify(sentTable, null, 2),
+      '',
+      '[ANCHORS]',
+      JSON.stringify(anchors, null, 2),
+      '',
+      '[SUMMARY]',
+      summaryText
+    ].join('\n')
+  }
+
+  function validateAnchors(sentTable: any[], anchorsJson: any) {
+    const anchors = anchorsJson && anchorsJson.anchors ? anchorsJson.anchors : []
+    const ok: any[] = []
+    const bad: any[] = []
+    for (const a of anchors) {
+      const sid = a?.sid
+      const quote = a?.quote
+      if (typeof a?.label !== 'string' || !a.label.trim()) {
+        bad.push({ a, reason: 'label missing' })
+        continue
+      }
+      if (!evidenceExists(sentTable, sid, quote)) {
+        bad.push({ a, reason: 'evidence not in sentence' })
+        continue
+      }
+      ok.push(a)
+    }
+    return { ok, bad }
+  }
+
+  function validateQuizItems(sentTable: any[], quizJson: any) {
+    const items = quizJson && Array.isArray(quizJson.items) ? quizJson.items : []
+    const ok: any[] = []
+    const bad: any[] = []
+    for (const q of items) {
+      const ev = q?.evidence
+      if (!q?.id || !q?.question || !q?.answer || !ev?.sid || !ev?.quote) {
+        bad.push({ q, reason: 'missing fields' })
+        continue
+      }
+      if (!evidenceExists(sentTable, ev.sid, ev.quote)) {
+        bad.push({ q, reason: 'evidence not in sentence' })
+        continue
+      }
+      if (Array.isArray(q.choices) && q.choices.length > 0) {
+        const has = q.choices.includes(q.answer)
+        if (!has) {
+          bad.push({ q, reason: 'answer not in choices' })
+          continue
+        }
+      }
+      ok.push(q)
+    }
+    return { ok, bad }
+  }
+
+  function buildRepairPrompt({ summaryText, sentTable, anchors, badItems, mode, purpose, format }: any) {
+    const n = badItems.length
+    return [
+      '[TASK] 아래는 검증에서 탈락한 문항들이다. 요약문 근거(sid+quote)를 만족하도록 문항을 다시 생성하라.',
+      `- 재생성 문항 수: ${n}`,
+      `- 모드: ${mode}, 목적: ${purpose}, 형식: ${format}`,
+      '- 규칙: 요약문 밖 정보 금지. 반드시 sid+quote가 실제로 해당 문장에 포함되어야 한다.',
+      '- 출력: JSON만. items 길이는 정확히 재생성 문항 수와 같아야 한다.',
+      '',
+      '[OUTPUT JSON ONLY]',
+      `{"items":[{ "id":"Qx","type":"blank|match|order|label|short|mcq","question":"...","choices":[],"answer":"...","explanation":"...","evidence":{"sid":"S1","quote":"..." },"anchorIds":["A1"] }]}`,
+      '',
+      '[SUMMARY SENTENCES WITH ID]',
+      JSON.stringify(sentTable, null, 2),
+      '',
+      '[ANCHORS]',
+      JSON.stringify(anchors, null, 2),
+      '',
+      '[BAD ITEMS]',
+      JSON.stringify(badItems, null, 2),
+      '',
+      '[SUMMARY]',
+      summaryText
+    ].join('\n')
+  }
+
+  async function generateBundle({ llmCall, originalText, mode, format }: any) {
+    if (!llmCall) throw new Error('llmCall is required')
+    if (!(LENGTH_RATIO as any)[mode]) mode = 'standard'
+    if (!FORMATS.includes(format)) format = 'narrative'
+
+    const summaryPrompt = buildSummaryPrompt({ originalText, mode, format })
+    const summaryText =
+      (
+        (await llmCall({
+          system: sysRole(),
+          user: summaryPrompt,
+          json: false
+        })) || ''
+      ).trim() || ''
+
+    const sentTable = makeSentenceTable(summaryText)
+
+    const anchorsPrompt = buildAnchorsPrompt({ summaryText, format })
+    let anchorsJsonText = await llmCall({ system: sysRole(), user: anchorsPrompt, json: true })
+    let anchorsJson
+    try {
+      anchorsJson = JSON.parse(anchorsJsonText)
+    } catch {
+      anchorsJson = { anchors: [] }
+    }
+
+    const { ok: anchorsOk } = validateAnchors(sentTable, anchorsJson)
+    const anchors = anchorsOk.length >= 4 ? anchorsOk : fallbackAnchors(sentTable)
+
+    return { summaryText, sentTable, anchors }
+  }
+
+  function fallbackAnchors(sentTable: any[]) {
+    const out: any[] = []
+    for (let i = 0; i < Math.min(8, sentTable.length); i++) {
+      const s = sentTable[i]
+      const quote = (s.text || '').slice(0, 18)
+      out.push({
+        id: `A${i + 1}`,
+        label: `문장 핵심${i + 1}`,
+        type: 'claim',
+        sid: s.sid,
+        quote,
+        note: '요약 문장 기반 안전 앵커'
+      })
+    }
+    return out
+  }
+
+  async function generateSelfTest({ llmCall, mode, purpose, format, summaryText, sentTable, anchors }: any) {
+    if (!(LENGTH_RATIO as any)[mode]) mode = 'standard'
+    if (!PURPOSES.includes(purpose)) purpose = 'preview'
+    if (!FORMATS.includes(format)) format = 'narrative'
+
+    const quizPrompt = buildQuizPrompt({ mode, purpose, format, summaryText, sentTable, anchors })
+    let quizJsonText = await llmCall({ system: sysRole(), user: quizPrompt, json: true })
+    let quizJson
+    try {
+      quizJson = JSON.parse(quizJsonText)
+    } catch {
+      quizJson = { items: [] }
+    }
+
+    let { ok, bad } = validateQuizItems(sentTable, quizJson)
+
+    if (bad.length > 0) {
+      const repairPrompt = buildRepairPrompt({
+        summaryText,
+        sentTable,
+        anchors,
+        badItems: bad.map(x => x.q),
+        mode,
+        purpose,
+        format
+      })
+      let repairedText = await llmCall({ system: sysRole(), user: repairPrompt, json: true })
+      let repairedJson
+      try {
+        repairedJson = JSON.parse(repairedText)
+      } catch {
+        repairedJson = { items: [] }
+      }
+      const v2 = validateQuizItems(sentTable, repairedJson)
+
+      ok = ok.concat(v2.ok)
+      const need = (QUIZ_COUNT_BY_MODE as any)[mode] || 10
+      ok = ok.slice(0, need)
+    } else {
+      const need = (QUIZ_COUNT_BY_MODE as any)[mode] || 10
+      ok = ok.slice(0, need)
+    }
+
+    const need = (QUIZ_COUNT_BY_MODE as any)[mode] || 10
+    if (ok.length < need) {
+      const fillers = makeSafeFillers({ sentTable, anchors, count: need - ok.length, format, purpose })
+      ok = ok.concat(fillers).slice(0, need)
+    }
+
+    return { items: ok }
+  }
+
+  function makeSafeFillers({ sentTable, anchors, count, format, purpose }: any) {
+    const out: any[] = []
+    const picks = anchors.slice(0, Math.max(count, 1))
+    for (let i = 0; i < count; i++) {
+      const a = picks[i % picks.length]
+      const sid = a.sid
+      const quote = a.quote
+      out.push({
+        id: `QF${i + 1}`,
+        type: 'short',
+        question:
+          purpose === 'preview'
+            ? `요약에서 '${quote}'가 의미하는 핵심 개념을 한 문장으로 말해보세요.`
+            : `요약에서 '${quote}'가 포함된 문장의 핵심 인과/관계를 한 문장으로 인출해보세요.`,
+        choices: [],
+        answer: '(서술형 정답: 사용자 입력 비교는 해설 기반 채점 또는 키워드 채점으로 처리)',
+        explanation: '근거 문장을 다시 읽고 핵심을 1문장으로 재구성하면 됩니다.',
+        evidence: { sid, quote },
+        anchorIds: [a.id]
+      })
+    }
+    return out
+  }
+
+  class MasteryRunner {
+    items: any[]
+    passScore: number
+    state: {
+      idx: number
+      attempts: number
+      correct: number
+      wrongIds: Set<string>
+      finished: boolean
+    }
+
+    constructor(items: any[], { passScore = PASS_SCORE } = {}) {
+      this.items = Array.isArray(items) ? items : []
+      this.passScore = passScore
+
+      this.state = {
+        idx: 0,
+        attempts: 1,
+        correct: 0,
+        wrongIds: new Set(),
+        finished: false
+      }
+    }
+
+    gradeAnswer(item: any, userInput: string) {
+      if (!item) return { ok: false, reason: 'no item' }
+      const type = item.type
+      if (
+        type === 'mcq' ||
+        type === 'blank' ||
+        type === 'match' ||
+        type === 'order' ||
+        type === 'label' ||
+        type === 'short'
+      ) {
+        if (type === 'short') return { ok: true, reason: 'short-auto-pass' }
+        const a = (item.answer || '').trim()
+        const u = (userInput || '').trim()
+        return { ok: u === a, reason: u === a ? 'match' : 'mismatch' }
+      }
+      return { ok: false, reason: 'unknown type' }
+    }
+
+    getScore() {
+      if (this.items.length === 0) return 0
+      return Math.round((this.state.correct / this.items.length) * 100)
+    }
+
+    currentItem() {
+      return this.items[this.state.idx] || null
+    }
+
+    submit(userInput: string) {
+      if (this.state.finished) return { done: true, message: 'already finished' }
+
+      const item = this.currentItem()
+      const res = this.gradeAnswer(item, userInput)
+
+      if (res.ok) {
+        this.state.correct += 1
+        this.next()
+        return { ok: true, message: '정답 처리', score: this.getScore() }
+      }
+
+      this.state.wrongIds.add(item.id)
+
+      if (this.state.attempts === 1) {
+        this.state.attempts = 2
+        return {
+          ok: false,
+          stage: 1,
+          hint: `힌트1: 근거 문장(${item.evidence.sid})을 다시 읽어보세요.`,
+          score: this.getScore()
+        }
+      } else if (this.state.attempts === 2) {
+        this.state.attempts = 3
+        return {
+          ok: false,
+          stage: 2,
+          hint: `힌트2: 근거 구절 = '${item.evidence.quote}'`,
+          score: this.getScore()
+        }
+      } else {
+        const exp = item.explanation || '해설 없음'
+        this.next()
+        return { ok: false, stage: 3, explanation: exp, score: this.getScore() }
+      }
+    }
+
+    next() {
+      this.state.idx += 1
+      this.state.attempts = 1
+
+      if (this.state.idx >= this.items.length) {
+        const score = this.getScore()
+        if (score >= this.passScore) {
+          this.state.finished = true
+        } else {
+          const wrong = this.items.filter(x => this.state.wrongIds.has(x.id))
+          this.items = wrong.length > 0 ? wrong : this.items
+          this.state.idx = 0
+          this.state.attempts = 1
+          this.state.correct = 0
+          this.state.wrongIds = new Set()
+        }
+      }
+    }
+
+    status() {
+      return {
+        idx: this.state.idx,
+        total: this.items.length,
+        score: this.getScore(),
+        passScore: this.passScore,
+        finished: this.state.finished
+      }
+    }
+  }
+
+  async function runPipeline({ llmCall, originalText, mode, format, purpose }: any) {
+    const bundle = await generateBundle({ llmCall, originalText, mode, format })
+    const quiz = await generateSelfTest({
+      llmCall,
+      mode,
+      purpose,
+      format,
+      summaryText: bundle.summaryText,
+      sentTable: bundle.sentTable,
+      anchors: bundle.anchors
+    })
+
+    return {
+      summary: {
+        mode,
+        format,
+        text: bundle.summaryText,
+        sentences: bundle.sentTable,
+        anchors: bundle.anchors
+      },
+      selfTest: {
+        purpose,
+        passScore: PASS_SCORE,
+        items: quiz.items
+      }
+    }
+  }
+
+  return {
+    computeCharTargets,
+    splitSentencesKR,
+    makeSentenceTable,
+    generateBundle,
+    generateSelfTest,
+    runPipeline,
+    MasteryRunner
+  }
+})()
+
 
 // ------------------------------
 // FRONT BUNDLE (optional)
@@ -2067,6 +2600,101 @@ app.get('/api/health', (c) => {
 // ------------------------------
 // Engine
 // ------------------------------
+// ✅ NEW: GENS Engine v3 - Token-Saving + Anti-Hallucination
+app.post('/api/gens/run', async (c) => {
+  const start = Date.now()
+  
+  let body: any = null
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ ok: false, error: { code: 'BAD_JSON', message: '요청 JSON이 올바르지 않습니다.' } }, 400)
+  }
+  
+  const originalText = safeStr(body?.text || body?.originalText || '')
+  const mode = normalizeMode(body?.mode || 'standard')
+  const format = normalizeViewType(body?.format || body?.viewType || 'narrative')
+  const purpose = safeStr(body?.purpose || 'preview').trim().toLowerCase()
+  
+  if (!originalText) {
+    return c.json({ ok: false, error: { code: 'NO_TEXT', message: '원문 텍스트가 필요합니다.' } }, 400)
+  }
+  
+  // ✅ Gemini API 체크
+  const hasGemini = !!safeStr(c.env.GEMINI_API_KEY).trim()
+  const useMock = safeStr(c.env.USE_MOCK).trim().toLowerCase() === 'true'
+  
+  if (!hasGemini || useMock) {
+    return c.json(
+      {
+        ok: false,
+        error: {
+          code: 'GEMINI_REQUIRED',
+          message: 'GENS Engine은 Gemini API가 필요합니다. .dev.vars에 GEMINI_API_KEY를 설정하세요.'
+        },
+        guide: {
+          step1: '.dev.vars 파일 생성',
+          step2: 'GEMINI_API_KEY=your_api_key_here 추가',
+          step3: '서비스 재시작: pm2 restart webapp'
+        }
+      },
+      503
+    )
+  }
+  
+  // GENS용 llmCall 어댑터
+  const llmCall = async ({ system, user, json }: any) => {
+    if (json) {
+      // JSON 출력 요청
+      const prompt = `${system}\n\n${user}\n\n출력은 반드시 JSON만 출력하라. 다른 텍스트 금지.`
+      const result = await callGemini(c.env, prompt)
+      return result
+    } else {
+      // 일반 텍스트
+      const result = await callGeminiWithSystem(c.env, system, user)
+      return result
+    }
+  }
+  
+  try {
+    const result = await GENS.runPipeline({
+      llmCall,
+      originalText,
+      mode,
+      format,
+      purpose: purpose === 'exam' ? 'exam' : 'preview'
+    })
+    
+    return c.json(
+      {
+        ok: true,
+        data: result,
+        meta: {
+          engine: 'gens-v3',
+          mode,
+          format,
+          purpose,
+          elapsedMs: Date.now() - start
+        }
+      },
+      200
+    )
+  } catch (err: any) {
+    console.error('[GENS Engine Error]', err)
+    return c.json(
+      {
+        ok: false,
+        error: {
+          code: 'GENS_ERROR',
+          message: err.message || 'GENS 엔진 오류',
+          details: err.stack
+        }
+      },
+      500
+    )
+  }
+})
+
 app.post('/api/engine', async (c) => {
   const start = Date.now()
   const db = c.env.DB
