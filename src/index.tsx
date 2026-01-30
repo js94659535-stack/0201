@@ -915,12 +915,31 @@ function buildGensNarrative(picked: string[], mode: 'brief'|'standard'|'detail',
     return (t + (punct || ".")).trim()
   }
 
-  // 1) 연결 + (동일 주어면 주어 생략/지시어 처리)
+  // ✅ 1) 연결어 스마트 삽입 (원문 연결어 보존 + 첫 문장 클리닝)
+  const hasLinker = (s: string): boolean => {
+    // 원문에 이미 연결어가 있는지 체크
+    return /^(그러므로|따라서|하지만|그러나|또한|더불어|한편|이와|나아가|아울러|즉|특히)\s/.test(s.trim())
+  }
+
+  const cleanLeadingLinker = (s: string): string => {
+    // 문장 서두의 연결어 제거 (첫 문장 전용)
+    return s.replace(/^(또한|더불어|한편|이와|나아가|아울러)\s+/, '').trim()
+  }
+
   let refined = picked.map((sent, i) => {
     const text = String(sent || "").trim()
     if (!text) return ""
 
-    if (i === 0) return normalizeEnding(ensurePunct(text))
+    // ✅ 첫 문장: 연결어 무조건 제거 + 정규화
+    if (i === 0) {
+      const cleaned = cleanLeadingLinker(text)
+      return normalizeEnding(ensurePunct(cleaned))
+    }
+
+    // ✅ 원문에 이미 연결어가 있으면 그대로 사용 (외부 삽입 생략)
+    if (hasLinker(text)) {
+      return normalizeEnding(ensurePunct(text))
+    }
 
     const prev = String(picked[i - 1] || "").trim()
     const prevSub = getSubject(prev)
@@ -934,8 +953,13 @@ function buildGensNarrative(picked: string[], mode: 'brief'|'standard'|'detail',
       const withoutSubject = text.replace(/^(.{1,40}?(은|는|이|가))\s+/, "")
       return normalizeEnding(ensurePunct(`${pick(linkersSame)} ${withoutSubject}`.trim()))
     } else {
-      // 다른 주어: 연결어만
-      return normalizeEnding(ensurePunct(`${pick(linkersDiff)} ${text}`.trim()))
+      // 다른 주어: 연결어만 (단, 너무 짧으면 생략)
+      const needsLinker = text.length > 15 // 너무 짧은 문장은 연결어 생략
+      if (needsLinker) {
+        return normalizeEnding(ensurePunct(`${pick(linkersDiff)} ${text}`.trim()))
+      } else {
+        return normalizeEnding(ensurePunct(text))
+      }
     }
   }).filter(Boolean)
 
@@ -943,6 +967,14 @@ function buildGensNarrative(picked: string[], mode: 'brief'|'standard'|'detail',
   const lenNoSpace = (s: string) => String(s || "").replace(/\s+/g, "").length
 
   let finalSummary = refined.join(" ")
+  
+  // ✅ 2-1) 연결어 중복 제거 (최종 클리닝)
+  // 예: "또한 또한" → "또한", "한편 또한" → "또한"
+  finalSummary = finalSummary
+    .replace(/\s*(또한|더불어|한편|이와|나아가|아울러)\s+(또한|더불어|한편|이와|나아가|아울러)\s+/g, ' $2 ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+  
   let ratio = (lenNoSpace(finalSummary) / baseLen) * 100
 
   // ✅ 너무 길면 pop (길이 재계산 필수)
