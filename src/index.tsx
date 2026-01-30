@@ -318,21 +318,63 @@ function mustHave3Parts(original: string, out: string) {
 function polishKorean(out: string) {
   let s = (out || '').trim()
 
-  // 흔한 깨짐 복원
+  // ✅ 1. 흔한 깨짐 복원
   s = s.replace(/모\s+든/g, '모든')
   s = s.replace(/기\s+회/g, '기회')
   s = s.replace(/이\s+루어지는/g, '이루어지는')
   s = s.replace(/루어지는/g, '이루어지는')
   s = s.replace(/생태계물/g, '자연물')
-  s = s.replace(/놀은\s+는/g, '놀이는')  // ✅ "놀은 는" → "놀이는"
-  s = s.replace(/형성은\s+는/g, '형성은')  // ✅ "형성은 는" → "형성은"
+  s = s.replace(/놀은\s+는/g, '놀이는')
+  s = s.replace(/형성은\s+는/g, '형성은')
+  s = s.replace(/특정\s+공간\s+인/g, '특정 공간인')  // "특정 공간 인" → "특정 공간인"
 
-  // "입니다. 이는 ~입니다." 파편 정리
+  // ✅ 2. 중복 단어 제거
+  s = s.replace(/(\S+)\s+\1/g, '$1')  // "활동 활동은" → "활동은"
+
+  // ✅ 3. 조사 교정 (잘못된 조사 패턴 교정)
+  // "요소을" → "요소를", "공간을" → "공간을" (받침 여부에 맞게)
+  s = s.replace(/([가-힣])을\b/g, (match, char) => {
+    // 받침 체크
+    const code = char.charCodeAt(0)
+    if (code >= 0xAC00 && code <= 0xD7A3) {
+      const hasJongsung = (code - 0xAC00) % 28 !== 0
+      return hasJongsung ? char + '을' : char + '를'
+    }
+    return match
+  })
+
+  // ✅ 4. 정의 중복 제거 (같은 정의가 반복되면 첫 번째만 유지)
+  // 예: "숲 체험 활동은 [...]. 숲 체험 활동은 [...]." → 첫 문장만 유지
+  const sentences = s.split(/(?<=다\.)\s+/)  // 문장 분리
+  const seen = new Set<string>()
+  const uniqueSentences = []
+  
+  for (const sent of sentences) {
+    // 정의 패턴 추출 ("~은 ~이다", "~는 ~이다")
+    const defMatch = sent.match(/^([^은는]+[은는])\s+(.+)/)
+    if (defMatch) {
+      const subject = defMatch[1]  // "숲 체험 활동은"
+      if (seen.has(subject)) {
+        // 이미 같은 주어의 정의가 나왔으면 스킵
+        continue
+      }
+      seen.add(subject)
+    }
+    uniqueSentences.push(sent)
+  }
+  
+  s = uniqueSentences.join(' ')
+
+  // ✅ 5. 긴 문장 자동 분절 제거 (로컬 엔진에서는 오히려 부작용 발생)
+  // Gemini API 사용 시에만 적절히 분절됨
+  // 로컬 엔진은 추출형이므로 문장 분절 불필요
+
+  // ✅ 6. "입니다. 이는 ~입니다." 파편 정리
   s = s.replace(/입니다\.\s*이는\s+/g, '이다. ')
   s = s.replace(/입니다\.\s*또한\s+/g, '이다. 또한 ')
   s = s.replace(/입니다\.\s*즉\s+/g, '이다. 즉 ')
 
-  // 마침표/쉼표 정규화
+  // ✅ 7. 마침표/쉼표 정규화
   s = s.replace(/\s*\.\s*/g, '. ')
   s = s.replace(/\s*,\s*/g, ', ')
   s = s.replace(/\s*;\s*/g, '; ')
