@@ -642,6 +642,88 @@ function checkCompression(original: string, summary: string, mode: 'brief'|'stan
 }
 
 // ========================================
+// 📦 BLOCK 3-A: 문장 연결 로직 (refineNarrative 통합)
+// ========================================
+/**
+ * 문장 주어를 추출합니다 (첫 조사 앞까지)
+ */
+function extractSubject(sentence: string): string {
+  const match = sentence.match(/^([가-힣\s]+?)(은|는|이|가|을|를|에|의|도|만|부터|까지|와|과|으로|로)\s/)
+  return match ? match[1].trim() : ''
+}
+
+/**
+ * 두 문장의 주어가 동일하거나 유사한지 판단합니다
+ */
+function hasSameSubject(s1: string, s2: string): boolean {
+  const subj1 = extractSubject(s1)
+  const subj2 = extractSubject(s2)
+  if (!subj1 || !subj2) return false
+  
+  // 완전 일치
+  if (subj1 === subj2) return true
+  
+  // 부분 일치 (예: "숲 체험" vs "체험")
+  if (subj1.length >= 3 && subj2.length >= 3) {
+    return subj1.includes(subj2) || subj2.includes(subj1)
+  }
+  
+  return false
+}
+
+/**
+ * 문장에서 주어+조사를 제거합니다
+ */
+function removeSubject(sentence: string): string {
+  return sentence.replace(/^([가-힣\s]+?)(은|는|이|가)\s+/, '').trim()
+}
+
+/**
+ * 학술적 시제를 정규화합니다 (이다/하였다 통일)
+ */
+function normalizeAcademicTense(text: string): string {
+  let s = text
+  
+  // 현재형으로 통일 (과거형 → 현재형)
+  s = s.replace(/하였다/g, '한다')
+  s = s.replace(/되었다/g, '된다')
+  s = s.replace(/이었다/g, '이다')
+  
+  // 종결어미 통일
+  s = s.replace(/\s*것입니다\./g, ' 것이다.')
+  s = s.replace(/\s*것이었다\./g, ' 것이다.')
+  
+  return s
+}
+
+/**
+ * 문장 연결 로직: 주어가 동일하면 연결어를 삽입하고 중복 주어를 제거합니다
+ */
+function connectSentences(sentences: string[]): string {
+  if (sentences.length === 0) return ''
+  if (sentences.length === 1) return sentences[0]
+  
+  const result: string[] = []
+  result.push(sentences[0])
+  
+  for (let i = 1; i < sentences.length; i++) {
+    const prev = sentences[i - 1]
+    const curr = sentences[i]
+    
+    if (hasSameSubject(prev, curr)) {
+      // 주어가 같으면 연결어 삽입 + 중복 주어 제거
+      const withoutSubject = removeSubject(curr)
+      result.push(`또한 ${withoutSubject}`)
+    } else {
+      // 주어가 다르면 새 문장 시작
+      result.push(curr)
+    }
+  }
+  
+  return result.join(' ')
+}
+
+// ========================================
 // 📦 BLOCK 3: 서술형(narrative) 요약 생성 - v2 Revised
 // ========================================
 // ✅ MindStory Summary Engine v2: 압축률 게이트 + LLM 호출 최소화 + 허구 방지
@@ -1104,6 +1186,13 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
     // ✅ 단락 구분: \n\n으로 명확히 분리
     summary = paragraphs.join('\n\n')
     
+    // ✅ 문장 연결 로직 적용 (주어 비교 + 연결어 삽입)
+    const sentenceArray = summary.split(/(?<=다\.)\s+/).filter(s => s.trim().length > 0)
+    summary = connectSentences(sentenceArray)
+    
+    // ✅ 학술적 시제 정규화 (이다/하였다 통일)
+    summary = normalizeAcademicTense(summary)
+    
     // ✅ 압축률 체크 및 보정 (공백 제외 글자 수 기준)
     const summaryLen = charLenNoSpace(summary)
     const compressionRatio = (summaryLen / originalLength) * 100
@@ -1159,6 +1248,13 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
     if (i === topClusters.length - 1) return `마지막으로 ${sent.clean}${citStr}.`
     return `또한 ${sent.clean}${citStr}.`
   }).join(' ')
+  
+  // ✅ 문장 연결 로직 적용 (detail 모드)
+  const detailSentenceArray = summaryResult.split(/(?<=다\.)\s+/).filter(s => s.trim().length > 0)
+  summaryResult = connectSentences(detailSentenceArray)
+  
+  // ✅ 학술적 시제 정규화
+  summaryResult = normalizeAcademicTense(summaryResult)
   
   // ✅ 압축률 게이트 적용 (공백 제외 글자 수 기준)
   const summaryLen = charLenNoSpace(summaryResult)
