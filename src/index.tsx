@@ -1759,6 +1759,283 @@ function normalizeToRatioRange(originalText: string, summaryText: string, mode: 
 }
 
 // ========================================
+// 📦 GENS GOLD STANDARD SUMMARY LOGIC (V1.0) - FINAL
+// ========================================
+/**
+ * GENS Gold Standard Summary Logic (V1.0)
+ * 목적:
+ * - "문자수 자르기"가 아니라 '의미 재구성(생성형 요약)'이 나오도록
+ * - [전처리 → 요약 생성 → 품질검사(자가진단/재시도)]를 고정 파이프라인화
+ * - 간단/표준/상세 3모드 각각 "역할"과 "압축률"을 강제
+ */
+
+const GENS_GOLD_CONFIG = {
+  MODES: {
+    BRIEF: {
+      label: '간단',
+      ratio: { min: 0.10, max: 0.15 },
+      roleMust: ['연구 목적', '방법 개요', '핵심 결론'],
+      roleMustNot: ['세부 뇌영역 과다열거(나열)'],
+      avoidTokens: ['- vii -', '- viii -', '- ix -', 'vii', 'viii', 'ix'],
+      brainPolicy: 'MINIMAL', // BRIEF는 뇌영역 나열 금지(필요하면 "전전두엽" 수준 1회만)
+    },
+    STANDARD: {
+      label: '표준',
+      ratio: { min: 0.25, max: 0.30 },
+      roleMust: ['연구 목적', '연구 설계', '주요 결과', '해석 및 시사점'],
+      roleMustNot: [],
+      avoidTokens: ['- vii -', '- viii -', '- ix -'],
+      brainPolicy: 'CONTROLLED', // 핵심만(그룹별 1~2개 영역 언급 가능)
+    },
+    DETAIL: {
+      label: '상세',
+      ratio: { min: 0.45, max: 0.55 },
+      roleMust: ['연구 목적', '연구 참여자/집단', '과제 구성', '측정/분석도구', '주요 결과', '교육적 의의'],
+      roleMustNot: [],
+      avoidTokens: ['- vii -', '- viii -', '- ix -'],
+      brainPolicy: 'ALLOWED', // 영역 포함 가능(단, "나열"이 아니라 "의미 연결"로)
+    }
+  },
+
+  QC: {
+    ratioMetric: 'chars_with_spaces',
+    requireConnectors: true,
+    maxFragmentRate: 0.18,
+    maxNgramOverlap: 0.45,
+    maxRetries: 2
+  }
+} as const
+
+function ngramOverlapRatio(original: string, summary: string, n = 3): number {
+  const norm = (s: string) => (s || '').replace(/\s+/g, ' ').replace(/["""']/g, '').trim()
+  const a = norm(original)
+  const b = norm(summary)
+  if (!a || !b) return 0
+
+  const grams = (s: string) => {
+    const tokens = s.split(' ').filter(Boolean)
+    const set = new Set<string>()
+    for (let i = 0; i <= tokens.length - n; i++) {
+      set.add(tokens.slice(i, i + n).join(' '))
+    }
+    return set
+  }
+
+  const A = grams(a)
+  const B = grams(b)
+  if (B.size === 0) return 0
+
+  let hit = 0
+  for (const g of B) if (A.has(g)) hit++
+  return hit / B.size
+}
+
+function fragmentRate(summary: string): number {
+  const s = (summary || '').trim()
+  if (!s) return 1
+  const sentences = s.split(/(?<=[.!?。])\s+|\n+/).filter(Boolean)
+  if (sentences.length === 0) return 1
+  const short = sentences.filter(x => x.replace(/\s+/g, '').length < 25).length
+  return short / sentences.length
+}
+
+function hasConnector(summary: string): boolean {
+  return /(따라서|또한|반면|이에 따라|그러나|특히|즉|때문에)/.test(summary)
+}
+
+function containsNoiseTokens(summary: string, avoidTokens: string[]): boolean {
+  const s = String(summary || '')
+  if (/-\s*[ivxlcdm]+\s*-/i.test(s)) return true
+  for (const tok of (avoidTokens || [])) {
+    if (tok && s.includes(tok)) return true
+  }
+  return false
+}
+
+function brainNameOveruse(summary: string): boolean {
+  const hits = summary.match(/\b(VLPFC|DLPFC|OFC|FPC)\b/g)
+  return hits ? hits.length >= 4 : false
+}
+
+function goldCheckRatio(cleanedText: string, summary: string, modeKey: string) {
+  const mode = (GENS_GOLD_CONFIG.MODES as any)[modeKey]
+  const o = (cleanedText || '').length
+  const s = (summary || '').length
+  const r = o ? (s / o) : 0
+  return {
+    ok: r >= mode.ratio.min && r <= mode.ratio.max,
+    ratio: r,
+    sChars: s,
+    oChars: o,
+    min: mode.ratio.min,
+    max: mode.ratio.max
+  }
+}
+
+function goldQualityCheck(cleanedText: string, summary: string, modeKey: string) {
+  const mode = (GENS_GOLD_CONFIG.MODES as any)[modeKey]
+
+  const ratioRes = goldCheckRatio(cleanedText, summary, modeKey)
+  const noise = containsNoiseTokens(summary, mode.avoidTokens)
+  const conn = !GENS_GOLD_CONFIG.QC.requireConnectors || hasConnector(summary)
+  const frag = fragmentRate(summary)
+  const overlap = ngramOverlapRatio(cleanedText, summary, 3)
+  const brainOver = (mode.brainPolicy === 'MINIMAL') ? brainNameOveruse(summary) : false
+
+  const errors: string[] = []
+  if (!ratioRes.ok) errors.push(`RATIO_FAIL: ${Math.round(ratioRes.ratio * 100)}% (목표 ${Math.round(ratioRes.min*100)}~${Math.round(ratioRes.max*100)}%)`)
+  if (noise) errors.push('NOISE_FAIL: 페이지표기/찌꺼기 텍스트 포함')
+  if (!conn) errors.push('COHESION_FAIL: 논리 연결어 부족')
+  if (frag > GENS_GOLD_CONFIG.QC.maxFragmentRate) errors.push(`FRAGMENT_FAIL: 문장 파편 비율 ${Math.round(frag*100)}%`)
+  if (overlap > GENS_GOLD_CONFIG.QC.maxNgramOverlap) errors.push(`COPY_FAIL: 원문 3-gram 중복 ${Math.round(overlap*100)}%`)
+  if (brainOver) errors.push('BRAIN_FAIL: BRIEF 모드에서 뇌영역 과다 나열')
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    metrics: { ...ratioRes, fragRate: frag, overlap3gram: overlap }
+  }
+}
+
+function buildGoldSystemPrompt(modeKey: string): string {
+  const mode = (GENS_GOLD_CONFIG.MODES as any)[modeKey]
+  const ratio = mode.ratio
+
+  const brainRule =
+    mode.brainPolicy === 'MINIMAL'
+      ? `- 뇌 영역(VLPFC/DLPFC/OFC/FPC 등)의 "나열"을 금지한다. 꼭 필요하면 "전전두엽 활성" 수준의 일반 표현을 1회만 허용한다.`
+      : mode.brainPolicy === 'CONTROLLED'
+        ? `- 뇌 영역 언급은 "핵심 의미"를 설명하는 범위에서만 허용한다(그룹/비교당 1~2개 이내). 나열 금지.`
+        : `- 뇌 영역 언급 가능하나, 반드시 "왜 그 영역이 중요한지"를 인지과정/동기와 연결해 서술한다. 나열 금지.`
+
+  return `
+# GENS_SUMMARY_ENGINE (Gold Standard)
+
+너는 원문을 '의미 중심으로 재구성(생성형 요약)'하는 요약 엔진이다.
+절대 문장 일부를 잘라 붙이는 방식(발췌/절단/중간절단)을 하지 마라.
+
+[모드]
+- 현재 모드: ${mode.label} (${modeKey})
+- 압축률(공백 포함 글자수 기준): 원문 대비 ${Math.round(ratio.min * 100)}~${Math.round(ratio.max * 100)}%를 만족해야 한다.
+- 길이를 맞추기 위해 문장을 중간에서 끊거나 단어를 잘라내면 실패(Fail)다. 대신 문장 수/정보량을 조절하라.
+
+[역할(필수 포함)]
+${mode.roleMust.map((x: string) => `- 반드시 포함: ${x}`).join('\n')}
+
+[금지/주의]
+- 페이지 표기/잡문(- vii - 같은 표식), 깨진 문장, 오타 조각을 결과에 절대 포함하지 마라.
+- 원문 문장 복사/붙여넣기 비율을 낮춰라(같은 3~6단어 연속 반복이 과하면 실패).
+${brainRule}
+
+[작성 스타일]
+- 학술적 평서문, 논리 연결어(또한/따라서/이에 따라/반면 등) 최소 1회 포함.
+- 문장 파편(짧게 끊긴 조각, 쉼표 난사) 금지.
+- 목록/나열이 아니라 '연구 흐름(목적→방법→결과→의의)'으로 1~3개 문단 구성.
+
+[출력 포맷]
+- 본문 요약만 출력한다. (머리말/번호/체크리스트는 출력하지 않는다)
+`.trim()
+}
+
+function extractGoldAnchors(cleaned: string): string[] {
+  const anchors: string[] = []
+
+  const patterns = [
+    { k: '목적', re: /(주 목적|목적|알아보는 데|본 연구는).*?[.。\n]/ },
+    { k: '연구문제', re: /(연구 문제|첫째,|둘째,).*?[.。\n]/ },
+    { k: '대상', re: /(학생들? \d+명|연구 참여자|참여자로).*?[.。\n]/ },
+    { k: '과제구성', re: /(개인 과제|단체 과제|단순 과제|창의성 과제).*?[.。\n]/ },
+    { k: '측정/분석', re: /(fNIRS|NIRSIT|SPSS|분석하였다).*?[.。\n]/ },
+    { k: '결과', re: /(결과는 다음과 같다|유의미한 활성이|더 높은 뇌 활성도).*?[.。\n]/ },
+    { k: '교육적 의의', re: /(교육적 의의|시사|필요하며).*?[.。\n]/ }
+  ]
+
+  for (const p of patterns) {
+    const m = cleaned.match(p.re)
+    if (m && m[0]) anchors.push(`[${p.k}] ${m[0].trim()}`)
+  }
+
+  return anchors.slice(0, 7)
+}
+
+function buildGoldUserPrompt(cleanedText: string, modeKey: string, anchors: string[]): string {
+  const mode = (GENS_GOLD_CONFIG.MODES as any)[modeKey]
+  const originalChars = (cleanedText || '').length
+  const minChars = Math.floor(originalChars * mode.ratio.min)
+  const maxChars = Math.ceil(originalChars * mode.ratio.max)
+
+  return `
+[원문]
+${cleanedText}
+
+[앵커(반드시 반영할 핵심 힌트)]
+${anchors.length ? anchors.map(a => `- ${a}`).join('\n') : '- (없음)'}
+
+[길이 목표]
+- 공백 포함 글자수: ${minChars} ~ ${maxChars} 자
+
+[출력 요청]
+- ${mode.label} 서술형 요약 1개를 생성하라.
+- 문장을 중간에서 자르지 말고, 의미를 재구성하여 자연스러운 문단으로 작성하라.
+`.trim()
+}
+
+async function generateGoldSummary(
+  rawText: string, 
+  modeKey: string, 
+  callLLM: (params: { system: string; user: string; temperature: number }) => Promise<any>
+) {
+  const cleaned = cleanAcademicNoise(rawText)
+  const anchors = extractGoldAnchors(cleaned)
+
+  let attempt = 0
+  let last = { summary: '', qc: null as any }
+
+  while (attempt <= GENS_GOLD_CONFIG.QC.maxRetries) {
+    const system = buildGoldSystemPrompt(modeKey)
+    const user = buildGoldUserPrompt(cleaned, modeKey, anchors)
+
+    const res = await callLLM({
+      system,
+      user,
+      temperature: attempt === 0 ? 0.2 : 0.15
+    })
+
+    const summary = (res?.text || res || '').trim()
+    const qc = goldQualityCheck(cleaned, summary, modeKey)
+
+    last = { summary, qc }
+
+    if (qc.ok) return last
+
+    attempt++
+    if (attempt <= GENS_GOLD_CONFIG.QC.maxRetries) {
+      const fixNote = `
+[이전 출력은 FAIL. 다음을 반드시 수정하라]
+- 실패 사유: ${qc.errors.join(' / ')}
+- 길이 목표(비율)는 유지하되, 의미 중심으로 재구성하여 다시 작성하라.
+- 문장을 중간에서 자르지 마라.
+      `.trim()
+      anchors.unshift(fixNote)
+    }
+  }
+
+  return last
+}
+
+async function runGoldSummaries(
+  rawText: string, 
+  callLLM: (params: { system: string; user: string; temperature: number }) => Promise<any>
+) {
+  const modes = ['BRIEF', 'STANDARD', 'DETAIL']
+  const out: any = {}
+  for (const m of modes) {
+    out[m] = await generateGoldSummary(rawText, m, callLLM)
+  }
+  return out
+}
+
+// ========================================
 // 📦 GENS ENGINE v3 (Token-Saving + Anti-Hallucination)
 // ========================================
 /**
