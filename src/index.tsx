@@ -417,14 +417,17 @@ function classifyRole(sentence: string): Role | null {
   return 'activity'
 }
 
-// ✅ 패치 5: 요약율 검증 함수
+// ✅ 패치 5: 요약율 검증 함수 (공백 제외 글자 수 기준)
 function checkCompression(original: string, summary: string, mode: 'brief'|'standard'|'detail'): {
   ratio: number;
   passed: boolean;
   targetMin: number;
   targetMax: number;
 } {
-  const ratio = (summary.length / original.length) * 100
+  // ✅ 공백 제외 길이 기준
+  const originalLen = charLenNoSpace(original)
+  const summaryLen = charLenNoSpace(summary)
+  const ratio = originalLen > 0 ? (summaryLen / originalLen) * 100 : 0
   
   const targetMin = mode === 'brief' ? 10 : mode === 'standard' ? 25 : 45
   const targetMax = mode === 'brief' ? 15 : mode === 'standard' ? 30 : 55
@@ -442,8 +445,8 @@ function checkCompression(original: string, summary: string, mode: 'brief'|'stan
 // ========================================
 // ✅ MindStory Summary Engine v2: 압축률 게이트 + LLM 호출 최소화 + 허구 방지
 function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'|'standard'|'detail'): string {
-  // ✅ 원문 길이 계산 (압축률 게이트용)
-  const originalLength = fullText.length
+  // ✅ 원문 길이 계산 (공백 제외 글자 수 기준)
+  const originalLength = charLenNoSpace(fullText)
   
   // 1. 문장 전처리 및 인용 추출
   const cleanedSentences: Array<{ 
@@ -623,16 +626,15 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
       summary = `${cleanParts[0]}하며 ${cleanParts[1]}. ${cleanParts[2]}${citStr}.`
     }
     
-    // ✅ 압축률 체크 및 보정
-    const compressionRatio = (summary.length / originalLength) * 100
+    // ✅ 압축률 체크 및 보정 (공백 제외 글자 수 기준)
+    const summaryLen = charLenNoSpace(summary)
+    const compressionRatio = (summaryLen / originalLength) * 100
     if (compressionRatio > 15) {
       // brief가 너무 길면 → 첫 60자 + 인용
       let firstPart = summary.slice(0, 60)
-      // 잘린 부분에 괄호가 있으면 제거
-      while (firstPart.includes('(')) {
-        firstPart = firstPart.replace(/\([^)]*\)/g, '')
-      }
-      summary = firstPart.trim() + (citStr ? ` ${citStr}.` : '.')
+      // 잘린 부분에 괄호가 있으면 제거 (1회만)
+      firstPart = firstPart.replace(/\([^)]*\)/g, '').trim()
+      summary = firstPart + (citStr ? ` ${citStr}.` : '.')
     }
     
     // ✅ 패치 7: 검증 로그 (메타 정보)
@@ -646,7 +648,7 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
       console.log('[Brief Summary Meta]', {
         rolesFilled,
         sentenceCount: parts.length,
-        compressionRatio: (summary.length / originalLength * 100).toFixed(1) + '%',
+        compressionRatio: compressionRatio.toFixed(1) + '%',
         passed: compressionRatio <= 15
       })
     }
@@ -899,8 +901,9 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
     // ✅ 단락 구분: \n\n으로 명확히 분리
     summary = paragraphs.join('\n\n')
     
-    // ✅ 압축률 체크 및 보정
-    const compressionRatio = (summary.length / originalLength) * 100
+    // ✅ 압축률 체크 및 보정 (공백 제외 글자 수 기준)
+    const summaryLen = charLenNoSpace(summary)
+    const compressionRatio = (summaryLen / originalLength) * 100
     if (compressionRatio > 30) {
       // standard가 너무 길면 → 문장 축소 (단, 최소 3문장 유지)
       if (paragraphs.length > 3) {
@@ -928,7 +931,7 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
         rolesFilled,
         sentenceCount: merged.length,
         paragraphCount: paragraphs.length,
-        compressionRatio: (summary.length / originalLength * 100).toFixed(1) + '%',
+        compressionRatio: compressionRatio.toFixed(1) + '%',
         passed: compressionRatio >= 25 && compressionRatio <= 30
       })
     }
@@ -952,9 +955,9 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
     return `또한 ${sent.clean}${citStr}.`
   }).join(' ')
   
-  // ✅ 압축률 게이트 적용
-  const summaryLength = summaryResult.length
-  const compressionRatio = (summaryLength / originalLength) * 100
+  // ✅ 압축률 게이트 적용 (공백 제외 글자 수 기준)
+  const summaryLen = charLenNoSpace(summaryResult)
+  const compressionRatio = (summaryLen / originalLength) * 100
   
   // 목표 압축률
   const targetMin = mode === 'brief' ? 10 : mode === 'standard' ? 25 : 45
@@ -983,7 +986,8 @@ function buildNarrativeSummary(picked: string[], fullText: string, mode: 'brief'
 function localSummary(text: string, mode: 'brief'|'standard'|'detail', viewType: 'narrative'|'structured'|'mindmap'|'selftest') {
   const sents = splitSentences(text)
   
-  // ✅ 패치 1: 문장 개수 고정 최소치
+  // ✅ 주의: MIN_SENTENCES/MAX_SENTENCES는 "형태 안정화"용 (보조 규칙)
+  // ✅ 요약률 계산/검증과는 무관하며, 공백 제외 글자 수만이 유일한 기준
   const MIN_SENTENCES = {
     brief: 1,
     standard: 3,
@@ -996,7 +1000,7 @@ function localSummary(text: string, mode: 'brief'|'standard'|'detail', viewType:
     detail: 7
   }
   
-  // 재료용 문장 추출 (기존 로직 유지, 나중에 역할 슬롯으로 대체)
+  // 재료용 문장 추출 (기존 로직 유지)
   const targetCount =
     mode === 'brief' ? clamp(Math.round(sents.length * 0.18), 2, 4)
     : mode === 'standard' ? clamp(Math.round(sents.length * 0.28), 4, 8)
@@ -1225,10 +1229,11 @@ function extractJsonLoose(s: string) {
   return JSON.parse(candidate)
 }
 
-// ✅ V2: 압축률 검증 게이트
+// ✅ V2: 압축률 검증 게이트 (공백 제외 글자 수 기준)
 function validateCompressionRatio(originalText: string, summaryText: string, mode: 'brief'|'standard'|'detail'): { valid: boolean; ratio: number; expected: string } {
-  const origLen = originalText.length
-  const summLen = summaryText.length
+  // ✅ 공백 제외 길이 기준
+  const origLen = charLenNoSpace(originalText)
+  const summLen = charLenNoSpace(summaryText)
   const ratio = origLen > 0 ? summLen / origLen : 0
   
   let minRatio = 0, maxRatio = 1
