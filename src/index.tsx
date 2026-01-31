@@ -699,6 +699,335 @@ function enforceStructuredHierarchyV2(all: {
   return all
 }
 
+/* =========================================================
+   ENGINE PATCH V4 (FINAL, one-block)
+   목표:
+   - 서술형/구조화 모두 "진짜 요약" 연산 수행
+   - detail 1회 생성 → standard/brief는 서버가 부분집합으로 계산(계층 포함 보장)
+   - JSON 파싱 실패/깨진 출력 차단: 서버에서 repair + 1회 재시도
+   - 서술형은 구조화(Sections)를 기반으로 재서술(일관성)
+   ========================================================= */
+
+type SummaryLevelV4 = 'brief' | 'standard' | 'detail'
+type SummaryViewTypeV4 = 'narrative' | 'structured' | 'mindmap' | 'selftest'
+
+const LEVEL_BUDGET = {
+  narrative: { brief: 4, standard: 6, detail: 9 }, // 문장 수 목표(최대)
+  structured: { brief: 3, standard: 5, detail: 8 }, // section 수 목표(최대)
+  mindmap: { brief: 4, standard: 6, detail: 10 }, // nodes 수 목표
+  selftest: { brief: 3, standard: 5, detail: 8 } // 문항 수
+} as const
+
+function normalizeLevelV4(v?: string): SummaryLevelV4 {
+  const t = String(v || '').trim().toLowerCase()
+  if (t === 'brief' || t === 'standard' || t === 'detail') return t
+  if (t === 'simple') return 'brief'
+  return 'standard'
+}
+function normalizeViewTypeV4(v?: string): SummaryViewTypeV4 {
+  const t = String(v || '').trim().toLowerCase()
+  if (t === 'narrative' || t === 'structured' || t === 'mindmap' || t === 'selftest') return t
+  if (t === 'mind-map') return 'mindmap'
+  return 'narrative'
+}
+
+// JSON 파싱/복구 (깨진 출력 차단)
+function extractJsonCandidate(s: string) {
+  const t = String(s || '').trim()
+  const a = t.indexOf('{')
+  const b = t.lastIndexOf('}')
+  if (a >= 0 && b > a) return t.slice(a, b + 1)
+  return t
+}
+function safeJsonParse(s: string) {
+  const raw = extractJsonCandidate(s)
+  try {
+    return JSON.parse(raw)
+  } catch {}
+  // 간단 repair: trailing commas 제거
+  const repaired = raw
+    .replace(/,\s*}/g, '}')
+    .replace(/,\s*]/g, ']')
+    .replace(/\u0000/g, '')
+  try {
+    return JSON.parse(repaired)
+  } catch {}
+  return null
+}
+
+// 스키마(공통 뼈대) 정의
+type StructuredSectionV4 = {
+  id: string
+  title: string
+  keywords: string[]
+  lvl25: string[]
+  explain: string
+}
+type StructuredDocV4 = {
+  anchor: string
+  meta?: Record<string, any>
+  hierarchy?: { big?: string; mid?: string; small?: string; subtitles?: string[] }
+  sections: StructuredSectionV4[]
+  glossary: Array<{ term: string; def: string }>
+  links?: Array<{ from: string; to: string; rel: string }>
+}
+type NarrativeDocV4 = {
+  title: string
+  summary: string
+  keyPoints: string[]
+  examHints: string[]
+}
+type MindmapDocV4 = {
+  center: { id: string; label: string; type: 'root'; note?: string }
+  nodes: Array<{ id: string; label: string; type: 'claim'|'evidence'|'detail'|'term'|'section'; note?: string }>
+  edges: Array<{ from: string; to: string; rel: string }>
+}
+type SelftestDocV4 = {
+  questions: Array<
+    | { id: string; type: 'reorder'; prompt: string; choices: string[]; answer: number[] }
+    | { id: string; type: 'blank'; prompt: string; answer: string }
+    | { id: string; type: 'multiple_choice'; prompt: string; choices: string[]; answer: number }
+  >
+}
+
+// "detail 1회 생성" 프롬프트들
+function buildDetailStructuredPrompt(text: string) {
+  const base = charLenNoSpace(text)
+  return [
+    `당신은 초·중·고 학생의 '학습 단위' 기준으로 내용을 구조화하는 전문가입니다.`,
+    `절대 규칙:`,
+    `- 원문에 없는 내용 생성 금지(추측/과장 금지)`,
+    `- 문자 단순 자르기 금지, 의미 단위로 재구성`,
+    `- 반드시 JSON만 출력(설명문/머리말/꼬리말/코드블록 금지)`,
+    ``,
+    `구조화의 뼈대(반드시 포함):`,
+    `- anchor: 핵심 주장 1문장`,
+    `- sections: 학습 단위 조목화, 각 section은 keywords/lvl25/explain 포함`,
+    `- glossary: term/def로 구성`,
+    `- links: anchor(A0) -> section 연결`,
+    ``,
+    `출력 스키마:`,
+    `{`,
+    `  "anchor": "핵심 주장 1문장",`,
+    `  "hierarchy": { "big": "대단원", "mid": "중단원", "small": "소단원", "subtitles": ["소제목"] },`,
+    `  "sections": [`,
+    `    { "id": "S1", "title": "섹션 제목", "keywords": ["핵심어"], "lvl25": ["의미키워드"], "explain": "1~3문장 설명" }`,
+    `  ],`,
+    `  "glossary": [ { "term": "용어", "def": "정의" } ],`,
+    `  "links": [ { "from": "A0", "to": "S1", "rel": "covers" } ]`,
+    `}`,
+    ``,
+    `원문(공백제외 ${base}자):`,
+    text
+  ].join('\n')
+}
+
+function buildDetailNarrativeFromStructuredPrompt(text: string, structured: StructuredDocV4) {
+  const base = charLenNoSpace(text)
+  const anchor = structured?.anchor || ''
+  const sectionTitles = (structured?.sections || []).map(s => s.title).slice(0, 10)
+  return [
+    `당신은 초·중·고 학생의 시험/이해/기억을 위한 서술형 요약 전문가입니다.`,
+    `절대 규칙:`,
+    `- 원문에 없는 내용 생성 금지`,
+    `- 반드시 JSON만 출력(설명문/코드블록 금지)`,
+    `- 아래 "구조화 뼈대"를 벗어나지 말고, 그 내용을 자연스러운 문장으로 연결해 서술하세요.`,
+    ``,
+    `구조화 뼈대:`,
+    `- anchor: ${anchor}`,
+    `- sections: ${JSON.stringify(sectionTitles)}`,
+    ``,
+    `요구:`,
+    `- summary는 6~10문장(상세)`,
+    `- keyPoints 4~7개, examHints 2~4개`,
+    ``,
+    `출력 스키마:`,
+    `{`,
+    `  "title": "요약 제목",`,
+    `  "summary": "자연스러운 문장 요약(6~10문장)",`,
+    `  "keyPoints": ["핵심포인트"],`,
+    `  "examHints": ["시험포인트"]`,
+    `}`,
+    ``,
+    `원문(공백제외 ${base}자):`,
+    text
+  ].join('\n')
+}
+
+function buildDetailMindmapFromStructuredPrompt(structured: StructuredDocV4) {
+  const anchor = structured?.anchor || ''
+  const sections = (structured?.sections || []).map(s => ({ id: s.id, title: s.title, keywords: s.keywords.slice(0, 5) }))
+  const glossary = (structured?.glossary || []).slice(0, 20)
+  return [
+    `당신은 학습용 마인드맵 JSON을 만드는 전문가입니다.`,
+    `절대 규칙:`,
+    `- 반드시 JSON만 출력`,
+    `- 노드 id 중복/누락 금지, edge 참조 일관`,
+    `- 아래 구조화 정보를 그대로 바탕으로 구성(새 내용 생성 금지)`,
+    ``,
+    `구조화 입력:`,
+    `anchor: ${anchor}`,
+    `sections: ${JSON.stringify(sections)}`,
+    `glossary: ${JSON.stringify(glossary)}`,
+    ``,
+    `출력 스키마:`,
+    `{`,
+    `  "center": { "id": "C0", "label": "중심 주제", "type": "root", "note": "짧은 설명" },`,
+    `  "nodes": [`,
+    `    { "id": "S1", "label": "섹션", "type": "section", "note": "설명" },`,
+    `    { "id": "T1", "label": "용어", "type": "term", "note": "정의" }`,
+    `  ],`,
+    `  "edges": [ { "from": "C0", "to": "S1", "rel": "has" } ]`,
+    `}`,
+  ].join('\n')
+}
+
+function buildDetailSelftestFromStructuredPrompt(structured: StructuredDocV4) {
+  const anchor = structured?.anchor || ''
+  const sections = (structured?.sections || []).map(s => ({ id: s.id, title: s.title, keywords: s.keywords.slice(0, 6) }))
+  const glossary = (structured?.glossary || []).slice(0, 25)
+  return [
+    `당신은 초·중·고 학생용 셀프테스트를 만드는 전문가입니다.`,
+    `절대 규칙:`,
+    `- 반드시 JSON만 출력`,
+    `- 원문/구조화에 없는 내용 금지`,
+    `- 문항 id는 q1, q2... 고유`,
+    ``,
+    `구조화 입력:`,
+    `anchor: ${anchor}`,
+    `sections: ${JSON.stringify(sections)}`,
+    `glossary: ${JSON.stringify(glossary)}`,
+    ``,
+    `요구(상세):`,
+    `- 총 8문항`,
+    `- type은 reorder/blank/multiple_choice 섞기`,
+    ``,
+    `출력 스키마:`,
+    `{`,
+    `  "questions": [`,
+    `    { "id": "q1", "type": "multiple_choice", "prompt": "질문", "choices": ["a","b","c"], "answer": 1 },`,
+    `    { "id": "q2", "type": "blank", "prompt": "빈칸", "answer": "정답" },`,
+    `    { "id": "q3", "type": "reorder", "prompt": "순서", "choices": ["A","B","C"], "answer": [0,2,1] }`,
+    `  ]`,
+    `}`,
+  ].join('\n')
+}
+
+// 서버 다운샘플(부분집합)로 brief/standard 생성
+function downsampleStructured(detail: StructuredDocV4, level: SummaryLevelV4): StructuredDocV4 {
+  const maxSec = LEVEL_BUDGET.structured[level]
+  const sections = (detail.sections || []).slice(0, maxSec).map(s => ({
+    ...s,
+    keywords: (s.keywords || []).slice(0, level === 'brief' ? 4 : 6),
+    lvl25: (s.lvl25 || []).slice(0, level === 'brief' ? 2 : 3),
+    explain: String(s.explain || '').trim()
+  }))
+  const maxGloss = level === 'brief' ? 8 : level === 'standard' ? 14 : 20
+  const glossary = (detail.glossary || []).slice(0, maxGloss)
+
+  const keepIds = new Set(sections.map(s => s.id))
+  const links = (detail.links || []).filter(l => l.from === 'A0' && keepIds.has(l.to))
+
+  return {
+    ...detail,
+    sections,
+    glossary,
+    links
+  }
+}
+
+function downsampleMindmap(detail: MindmapDocV4, level: SummaryLevelV4): MindmapDocV4 {
+  const targetNodes = LEVEL_BUDGET.mindmap[level]
+  const nodes = (detail.nodes || []).slice(0, Math.max(0, targetNodes - 1))
+  const keep = new Set(['C0', ...nodes.map(n => n.id)])
+  const edges = (detail.edges || []).filter(e => keep.has(e.from) && keep.has(e.to))
+  return { ...detail, nodes, edges }
+}
+
+function downsampleSelftest(detail: SelftestDocV4, level: SummaryLevelV4): SelftestDocV4 {
+  const n = LEVEL_BUDGET.selftest[level]
+  return { questions: (detail.questions || []).slice(0, n) }
+}
+
+function downsampleNarrative(detail: NarrativeDocV4, level: SummaryLevelV4): NarrativeDocV4 {
+  const maxSent = LEVEL_BUDGET.narrative[level]
+  const sents = splitSentences(detail.summary || '')
+  const picked = sents.slice(0, maxSent)
+  const summary = picked.join(' ')
+  const keyPoints = (detail.keyPoints || []).slice(0, level === 'brief' ? 3 : 4)
+  const examHints = (detail.examHints || []).slice(0, level === 'brief' ? 2 : 3)
+  return { ...detail, summary, keyPoints, examHints }
+}
+
+// 모델 호출 함수 (JSON only, repair + 1회 재시도)
+async function callGeminiJsonV4(env: Bindings, prompt: string) {
+  const doCall = async () => {
+    const out = await callGeminiText(env, prompt)
+    return String(out || '')
+  }
+
+  // 1차
+  const raw1 = await doCall()
+  const j1 = safeJsonParse(raw1)
+  if (j1) return j1
+
+  // 2차 재시도
+  const raw2 = await doCall()
+  const j2 = safeJsonParse(raw2)
+  if (j2) return j2
+
+  throw new Error('MODEL_JSON_PARSE_FAILED')
+}
+
+// summarizeAllLevels: detail 생성 후 다운샘플
+async function summarizeAllLevelsV4(env: Bindings, text: string) {
+  // 1) structured detail
+  const structuredDetail = (await callGeminiJsonV4(env, buildDetailStructuredPrompt(text))) as StructuredDocV4
+  if (!structuredDetail?.anchor || !Array.isArray(structuredDetail.sections)) {
+    throw new Error('STRUCTURED_SCHEMA_INVALID')
+  }
+  structuredDetail.links = structuredDetail.links || structuredDetail.sections.map(s => ({ from: 'A0', to: s.id, rel: 'covers' }))
+
+  // 2) narrative detail (structured 기반)
+  const narrativeDetail = (await callGeminiJsonV4(env, buildDetailNarrativeFromStructuredPrompt(text, structuredDetail))) as NarrativeDocV4
+  if (!narrativeDetail?.summary) throw new Error('NARRATIVE_SCHEMA_INVALID')
+
+  // 3) mindmap detail (structured 기반)
+  const mindmapDetail = (await callGeminiJsonV4(env, buildDetailMindmapFromStructuredPrompt(structuredDetail))) as MindmapDocV4
+  if (!mindmapDetail?.center || !Array.isArray(mindmapDetail.nodes) || !Array.isArray(mindmapDetail.edges)) {
+    throw new Error('MINDMAP_SCHEMA_INVALID')
+  }
+  if (!mindmapDetail.center.id) mindmapDetail.center.id = 'C0'
+
+  // 4) selftest detail (structured 기반)
+  const selftestDetail = (await callGeminiJsonV4(env, buildDetailSelftestFromStructuredPrompt(structuredDetail))) as SelftestDocV4
+  if (!Array.isArray(selftestDetail.questions)) throw new Error('SELFTEST_SCHEMA_INVALID')
+
+  // 5) 서버 다운샘플로 계층 포함 보장
+  const structured = {
+    detail: structuredDetail,
+    standard: downsampleStructured(structuredDetail, 'standard'),
+    brief: downsampleStructured(structuredDetail, 'brief')
+  }
+  const narrative = {
+    detail: narrativeDetail,
+    standard: downsampleNarrative(narrativeDetail, 'standard'),
+    brief: downsampleNarrative(narrativeDetail, 'brief')
+  }
+  const mindmap = {
+    detail: mindmapDetail,
+    standard: downsampleMindmap(mindmapDetail, 'standard'),
+    brief: downsampleMindmap(mindmapDetail, 'brief')
+  }
+  const selftest = {
+    detail: selftestDetail,
+    standard: downsampleSelftest(selftestDetail, 'standard'),
+    brief: downsampleSelftest(selftestDetail, 'brief')
+  }
+
+  return { structured, narrative, mindmap, selftest }
+}
+
 // ========================================
 // 📦 Korean PDF 줄바꿈/단어쪼개짐 복구
 // ========================================
@@ -4089,109 +4418,62 @@ app.post('/api/engine', async (c) => {
   }
 
   // ----------------------------
-  // ✅ V3: JSON 기반 3단계 요약 시스템
+  // ✅ V4: ENGINE PATCH V4 (detail 1회 생성 + 서버 다운샘플)
   // ----------------------------
   const hasGemini = !!safeStr(c.env.GEMINI_API_KEY).trim()
   const useMock = safeStr(c.env.USE_MOCK).trim().toLowerCase() === 'true'
 
   if (kind === 'summary' && hasGemini && !useMock) {
     try {
-      // ✅ 1) 내부적으로는 3단계를 한 번에 생성 (summarizeWithJSON)
-      const summaryJSON = await summarizeWithJSON(c.env, text)
+      // ✅ 1) detail 1회 생성 (structured 기반으로 모든 뷰 생성)
+      const all = await summarizeAllLevelsV4(c.env, text)
       
-      // 3단계 narrative 추출
-      const briefNarrative = summaryJSON.brief
-      const standardNarrative = summaryJSON.standard
-      const detailNarrative = `**개념**\n${summaryJSON.detail.개념}\n\n**영향**\n${summaryJSON.detail.영향}\n\n**교육적 가치**\n${summaryJSON.detail['교육적 가치']}`
+      // ✅ 2) mode에 따라 해당하는 요약만 추출
+      const levelV4 = normalizeLevelV4(mode)
+      const viewV4 = normalizeViewTypeV4(viewType)
       
-      // ✅ 2) 3단계 structured/mindmap/selftest 생성
-      const briefStructured = narrativeToStructured(briefNarrative)
-      const standardStructured = narrativeToStructured(standardNarrative)
-      const detailStructured = narrativeToStructured(detailNarrative)
-      
-      const briefMindmap = narrativeToMindmap(briefNarrative)
-      const standardMindmap = narrativeToMindmap(standardNarrative)
-      const detailMindmap = narrativeToMindmap(detailNarrative)
-      
-      const briefSelftest = narrativeToSelftest(briefNarrative)
-      const standardSelftest = narrativeToSelftest(standardNarrative)
-      const detailSelftest = narrativeToSelftest(detailNarrative)
-      
-      // ✅ 3) Enforcer로 3단계 일관성 강제 (structured/mindmap/selftest)
-      const repaired = enforceHierarchyPack({
-        structured: { 
-          brief: briefStructured, 
-          standard: standardStructured, 
-          detail: detailStructured 
-        },
-        mindmap: { 
-          brief: briefMindmap,
-          standard: standardMindmap,
-          detail: detailMindmap
-        },
-        selftest: {
-          brief: briefSelftest,
-          standard: standardSelftest,
-          detail: detailSelftest
-        }
-      })
-      
-      // ✅ 4) mode에 따라 해당하는 요약만 추출
-      let narrative: string
       let derivedData: any
-      
-      if (mode === 'brief') {
-        narrative = briefNarrative
-        if (viewType === 'structured') {
-          derivedData = { kind, mode, viewType, ...repaired.structured.brief }
-        } else if (viewType === 'mindmap') {
-          derivedData = { kind, mode, viewType, ...repaired.mindmap.brief }
-        } else if (viewType === 'selftest') {
-          derivedData = { kind, mode, viewType, ...repaired.selftest.brief }
-        } else {
-          derivedData = { kind, mode, viewType, narrative }
-        }
-      } else if (mode === 'standard') {
-        narrative = standardNarrative
-        if (viewType === 'structured') {
-          derivedData = { kind, mode, viewType, ...repaired.structured.standard }
-        } else if (viewType === 'mindmap') {
-          derivedData = { kind, mode, viewType, ...repaired.mindmap.standard }
-        } else if (viewType === 'selftest') {
-          derivedData = { kind, mode, viewType, ...repaired.selftest.standard }
-        } else {
-          derivedData = { kind, mode, viewType, narrative }
-        }
+      if (viewV4 === 'structured') {
+        derivedData = { kind, mode, viewType, ...all.structured[levelV4] }
+      } else if (viewV4 === 'mindmap') {
+        derivedData = { kind, mode, viewType, ...all.mindmap[levelV4] }
+      } else if (viewV4 === 'selftest') {
+        derivedData = { kind, mode, viewType, ...all.selftest[levelV4] }
       } else {
-        // detail
-        narrative = detailNarrative
-        if (viewType === 'structured') {
-          derivedData = { kind, mode, viewType, ...repaired.structured.detail }
-        } else if (viewType === 'mindmap') {
-          derivedData = { kind, mode, viewType, ...repaired.mindmap.detail }
-        } else if (viewType === 'selftest') {
-          derivedData = { kind, mode, viewType, ...repaired.selftest.detail }
-        } else {
-          derivedData = { kind, mode, viewType, narrative }
+        // narrative
+        const narr = all.narrative[levelV4]
+        derivedData = { 
+          kind, 
+          mode, 
+          viewType, 
+          title: narr.title,
+          narrative: narr.summary,
+          keyPoints: narr.keyPoints,
+          examHints: narr.examHints
         }
       }
       
-      // ✅ 5) Base 데이터 저장 (모든 3단계 포함)
+      // ✅ 3) Base 데이터 저장 (모든 3단계 포함)
+      const baseNarr = all.narrative[levelV4]
       const baseData = { 
         kind, 
         mode, 
         viewType: 'narrative', 
-        narrative,
+        narrative: baseNarr.summary,
         allSummaries: {
-          brief: briefNarrative,
-          standard: standardNarrative,
-          detail: summaryJSON.detail
+          brief: all.narrative.brief.summary,
+          standard: all.narrative.standard.summary,
+          detail: all.narrative.detail.summary
         },
-        meta: summaryJSON.meta
+        meta: {
+          engine: 'v4',
+          hierarchy: 'brief ⊂ standard ⊂ detail (server-downsample)',
+          structuredFirst: true
+        }
       }
       await setCache(db, baseKey, userId || 'anon', baseData)
       
-      // ✅ 6) Derived 캐시 저장
+      // ✅ 4) Derived 캐시 저장
       await setCache(db, derivedKey, userId || 'anon', derivedData)
       
       return c.json(
@@ -4200,15 +4482,15 @@ app.post('/api/engine', async (c) => {
           data: derivedData,
           meta: { 
             cached: false, 
-            engine: 'gemini-json-v3-enforced', 
+            engine: 'gemini-v4-structured-first', 
             elapsedMs: Date.now() - start,
-            enforced: ['structured', 'mindmap', 'selftest']
+            hierarchy: 'brief ⊂ standard ⊂ detail (guaranteed)'
           }
         },
         200
       )
     } catch (err: any) {
-      console.error('[Gemini JSON Error]', err)
+      console.error('[Gemini V4 Error]', err)
       // Gemini 실패 시 로컬 폴백으로 계속 진행
     }
   }
