@@ -12,29 +12,80 @@
 - **로컬 폴백**: AI 없이도 완벽하게 동작하는 로컬 엔진
 - **다양한 출력 형식**: 서술형, 구조화, 마인드맵, 자가테스트
 - **2단계 캐시**: 메모리(7일) + D1 영구 저장
+- **계층적 일관성**: brief ⊂ standard ⊂ detail 포함 관계 강제
 
 ---
 
 ## 🚀 V2 Revised 주요 개선 사항
 
-### 0. **🎉 최신 패치 (2025-01-30)**
+### 0. **🎉 최신 패치 (2026-01-31)**
 ```typescript
-// ✅ 6대 핵심 패치 완료
-1️⃣ 압축률 강제: brief 10-15%, standard 25-30%, detail 45-55%
-2️⃣ 복붙 방지: 24자 이상 연속 동일 문자열 감지 → 자동 재요청
-3️⃣ 3요소 체크: 정의/의미/체험 활동 개념 필수 포함 (brief/standard)
-4️⃣ 한국어 정제: "모 든" → "모든", "놀은 는" → "놀이는" 등 깨짐 복원
-5️⃣ 재요청 루프: 최대 3회 시도 + 힌트 기반 재생성
-6️⃣ 허구 방지: 원문에 없는 인용/사실/주장 추가 금지 (프롬프트 강화)
+// ✅ Hierarchical Consistency Enforcer + Structured-First Engine
+1️⃣ splitSentences 교체: 유니코드 따옴표 ASCII 정규화 (빌드 안정)
+2️⃣ 문장 중간 잘림 방지: '다/요/죠' 글자 1개로 분리 금지
+3️⃣ Structured/Mindmap/Selftest Hierarchy Enforcer 추가
+4️⃣ brief ⊂ standard ⊂ detail 포함 관계 강제 (ID 기반)
+5️⃣ 구조화 표준 스키마 확정 (anchor/sections/glossary/links)
+6️⃣ 학습 단위 판정 로직 (초등 merged / 중등 조건부 / 고등 single)
+7️⃣ Hallucination 방지 (증식 금지, truncate only)
+8️⃣ 80% 통과 게이트 메타 제공 (selftest)
 ```
 
 **문제 해결**:
-- ❌ **이전**: 간단요약이 특정 단락 길게 복붙
-- ✅ **현재**: 3요소(정의+의미+체험) 균형 있게 압축
-- ❌ **이전**: 표준요약에서 "루어지는", "모 든" 같은 깨짐
-- ✅ **현재**: `polishKorean()` 후처리로 자동 복원
-- ❌ **이전**: 압축률 70%+ (거의 원문 복사)
-- ✅ **현재**: 모드별 강제 압축률 준수
+- ❌ **이전**: 문장 중간에서 "바다 는"처럼 잘림
+- ✅ **현재**: 강한 문장 종료 신호만 인식
+- ❌ **이전**: brief/standard/detail이 서로 다른 anchor 사용
+- ✅ **현재**: anchor(A0) 3단계 동일 강제
+- ❌ **이전**: LLM이 포함 관계 위반해도 그대로 반환
+- ✅ **현재**: 서버가 자동 보정 (Enforcer)
+
+### 🧱 **구조화 표준 스키마 (Structured-First)**
+
+**구조화 = "학습 단위 기준 재조립"**
+- 대상: 초·중·고 학생
+- 학습 단위: 중단원 또는 소단원 (대단원 전체 ❌)
+- 고정 구조: anchor + sections + glossary + links
+- 가변 깊이: 초등(간단) → 고등(상세)
+
+**StructuredDoc 스키마:**
+```typescript
+{
+  "level": "brief|standard|detail",
+  "viewType": "structured",
+  "meta": {
+    "subject": "국어|사회|과학|수학|영어|도덕|기타",
+    "gradeBand": "elementary|middle|high",
+    "unitPolicy": "merged|single",
+    "hierarchy": {
+      "bigUnit": "대단원명",
+      "midUnit": "중단원명",
+      "smallUnit": "소단원명"
+    }
+  },
+  "anchor": { "id": "A0", "text": "핵심 주장 1문장 (모든 레벨 동일)" },
+  "sections": [
+    {
+      "id": "S1",
+      "title": "소제목",
+      "keywords": ["핵심어"],
+      "lvl25": ["의미 키워드"],
+      "explain": "설명 문장"
+    }
+  ],
+  "glossary": [
+    { "id": "T1", "term": "용어", "def": "정의" }
+  ],
+  "links": [
+    { "from": "A0", "to": "S1", "rel": "supports" }
+  ],
+  "expand": ["비교/주의/연계 (선택)"]
+}
+```
+
+**학습 단위 판정 로직:**
+- **초등**: `merged` (중단원+소단원 묶음) - 소단원 수 ≤2개
+- **중등**: 조건부 `merged` (소제목 중심 + 소단원 수 ≤2개)
+- **고등**: `single` (소단원 단독)
 
 ### 1. **압축률 게이트 (UPDATED)**
 ```typescript
