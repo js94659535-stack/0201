@@ -505,11 +505,23 @@ function enforceHierarchyPack(pack: {
   mindmap?: { brief?: any; standard?: any; detail?: any }
   selftest?: { brief?: any; standard?: any; detail?: any }
 }) {
-  const structured = enforceStructuredHierarchy(
-    pack?.structured?.brief,
-    pack?.structured?.standard,
-    pack?.structured?.detail
-  )
+  // ✅ Structured V2 우선 사용 (ID 기반)
+  let structured: any
+  const sb = pack?.structured?.brief
+  const ss = pack?.structured?.standard
+  const sd = pack?.structured?.detail
+  
+  // V2 스키마 검증 (anchor.id, sections[].id 존재 여부)
+  const isV2 = (x: any) => x?.anchor?.id && Array.isArray(x?.sections) && x?.sections[0]?.id
+  
+  if (isV2(sb) && isV2(ss) && isV2(sd)) {
+    // V2 스키마: enforceStructuredHierarchyV2 사용
+    structured = enforceStructuredHierarchyV2({ brief: sb, standard: ss, detail: sd })
+  } else {
+    // 기존 스키마: 기존 enforceStructuredHierarchy 사용
+    structured = enforceStructuredHierarchy(sb, ss, sd)
+  }
+  
   const mindmap = enforceMindmapHierarchy(
     pack?.mindmap?.brief,
     pack?.mindmap?.standard,
@@ -522,6 +534,169 @@ function enforceHierarchyPack(pack: {
   )
 
   return { structured, mindmap, selftest }
+}
+
+/* =========================================================
+   6) STRUCTURED-FIRST ENGINE (표준 구조화 스키마)
+   - 학습 단위 재조립 + 구조화 표준 스키마
+   - brief ⊂ standard ⊂ detail 강제 (ID 기반)
+   ========================================================= */
+
+type SummaryLevel = 'brief' | 'standard' | 'detail'
+type GradeBand = 'elementary' | 'middle' | 'high'
+type Subject = '국어' | '사회' | '과학' | '수학' | '영어' | '도덕' | '기타'
+
+type StructuredSection = {
+  id: string
+  title: string
+  keywords: string[]
+  lvl25: string[]
+  explain: string
+}
+
+type StructuredGlossary = {
+  id: string
+  term: string
+  def: string
+}
+
+type StructuredLink = {
+  from: string
+  to: string
+  rel: string
+}
+
+type StructuredDoc = {
+  level: SummaryLevel
+  viewType: 'structured'
+  meta: {
+    subject: Subject
+    gradeBand: GradeBand
+    unitPolicy: 'merged' | 'single'
+    hierarchy: {
+      bigUnit?: string
+      midUnit?: string
+      smallUnit?: string
+    }
+  }
+  anchor: { id: 'A0'; text: string }
+  sections: StructuredSection[]
+  glossary: StructuredGlossary[]
+  links: StructuredLink[]
+  expand?: string[]
+}
+
+function guessGradeBand(grade?: number): GradeBand {
+  if (!grade) return 'middle'
+  if (grade <= 6) return 'elementary'
+  if (grade <= 9) return 'middle'
+  return 'high'
+}
+
+function decideUnitPolicy(params: {
+  gradeBand: GradeBand
+  subUnitCount?: number
+  subtitleCentric?: boolean
+}): 'merged' | 'single' {
+  const { gradeBand, subUnitCount = 3, subtitleCentric = false } = params
+  // 초등은 항상 묶음
+  if (gradeBand === 'elementary') return 'merged'
+  // 중등은 조건부 묶음
+  if (gradeBand === 'middle' && subUnitCount <= 2 && subtitleCentric) return 'merged'
+  // 고등은 단독
+  return 'single'
+}
+
+function buildStructuredAllPrompt(input: {
+  text: string
+  subject: Subject
+  gradeBand: GradeBand
+  unitPolicy: 'merged' | 'single'
+  hierarchy?: { bigUnit?: string; midUnit?: string; smallUnit?: string }
+}) {
+  return `당신은 초·중·고 학습자를 위한 구조화 요약 엔진입니다.
+
+**절대 규칙:**
+- 원문에 없는 내용 생성 금지
+- 구조화 결과는 아래 JSON 스키마만 출력
+- brief ⊂ standard ⊂ detail 포함 관계를 만족하도록 작성
+
+**구조화 원칙:**
+- 학습 단위 기준 재조립
+- anchor(A0)는 세 단계 동일 문장
+- standard는 brief의 모든 section/glossary를 포함
+- detail은 standard의 모든 section/glossary를 포함
+- section/glossary는 ID 기준으로 포함 관계 유지
+
+**출력 JSON 형식:**
+\`\`\`json
+{
+  "brief": {
+    "level": "brief",
+    "viewType": "structured",
+    "meta": {
+      "subject": "${input.subject}",
+      "gradeBand": "${input.gradeBand}",
+      "unitPolicy": "${input.unitPolicy}",
+      "hierarchy": ${JSON.stringify(input.hierarchy || {})}
+    },
+    "anchor": { "id": "A0", "text": "핵심 주장 1문장" },
+    "sections": [
+      {
+        "id": "S1",
+        "title": "소제목",
+        "keywords": ["핵심어"],
+        "lvl25": ["의미 키워드"],
+        "explain": "설명 문장"
+      }
+    ],
+    "glossary": [
+      { "id": "T1", "term": "용어", "def": "정의" }
+    ],
+    "links": [
+      { "from": "A0", "to": "S1", "rel": "supports" }
+    ],
+    "expand": []
+  },
+  "standard": { ... },
+  "detail": { ... }
+}
+\`\`\`
+
+**원문:**
+${input.text}
+`
+}
+
+// Structured ID 기반 포함 관계 강제 (기존 enforceStructuredHierarchy 교체)
+function enforceStructuredHierarchyV2(all: {
+  brief: StructuredDoc
+  standard: StructuredDoc
+  detail: StructuredDoc
+}) {
+  const copyById = <T extends { id: string }>(base: T[], add: T[]): T[] => {
+    const m = new Map(base.map(x => [x.id, x]))
+    add.forEach(x => { if (!m.has(x.id)) m.set(x.id, x) })
+    return Array.from(m.values())
+  }
+
+  // Anchor 동일화
+  all.standard.anchor.text = all.brief.anchor.text
+  all.detail.anchor.text = all.brief.anchor.text
+
+  // sections 포함 (standard는 brief 포함, detail은 standard 포함)
+  all.standard.sections = copyById(all.brief.sections, all.standard.sections)
+  all.detail.sections = copyById(all.standard.sections, all.detail.sections)
+
+  // glossary 포함
+  all.standard.glossary = copyById(all.brief.glossary, all.standard.glossary)
+  all.detail.glossary = copyById(all.standard.glossary, all.detail.glossary)
+
+  // links 포함
+  all.standard.links = copyById(all.brief.links, all.standard.links)
+  all.detail.links = copyById(all.standard.links, all.detail.links)
+
+  return all
 }
 
 // ========================================
