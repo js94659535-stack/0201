@@ -701,10 +701,61 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         );
       }
 
-      // 5) 다운샘플(서버 강제)
-      const brief = downsampleFromDetail(detail, 'brief');
-      const standard = downsampleFromDetail(detail, 'standard');
-      const detailLv = downsampleFromDetail(detail, 'detail');
+      // 5) 레벨별 생성 (local-fallback-generators 사용)
+      const briefNarr = generateNarrativeFallback(rawText, 'brief');
+      const stdNarr = generateNarrativeFallback(rawText, 'standard');
+      const detailNarr = generateNarrativeFallback(rawText, 'detail');
+
+      const briefStruct = generateStructuredFallback(rawText, 'brief');
+      const stdStruct = generateStructuredFallback(rawText, 'standard');
+      const detailStruct = generateStructuredFallback(rawText, 'detail');
+
+      const briefMind = generateMindmapFallback(rawText, 'brief');
+      const stdMind = generateMindmapFallback(rawText, 'standard');
+      const detailMind = generateMindmapFallback(rawText, 'detail');
+
+      const briefSelf = generateSelftestFallback(rawText, 'brief', 'preview');
+      const stdSelf = generateSelftestFallback(rawText, 'standard', 'preview');
+      const detailSelf = generateSelftestFallback(rawText, 'detail', 'preview');
+
+      const brief = {
+        narrative: { 
+          text: briefNarr.text, 
+          coreClaim: briefNarr.coreClaim, 
+          grounds: briefNarr.grounds, 
+          comparisons: briefNarr.comparisons, 
+          implications: briefNarr.implications 
+        },
+        structured: briefStruct,
+        mindmap: briefMind,
+        selftest: briefSelf
+      };
+
+      const standard = {
+        narrative: { 
+          text: stdNarr.text, 
+          coreClaim: stdNarr.coreClaim, 
+          grounds: stdNarr.grounds, 
+          comparisons: stdNarr.comparisons, 
+          implications: stdNarr.implications 
+        },
+        structured: stdStruct,
+        mindmap: stdMind,
+        selftest: stdSelf
+      };
+
+      const detailLv = {
+        narrative: { 
+          text: detailNarr.text, 
+          coreClaim: detailNarr.coreClaim, 
+          grounds: detailNarr.grounds, 
+          comparisons: detailNarr.comparisons, 
+          implications: detailNarr.implications 
+        },
+        structured: detailStruct,
+        mindmap: detailMind,
+        selftest: detailSelf
+      };
 
       // 6) 레벨 분리 검증 (Phase 1: 경고만 출력, 통과는 허용)
       const sepErrs = validateLevelSeparation({ brief, standard, detail: detailLv });
