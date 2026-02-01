@@ -521,14 +521,32 @@ MIT License
 
 ## 🔗 링크
 
+- **Sandbox**: https://3000-ij4pmtzwfidun6lv3m0wf-5185f4aa.sandbox.novita.ai
 - **Production**: (배포 후 추가)
 - **GitHub**: (GitHub 푸시 후 추가)
 - **Tech Stack**: Hono + TypeScript + Vite + Cloudflare Pages + D1
-- **Last Updated**: 2026-01-29
+- **Last Updated**: 2026-02-01
 
 ---
 
 ## 📈 버전 히스토리
+
+### v2.1.0 (2026-02-01) - **CURRENT**
+- ✨ **Brief/Standard/Detail 모드별 차별화 완성**
+  - allSummaries 저장: base cache에 3단계 모두 저장
+  - 로컬 폴백 3단계 생성: 각 모드마다 별도 요약 생성
+  - 첫 번째 문장 보존: pickTopByScore에서 도입부 항상 포함
+  - Mode별 narrative 선택: allSummaries[mode]로 정확한 단계 반환
+- ✨ **UI 이벤트 핸들러 완전 구현**
+  - 입력 필드 실시간 검증 및 버튼 활성화
+  - 4가지 뷰 타입 렌더링 (narrative/structured/mindmap/selftest)
+  - 모드/뷰 타입 탭 전환 기능
+  - 지우기/복사 버튼 추가
+- 🐛 **JavaScript 문법 에러 완전 해결**
+  - callEngineAPI 중복 정의 제거
+  - 문자열 인용부호 처리 개선
+  - 브라우저 콘솔 에러 0개 달성
+- ✅ **12가지 조합 전체 테스트 통과** (3모드 × 4뷰)
 
 ### v2.0.0 (2026-01-29)
 - ✨ LLM 호출 최적화 (mode별 1회)
