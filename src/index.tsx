@@ -4366,7 +4366,7 @@ app.get('/', (c) => {
             if (summarizeBtn) summarizeBtn.disabled = true;
           }
           if (out) {
-            out.innerHTML = '<div class="meta">아직 결과가 없습니다. 오른쪽 상단 상태가 \'OK\'인지 확인 후 요약을 실행하세요.</div>';
+            out.innerHTML = "<div class='meta'>아직 결과가 없습니다. 오른쪽 상단 상태가 'OK'인지 확인 후 요약을 실행하세요.</div>";
           }
           if (errBox) errBox.style.display = 'none';
           if (resultMeta) resultMeta.textContent = '—';
