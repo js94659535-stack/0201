@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serveStatic } from 'hono/cloudflare-workers'
+import { mountMatrixV4 } from './routes/matrix-v4'
 
 type Bindings = {
   DB?: D1Database
@@ -13,6 +14,9 @@ const app = new Hono<{ Bindings: Bindings }>()
 
 app.use('/api/*', cors())
 app.use('/static/*', serveStatic({ root: './public' }))
+
+// ✅ ONE-BLOCK MATRIX V4: Detail 1회 + 강제 다운샘플 + 검증
+mountMatrixV4(app)
 
 // =========================================================
 // V5: Learn Engine (Structured-First + 동일 트리 + 압축률 강제)
