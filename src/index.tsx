@@ -96,6 +96,148 @@ function cleanAcademicNoise(text: string): string {
     .trim()
 }
 
+/* =========================================================
+   PATCH: Text Sanitize + Sentence Filter (for PDF artifacts)
+   목적:
+   - "- 8 -" 같은 페이지 표기 제거
+   - 줄바꿈으로 쪼개진 단어 복원 ("학\n습" -> "학습")
+   - 따옴표/괄호 깨짐으로 생기는 조각 문장 제거 ("」", ")", "①" 단독 등)
+   - 광고/홍보성 문구(완전 정복하세요 등) 우선 배제
+   - 요약 후보 문장 품질 개선 → brief/standard/detail 품질 안정화
+========================================================= */
+
+/** ① 원문 정제: PDF/워드에서 흔한 잡음 제거 */
+function sanitizeKoreanAcademicText(raw: string): string {
+  if (!raw) return ''
+
+  let t = String(raw)
+
+  // (1) BOM/제로폭/제어문자 제거
+  t = t
+    .replace(/\uFEFF/g, '')
+    .replace(/[\u200B-\u200D\u2060]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ')
+
+  // (2) 페이지 표기 제거: "- 8 -", "– 10 –", "-8-" 등 변형 포함
+  t = t.replace(/(?:^|\n)\s*[-–—]?\s*\d{1,4}\s*[-–—]?\s*(?=\n|$)/g, '\n')
+
+  // (3) 줄바꿈 하이픈(영문) 복원: "inter-\nnational" -> "international"
+  t = t.replace(/([A-Za-z])-\s*\n\s*([A-Za-z])/g, '$1$2')
+
+  // (4) 한국어 단어가 줄바꿈으로 쪼개진 경우 복원: "학\n습" -> "학습"
+  //     - 앞/뒤가 한글/숫자/중점 등 의미 단위일 때만 붙임
+  t = t.replace(/([가-힣0-9])\s*\n\s*([가-힣0-9])/g, '$1$2')
+
+  // (5) 줄바꿈 정리: 문단 경계는 유지하되 과도한 개행 축소
+  //     - 3개 이상 개행은 2개로
+  t = t.replace(/\n{3,}/g, '\n\n')
+
+  // (6) 문장 내부의 과도한 공백 정리
+  t = t.replace(/[ \t]{2,}/g, ' ')
+
+  // (7) 깨진 인용부호 주변 공백 정리
+  t = t.replace(/[「『]/g, '"').replace(/[」』]/g, '"')
+  t = t.replace(/[〈《]/g, '"').replace(/[〉》]/g, '"')
+
+  // (8) 문장 부호 앞뒤 공백 정리
+  t = t.replace(/\s+([,.;:!?])/g, '$1').replace(/([,.;:!?])\s+/g, '$1 ')
+
+  return t.trim()
+}
+
+/** ② 문장 분리: 한국어 종결 + 구두점 중심 (너무 공격적 분할 금지) */
+function splitKoreanSentences(text: string): string[] {
+  const t = (text || '').trim()
+  if (!t) return []
+
+  // 문단 단위로 먼저 나눔
+  const paras = t.split(/\n{2,}/g)
+
+  const out: string[] = []
+  for (const p of paras) {
+    const s = p
+      .replace(/\n/g, ' ')      // 문단 내 개행은 공백으로
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim()
+    if (!s) continue
+
+    // 한국어 종결(다/요/임/함/된다/이다 등) + 마침표/물음표/느낌표 기준 완만 분리
+    const parts = s.split(/(?<=[다요임함]\.|[다요임함]\?|[다요임함]!|[.?!])\s+/g)
+
+    for (let piece of parts) {
+      piece = piece.trim()
+      if (piece) out.push(piece)
+    }
+  }
+  return out
+}
+
+/** ③ 쓰레기 조각/광고/깨진 따옴표 문장 제거 */
+function isJunkSentence(s: string): boolean {
+  const t = (s || '').trim()
+  if (!t) return true
+
+  // 너무 짧은 조각(따옴표, 괄호, 번호만 남은 경우)
+  if (t.length < 12) {
+    // 단, "선행학습은 ...이다." 처럼 짧아도 문장일 수 있으니 종결/서술이면 통과
+    const looksLikeSentence = /[.?!]$/.test(t) || /(?:이다|된다|한다|있다|없다|말한다|주장한다)\.?$/.test(t)
+    if (!looksLikeSentence) return true
+  }
+
+  // 페이지 표기 잔존
+  if (/[-–—]\s*\d{1,4}\s*[-–—]/.test(t)) return true
+
+  // 깨진 따옴표/괄호만 남은 케이스
+  if (/^["")\]\}]+$/.test(t)) return true
+  if (/^["(\[\{]+$/.test(t)) return true
+
+  // 번호/기호 시작인데 내용이 거의 없는 케이스
+  if (/^(?:\(\d+\)|\d+\)|[①-⑳])\s*["")\]]*\s*$/.test(t)) return true
+
+  // 광고/홍보성(요약에서 우선 제거하고 싶다면)
+  // 필요하면 키워드 추가 가능
+  if (/(완전\s*정복|쏙쏙|콕콕|실력을\s*쑥쑥|고득점|전문\s*대비반|특강|홍보)/.test(t)) {
+    // 다만 학원 현황을 설명하는 문장일 수도 있으니,
+    // 따옴표 인용(" … ") 형태로 과대하게 들어온 경우만 제거
+    if (/[""]/.test(t) || /!$/.test(t)) return true
+  }
+
+  // 특수기호가 비정상적으로 많은 경우(인용 조각)
+  const symCount = (t.match(/["""'(){}\[\]<>]/g) || []).length
+  if (symCount >= 10 && t.length < 80) return true
+
+  return false
+}
+
+function filterSentences(sentences: string[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+
+  for (const s of sentences) {
+    const t = s.trim()
+    if (isJunkSentence(t)) continue
+
+    // 중복 제거(공백 정규화 기준)
+    const key = t.replace(/\s+/g, ' ')
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    out.push(key)
+  }
+  return out
+}
+
+/** 엔진에 넣기 직전: 정제 + 문장 후보 준비 */
+function prepareTextForSummarize(rawText: string) {
+  const cleaned = sanitizeKoreanAcademicText(rawText)
+  const sentences = filterSentences(splitKoreanSentences(cleaned))
+
+  // 문장 후보가 너무 적으면(정제가 과해서) 완화
+  const safeSentences = sentences.length >= 3 ? sentences : splitKoreanSentences(cleaned)
+
+  return { text: cleaned, sentences: safeSentences }
+}
+
 // ------------------------------
 // 🔹 B. "결과 단독 발췌" 금지 규칙
 // ------------------------------
@@ -4653,14 +4795,22 @@ app.post('/api/engine', async (c) => {
   }
 
   const kind = normalizeKind(body?.kind)
-  const text = safeStr(body?.text || '')
+  const rawText = safeStr(body?.text || '')
   const mode = normalizeMode(body?.mode || body?.level)
   const viewType = normalizeViewType(body?.viewType || body?.displayMode)
   const userId = safeStr(body?.options?.userId || body?.userId || 'anon')
 
-  if (!text.trim() || text.trim().length < 5) {
+  if (!rawText.trim() || rawText.trim().length < 5) {
     return c.json({ ok: false, error: { code: 'NO_TEXT', message: '입력 텍스트가 없습니다.' } }, 200)
   }
+
+  // ✅ PATCH: PDF 아티팩트 제거 + 문장 정제
+  const prepared = prepareTextForSummarize(rawText)
+  const text = prepared.text
+  const sentences = prepared.sentences
+  
+  console.log('[Sanitize] Original length:', rawText.length, '→ Cleaned:', text.length)
+  console.log('[Sanitize] Sentences extracted:', sentences.length)
 
   // ✅ V2: derived cache 먼저 확인
   const derivedKey = derivedCacheKey(kind, mode, viewType, text, userId || null)
