@@ -150,10 +150,12 @@
     </div>
   </div>
 
-  <script type="module">
-    // State
-    let currentMode = 'standard';
-    let currentView = 'narrative';
+  <script>
+    // Wait for all scripts to load
+    window.addEventListener('DOMContentLoaded', function() {
+      // State
+      let currentMode = 'standard';
+      let currentView = 'narrative';
 
     // DOM Elements
     const inputText = document.getElementById('inputText');
@@ -396,6 +398,7 @@
 
     // Initialize
     summarizeBtn.disabled = true;
+    }); // End DOMContentLoaded
   </script>
 </body>
 </html>
