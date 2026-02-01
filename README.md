@@ -2,17 +2,28 @@
 
 ## 🎯 프로젝트 개요
 
-**MindStory**는 학습 텍스트를 진정한 요약으로 변환하는 AI 기반 요약 도우미입니다.
+**MindStory**는 학습 텍스트를 진정한 요약으로 변환하는 요약 도우미입니다.
 
-### 주요 특징
-- **진정한 요약**: 단순 발췌가 아닌 의미론적 재구성
-- **압축률 게이트**: brief 10-15%, standard 25-30%, detail 45-55% 강제 보정
-- **허구 방지**: 원문에 없는 인용 자동 제거 (Phase1 최소 방지)
-- **LLM 통합**: Gemini AI를 통한 고품질 요약 (옵션)
-- **로컬 폴백**: AI 없이도 완벽하게 동작하는 로컬 엔진
+### ⚠️ **현재 상태 (v2.1.0)**
+- **✅ 완성**: UI + 로컬 엔진 + 구조화 흐름
+- **⏳ 미완성**: LLM 연결, D1 연결, 프로덕션 배포
+- **🔧 동작 모드**: local-only (로컬 엔진만)
+- **🌐 환경**: Sandbox 데모 (https://3000-ij4pmtzwfidun6lv3m0wf-5185f4aa.sandbox.novita.ai)
+
+### 주요 특징 (구현 완료)
+- **진정한 요약**: 단순 발췌가 아닌 의미론적 재구성 (로컬 엔진)
+- **압축률 게이트**: brief 10-30%, standard 25-60%, detail 45-80% (로컬 엔진)
+- **로컬 폴백**: AI 없이도 동작하는 로컬 엔진 (현재 유일한 엔진)
 - **다양한 출력 형식**: 서술형, 구조화, 마인드맵, 자가테스트
-- **2단계 캐시**: 메모리(7일) + D1 영구 저장
-- **계층적 일관성**: brief ⊂ standard ⊂ detail 포함 관계 강제
+- **메모리 캐시**: 7일 TTL (D1 미연결)
+- **계층적 일관성**: brief ⊂ standard ⊂ detail 포함 관계 (로컬 엔진)
+
+### 주요 특징 (구현 대기)
+- **LLM 통합**: Gemini API 연결 필요 (GEMINI_API_KEY 미설정)
+- **압축률 강제**: brief 10-15%, standard 25-30%, detail 45-55% (LLM 필요)
+- **허구 방지**: 원문에 없는 인용 자동 제거 (LLM 필요)
+- **D1 캐시**: 영구 저장 (D1 미연결)
+- **프로덕션 배포**: Cloudflare Pages (API 키 미설정)
 
 ---
 
@@ -497,13 +508,45 @@ merge(subject, predicates) → "숲은 안식처이자 힐링 공간입니다(�
 
 ---
 
-## 📚 다음 단계 제안
+## 📚 필수 다음 단계 (프로덕션 준비)
 
-1. **Gemini AI 활성화**: GEMINI_API_KEY 설정
-2. **GitHub 푸시**: setup_github_environment 호출
-3. **의미론적 유사도 계산**: Word2Vec/BERT 임베딩
-4. **동의어 사전 확장**: 7 → 20+ 그룹
-5. **인과관계 추론**: A → B 관계 추출
+### 🔴 **Critical (필수)**
+1. **Gemini API 키 설정** (LLM 연결)
+   - `.dev.vars` 파일에 `GEMINI_API_KEY` 추가
+   - 압축률 강제 게이트 활성화 (10-15%, 25-30%, 45-55%)
+   - 허구 방지 활성화
+   - Status: ❌ 미완료
+
+2. **D1 Database 연결** (영구 캐시)
+   - `npx wrangler d1 create webapp-production`
+   - wrangler.jsonc에 database_id 설정
+   - 마이그레이션 실행
+   - Status: ❌ 미완료
+
+3. **Cloudflare API 키 설정** (배포)
+   - Deploy 탭에서 API 키 입력
+   - `setup_cloudflare_api_key` 실행
+   - `npx wrangler pages deploy dist --project-name webapp`
+   - Status: ❌ 미완료
+
+### 🟡 **Important (권장)**
+4. **통합 테스트** (실제 사용 시나리오)
+   - 긴 텍스트 테스트 (1,000자 이상)
+   - 동시 사용자 테스트
+   - 캐시 히트/미스 전환 테스트
+   - 세션/유저 분리 테스트
+   - Status: ⚠️ 기본 테스트만 완료
+
+5. **에러 핸들링 강화**
+   - LLM 호출 실패 시 재시도 로직 검증
+   - 타임아웃 처리 개선
+   - 사용자 친화적 에러 메시지
+   - Status: ⚠️ 기본만 구현
+
+### 🟢 **Nice-to-have (선택)**
+6. **의미론적 유사도 계산**: Word2Vec/BERT 임베딩
+7. **동의어 사전 확장**: 7 → 20+ 그룹
+8. **인과관계 추론**: A → B 관계 추출
 
 ---
 
@@ -521,11 +564,25 @@ MIT License
 
 ## 🔗 링크
 
-- **Sandbox**: https://3000-ij4pmtzwfidun6lv3m0wf-5185f4aa.sandbox.novita.ai
-- **Production**: (배포 후 추가)
+- **Sandbox** (데모): https://3000-ij4pmtzwfidun6lv3m0wf-5185f4aa.sandbox.novita.ai
+- **Production**: ❌ 미배포 (Cloudflare API 키 필요)
 - **GitHub**: https://github.com/js94659535-stack/0201
-- **Tech Stack**: Hono + TypeScript + Vite + Cloudflare Pages + D1
+- **Tech Stack**: Hono + TypeScript + Vite + Cloudflare Pages (배포 대기)
 - **Last Updated**: 2026-02-01
+
+### 🚨 현재 제한사항
+- **LLM 연결**: ❌ 미연결 (Gemini API 키 필요)
+- **D1 Database**: ❌ 미연결 (영구 캐시 없음)
+- **프로덕션 배포**: ❌ 미완료 (Cloudflare API 키 필요)
+- **테스트 범위**: ⚠️ 제한적 (단일 텍스트, 단일 사용자, 캐시 미검증)
+- **동작 모드**: ⚠️ local-only (로컬 엔진만)
+
+### ✅ 완성된 부분
+- **UI 통합**: 입력/버튼/탭/결과 표시
+- **로컬 엔진**: 의미론적 요약 (LLM 없이)
+- **구조화 흐름**: 3모드 × 4뷰 = 12가지 조합
+- **계층적 일관성**: brief ⊂ standard ⊂ detail
+- **GitHub 저장**: 버전 관리 완료
 
 ---
 
