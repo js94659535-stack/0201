@@ -22,27 +22,50 @@
 
   // ---------------------------
   // Render: Structured Reference (참고서형 위계 + 용어사전)
-  // data: { kind:'reference', renderText, ... }
+  // data: { toc, hierarchy, glossary }
   // ---------------------------
   function renderStructured(container, structured) {
-    if (!structured) {
+    if (!structured || !structured.hierarchy) {
       container.innerHTML = `<div class="ms-card"><div class="ms-muted">구조화 데이터가 없습니다.</div></div>`;
       return;
     }
-    const txt = String(structured.renderText || '').trim();
-    const lines = txt.split('\n');
-    const html = lines.map(line => {
-      const l = escapeHtml(line);
-      if (/^Ⅰ\./.test(line) || /^Ⅱ\./.test(line) || /^Ⅲ\./.test(line) || /^Ⅳ\./.test(line)) {
-        return `<div class="ms-h2">${l}</div>`;
+    
+    let html = '<div class="ms-card">';
+    
+    // I. 목차
+    html += '<div class="ms-h2">Ⅰ. 목차</div>';
+    if (structured.toc && structured.toc.length) {
+      structured.toc.forEach((item, i) => {
+        html += `<div class="ms-li">${i + 1}. ${escapeHtml(item.title)}</div>`;
+      });
+    }
+    html += '<div class="ms-gap"></div>';
+    
+    // II. 핵심 정리(위계)
+    html += '<div class="ms-h2">Ⅱ. 핵심 정리(위계)</div>';
+    structured.hierarchy.forEach(h => {
+      html += `<div class="ms-h3">${escapeHtml(h.title)}</div>`;
+      if (h.keywords && h.keywords.length) {
+        html += `<div class="ms-line">핵심키워드: ${h.keywords.map(k => escapeHtml(k)).join(' · ')}</div>`;
       }
-      if (/^\s{2}\d+\./.test(line)) return `<div class="ms-h3">${l}</div>`;
-      if (/^\s{5}-\s/.test(line)) return `<div class="ms-li">${l}</div>`;
-      if (/^\s{2}-\s/.test(line)) return `<div class="ms-li">${l}</div>`;
-      if (!line.trim()) return `<div class="ms-gap"></div>`;
-      return `<div class="ms-line">${l}</div>`;
-    }).join('');
-    container.innerHTML = `<div class="ms-card">${html}</div>`;
+      if (h.bullets && h.bullets.length) {
+        h.bullets.forEach(b => {
+          html += `<div class="ms-li">- ${escapeHtml(b)}</div>`;
+        });
+      }
+    });
+    html += '<div class="ms-gap"></div>';
+    
+    // III. 용어사전
+    html += '<div class="ms-h2">Ⅲ. 용어사전</div>';
+    if (structured.glossary && structured.glossary.length) {
+      structured.glossary.forEach(g => {
+        html += `<div class="ms-line"><strong>${escapeHtml(g.term)}</strong>: ${escapeHtml(g.def)}</div>`;
+      });
+    }
+    
+    html += '</div>';
+    container.innerHTML = html;
   }
 
   // ---------------------------
@@ -165,12 +188,12 @@
       renderNarrative(containerEl, text);
     }
     if (viewType === 'structured') {
-      const renderText = levelData?.renderText || '';
-      renderStructured(containerEl, { renderText });
+      // local-fallback-generators 구조: { toc, hierarchy, glossary }
+      renderStructured(containerEl, levelData);
     }
     if (viewType === 'mindmap') {
-      const tree = levelData?.tree;
-      renderMindmap(containerEl, { tree });
+      // local-fallback-generators 구조: { title, children }
+      renderMindmap(containerEl, { tree: levelData });
     }
     if (viewType === 'selftest') {
       const questions = levelData?.questions || [];
