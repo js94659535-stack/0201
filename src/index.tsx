@@ -4192,7 +4192,7 @@ app.get('/', (c) => {
             </div>
           </div>
           <div class="out" id="out">
-            <div class="meta">아직 결과가 없습니다. 오른쪽 상단 상태가 'OK'인지 확인 후 요약을 실행하세요.</div>
+            <div class="meta">아직 결과가 없습니다. 오른쪽 상단 상태가 &apos;OK&apos;인지 확인 후 요약을 실행하세요.</div>
           </div>
           <div class="meta" id="resultMeta">—</div>
         </div>
