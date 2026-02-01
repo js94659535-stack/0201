@@ -38,6 +38,197 @@ function hashText(s: string) {
 
 function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)) }
 
+// =========================================================
+// BLOCK 5 PATCH: buildSummaryPrompt() helpers
+// =========================================================
+function normalizeLevel(level: string): 'brief' | 'standard' | 'detail' {
+  const l = String(level || 'standard').toLowerCase()
+  if (l === 'brief' || l === 'b') return 'brief'
+  if (l === 'detail' || l === 'd') return 'detail'
+  return 'standard'
+}
+
+function normalizeViewType(viewType: string): 'narrative' | 'structured' | 'mindmap' | 'selftest' {
+  const v = String(viewType || 'narrative').toLowerCase()
+  if (v === 'structured' || v === 'struct') return 'structured'
+  if (v === 'mindmap' || v === 'mind') return 'mindmap'
+  if (v === 'selftest' || v === 'test') return 'selftest'
+  return 'narrative'
+}
+
+function computeRemainTarget(rawText: string, level: 'brief' | 'standard' | 'detail') {
+  const base = Math.max(60, countKoreanFriendlyChars(rawText))
+  const ratio = level === 'brief' ? 0.14 : level === 'standard' ? 0.31 : 0.53
+  const min = Math.floor(base * ratio * 0.85)
+  const max = Math.ceil(base * ratio * 1.15)
+  const keep = Math.floor(base * ratio)
+  const tol = Math.ceil(base * 0.05)
+  return { base, min, max, keep, tol }
+}
+
+/* =========================================================
+   BLOCK 5 PATCH: buildSummaryPrompt() FINAL
+   - V4/V5 정합: detail 1회 생성 강제, brief/standard는 downsample
+   - ViewType별 스키마 고정: narrative/structured/mindmap/selftest
+   - 구조화(참고서형 위계 + 용어사전 OO:~) + 과목/학년 분기
+   - Mindmap: SVG V3 autoEnrich(2.5=pack, 3=explain) 100% 호환
+========================================================= */
+function buildSummaryPrompt(params: any) {
+  const rawText = String(params?.text || '').trim()
+  
+  // V4/V5 핵심: level은 무조건 detail만 생성
+  const V = normalizeViewType(params?.viewType || 'narrative')
+  const requested = normalizeLevel(params?.level || 'detail')
+  const L = 'detail' // 강제
+  
+  // 목표 길이: detail 기준으로만 산출
+  const { base, min, max, keep, tol } = computeRemainTarget(rawText, L)
+  
+  // 과목/학년
+  const grade = String(params?.grade || 'general').toLowerCase()
+  const subject = String(params?.subject || 'general').toLowerCase()
+  
+  // 구조화 핵심 지침
+  const structuralLogic = `
+[구조화 핵심 지침(강제)]
+- 학습 단위(Learning Unit):
+  · 초등(elem): 중단원+소단원을 하나의 단위로 묶어 구조화(묶기)
+  · 중/고(mid/high): 소단원 단위로 쪼개어 구조화(쪼개기)
+- 과목별 특화:
+  · 수학(math): 개념명 중심. 공식은 LaTeX($...$). 성립조건+적용유형 포함
+  · 국어(korean): 텍스트 흐름 중심. 소제목별 핵심의미+키워드(1~3)
+  · 사회/과학(soc/sci): 원인-과정-결과 중심. 용어정의는 "OO: ~~~" 포맷
+- 절대 금지:
+  · 원문을 글자수 맞춰 중간 자르기 금지(요약은 재구성)
+  · 중복 문장/중복 정보 반복 금지
+- 정량 규칙:
+  · explain(설명문)은 60~110자 1문장(최대 2문장)
+  · pack(키워드)은 1~3개, ' · '로 연결
+- 트리 구조:
+  · root -> question(1레벨) -> keyword(2레벨) 항상 유지
+  · 심화(advanced)는 children으로 넣되 기본 collapsed
+  · brief/standard/detail은 downsample이 만들므로 지금은 detail만 생성
+`.trim()
+  
+  const commonHeader = [
+    `당신은 학습 콘텐츠를 참고서/교과서 수준으로 재구성하는 지식 구조화 엔진입니다.`,
+    structuralLogic,
+    `[입력 메타] grade=${grade}, subject=${subject}, requestedLevel=${requested}, forcedLevel=${L}, viewType=${V}`,
+    `아래 [출력 스키마] 외에는 어떤 텍스트도 출력하지 마세요.`,
+    `원문:`,
+    rawText
+  ].join('\n')
+  
+  // Narrative 스키마
+  const narrativeSpec = `
+[출력 스키마: narrative]
+{
+  "level": "detail",
+  "viewType": "narrative",
+  "meta": { "grade": "${grade}", "subject": "${subject}", "charTarget": { "min": ${min}, "max": ${max}, "base": ${base} } },
+  "narrative": {
+    "title": "한 줄 제목(10~18자)",
+    "paragraphs": [
+      { "heading": "소제목(6~14자)", "sentences": ["문장1", "문장2", "문장3"] }
+    ],
+    "keywords": ["키워드1","키워드2","키워드3"]
+  }
+}
+[규칙]
+- paragraphs는 3~6개. 각 문단은 2~4문장
+- 문장은 맞춤법/띄어쓰기/문법이 자연스럽게
+- 연결어(하지만/따라서/한편/또한) 과도하게 반복 금지
+`.trim()
+  
+  // Structured 스키마
+  const structuredSpec = `
+[출력 스키마: structured]
+{
+  "level": "detail",
+  "viewType": "structured",
+  "meta": { "grade": "${grade}", "subject": "${subject}", "charTarget": { "min": ${min}, "max": ${max}, "base": ${base} } },
+  "structured": {
+    "outline": [
+      { "h": "대주제(Ⅰ/Ⅱ/Ⅲ 느낌의 제목)", "points": [ { "k": "핵심 논점(1문장)", "sub": ["근거1", "근거2"] } ] }
+    ],
+    "glossary": [ { "term": "OO", "def": "OO: ~~~ 형태로 1~2문장 정의" } ]
+  }
+}
+[규칙]
+- outline은 3~7개 대주제
+- points는 각 대주제마다 2~5개
+- glossary는 5~12개. 사회/과학이면 원인-과정-결과 흐름을 def에 반영
+- def 문장 첫머리는 "용어: " 형태로 시작(예: "선행학습: ...")
+`.trim()
+  
+  // Mindmap 스키마
+  const mindmapSpec = `
+[출력 스키마: mindmap]
+{
+  "level": "detail",
+  "viewType": "mindmap",
+  "meta": { "grade": "${grade}", "subject": "${subject}", "charTarget": { "min": ${min}, "max": ${max}, "base": ${base} } },
+  "mindmap": {
+    "title": "학습 단위(중단원/소단원명 또는 핵심 주제)",
+    "children": [
+      {
+        "title": "왜?/무엇?/어떻게?/비교/쟁점 중 적절한 1레벨 질문",
+        "children": [
+          {
+            "title": "2레벨 키워드(명사구 2~6자)",
+            "pack": ["핵심어1","핵심어2","핵심어3"],
+            "explain": "설명문(60~110자, 1문장 우선)",
+            "children": [ { "title": "심화/근거/사례(선택)", "children": [] } ]
+          }
+        ]
+      }
+    ]
+  }
+}
+[규칙]
+- root 1개, 1레벨 question 4~7개, 각 question 아래 keyword 2~5개
+- keyword.title은 짧은 키워드(문장 금지)
+- pack은 1~3개, explain은 60~110자
+- pack/explain 노드는 children으로 만들지 말고 필드로만 제공
+  (렌더러에서 autoEnrich:true가 pack/explain을 2.5/3으로 자동 생성)
+`.trim()
+  
+  // Selftest 스키마
+  const selftestSpec = `
+[출력 스키마: selftest]
+{
+  "level": "detail",
+  "viewType": "selftest",
+  "meta": { "grade": "${grade}", "subject": "${subject}", "passScore": 90, "charTarget": { "min": ${min}, "max": ${max}, "base": ${base} } },
+  "selftest": {
+    "items": [
+      {
+        "id": "Q1",
+        "type": "mcq|tf|blank|short",
+        "q": "질문",
+        "choices": ["보기1","보기2","보기3","보기4"],
+        "answer": "정답(선지 또는 O/X 또는 빈칸정답)",
+        "rationale": "해설(1~2문장)"
+      }
+    ]
+  }
+}
+[규칙]
+- items는 8~12개
+- type 구성: mcq 5~7개 + tf 2~3개 + blank/short 1~2개
+- 질문은 원문/요약 내용 확인 중심(응용·심화는 평가 엔진에서 처리)
+- rationale은 간결하지만 근거가 명확해야 함
+`.trim()
+  
+  // ViewType 선택
+  let spec = narrativeSpec
+  if (V === 'structured') spec = structuredSpec
+  else if (V === 'mindmap') spec = mindmapSpec
+  else if (V === 'selftest') spec = selftestSpec
+  
+  return `${commonHeader}\n\n${spec}`
+}
+
 function cleanText(raw: string) {
   return String(raw || '')
     .replace(/\r/g, '')
@@ -461,9 +652,9 @@ app.get('/api/health', async (c) => {
 })
 
 // ---------------------------
-// Engine V5
+// Engine V5 (with optional Gemini LLM)
 // POST /api/engine
-// body: { text, mode, viewType, userId }
+// body: { text, mode, viewType, userId, grade?, subject?, useGemini? }
 // viewType: narrative | structured | mindmap | selftest
 // ---------------------------
 app.post('/api/engine', async (c) => {
@@ -472,16 +663,67 @@ app.post('/api/engine', async (c) => {
   const mode = (body?.mode === 'brief' || body?.mode === 'standard' || body?.mode === 'detail') ? body.mode : 'standard'
   const viewType = (body?.viewType === 'narrative' || body?.viewType === 'structured' || body?.viewType === 'mindmap' || body?.viewType === 'selftest') ? body.viewType : 'narrative'
   const userId = String(body?.userId || 'anon')
+  const grade = String(body?.grade || 'general')
+  const subject = String(body?.subject || 'general')
+  const useGemini = body?.useGemini === true
 
   const cleaned = cleanText(text)
   if (cleaned.length < 5) {
     return c.json({ ok:false, error:'text_too_short', message:'입력은 5자 이상이어야 합니다.' }, 400)
   }
 
-  // local-only: 항상 V5 생성
-  const all = buildAllSummaries(cleaned)
+  let engine = 'v5-local'
+  let all: any
+
+  // Gemini LLM 사용 (optional)
+  if (useGemini && c.env.GEMINI_API_KEY) {
+    try {
+      const prompt = buildSummaryPrompt({ text: cleaned, viewType, level: 'detail', grade, subject })
+      const geminiModel = c.env.GEMINI_MODEL || 'gemini-2.0-flash-exp'
+      
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${c.env.GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 8192 }
+        })
+      })
+      
+      const result = await resp.json()
+      const geminiText = result?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+      
+      // JSON 파싱 시도
+      const jsonMatch = geminiText.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0])
+        
+        // Detail 결과를 brief/standard로 downsample
+        all = {
+          originalMeta: { textHash: hashText(cleaned), chars: cleaned.length, ts: nowIso() },
+          modes: {
+            detail: { [viewType]: parsed },
+            standard: { [viewType]: parsed }, // TODO: downsample
+            brief: { [viewType]: parsed }     // TODO: downsample
+          }
+        }
+        engine = 'gemini-' + geminiModel
+      } else {
+        throw new Error('Gemini 응답을 JSON으로 파싱할 수 없습니다.')
+      }
+    } catch (err: any) {
+      console.error('[Gemini Error]', err)
+      // Fallback to local
+      all = buildAllSummaries(cleaned)
+      engine = 'v5-local-fallback'
+    }
+  } else {
+    // local-only: V5 로컬 생성
+    all = buildAllSummaries(cleaned)
+  }
+
   const data = all.modes?.[mode]?.[viewType]
-  const meta = { engine:'v5-local', mode, viewType, ts: nowIso(), textHash: all.originalMeta.textHash }
+  const meta = { engine, mode, viewType, ts: nowIso(), textHash: all.originalMeta.textHash, grade, subject }
   return c.json({ ok:true, data, allSummaries: all.modes, meta })
 })
 
