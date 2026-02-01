@@ -18,8 +18,18 @@
 
 ## 🚀 V2 Revised 주요 개선 사항
 
-### 0. **🎉 최신 패치 (2026-01-31)**
+### 0. **🎉 최신 패치 (2026-02-01)**
 ```typescript
+// ✅ UI 이벤트 핸들러 연결 및 중복 제거
+1️⃣ 입력 필드 이벤트 리스너 추가 (글자 수 카운트 및 버튼 활성화)
+2️⃣ 요약하기 버튼 클릭 핸들러 구현 (SummaryPipeline.run() 호출)
+3️⃣ 4가지 뷰 타입 렌더링 함수 구현 (narrative/structured/mindmap/selftest)
+4️⃣ ms-engine-bundle.js 중복 제거 (callEngineAPI 충돌 해결)
+5️⃣ 모드 및 뷰 타입 탭 전환 이벤트 추가
+6️⃣ 지우기/복사 버튼 기능 추가
+7️⃣ 에러 메시지 표시 개선
+
+// Previous Patch (2026-01-31)
 // ✅ Hierarchical Consistency Enforcer + Structured-First Engine
 1️⃣ splitSentences 교체: 유니코드 따옴표 ASCII 정규화 (빌드 안정)
 2️⃣ 문장 중간 잘림 방지: '다/요/죠' 글자 1개로 분리 금지
