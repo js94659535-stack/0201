@@ -19,14 +19,19 @@ type StructuredNode = {
   bullets: Bullet[]
 }
 
+// Tree 노드 정의 (V3 mindmap 호환)
+type TreeNode = {
+  title: string
+  type?: 'question' | 'keyword' | 'advanced' | 'pack' | 'explain'
+  pack?: string | string[]
+  explain?: string
+  collapsed?: boolean
+  children: TreeNode[]
+}
+
 export type StructuredSummary = {
   title: string
-  core: { id: string; bullets: Bullet[] }
-  perspectives: { ministry: StructuredNode; privateEdu: StructuredNode }
-  reality: StructuredNode
-  gap: StructuredNode
-  policy: StructuredNode
-  takeaway: StructuredNode
+  tree: TreeNode  // Tree 구조로 변경
 }
 
 export type ModePack = {
@@ -231,106 +236,215 @@ function pickTop(sentences: string[], n: number, prefix: string): Bullet[] {
 }
 
 /* -------------------------
-   6) 원하는 구조화(detail 1회 생성)
-   - 논지/대립/현황/괴리/변천/시사점
+   6) 원하는 구조화(detail 1회 생성) - Tree 기반
+   - 정의·쟁점 / 교육부 관점 / 사교육 관점 / 목표 vs 현실 / 방법·현황 / 변천
 ------------------------- */
 function buildStructuredDetail(cleaned: string): StructuredSummary {
   const sections = splitByHeadings(cleaned)
-
   const secSent: Record<string, string[]> = {}
   for (const sec of sections) secSent[sec.key] = filterSentences(splitKoreanSentences(sec.text))
-
   const all = filterSentences(splitKoreanSentences(cleaned))
 
-  const title = sections[0]?.title ? normalizeSpaces(sections[0].title) : '요약'
+  const title = sections[0]?.title ? normalizeSpaces(sections[0].title) : '선행학습 구조화'
 
-  const coreBullets = pickTop(all, 3, 'core')
+  // 정의·쟁점 분기
+  const defPool = all.filter(s => /(정의|개념|선행학습|학습활동|교육과정)/.test(s))
+  const issuePool = all.filter(s => /(쟁점|관점|차이|주장|해석|입장)/.test(s))
 
-  const ministryPool = all.filter(s => /(교육부|공교육|정상화|우려|부정적|방해|격차|참여도)/.test(s))
-  const privatePool = all.filter(s => /(사교육|학원|예습|효율|성과|긍정|흥미|자신감)/.test(s))
+  const defSentences = pickTop(defPool.length ? defPool : all, 2, 'def')
+  const issueSentences = pickTop(issuePool.length ? issuePool : all, 2, 'issue')
 
-  const ministry: StructuredNode = {
-    id: 'ministry',
-    label: '교육부 관점(문제 제기)',
-    bullets: pickTop(ministryPool.length ? ministryPool : all, 3, 'min')
-  }
+  // 교육부 관점
+  const ministryPool = all.filter(s => /(교육부|공교육|정상화|우려|부정적|방해|격차|참여도|태도|창의|인성|전인교육)/.test(s))
+  const ministrySentences = pickTop(ministryPool.length ? ministryPool : all, 4, 'min')
 
-  const privateEdu: StructuredNode = {
-    id: 'private',
-    label: '사교육 관점(효율 주장)',
-    bullets: pickTop(privatePool.length ? privatePool : all, 3, 'pri')
-  }
+  // 사교육 관점
+  const privatePool = all.filter(s => /(사교육|학원|예습|효율|성과|긍정|흥미|자신감|구분|조력|대비)/.test(s))
+  const privateSentences = pickTop(privatePool.length ? privatePool : all, 3, 'pri')
 
+  // 목표 vs 현실
+  const goalPool = secSent['2.2']?.length ? secSent['2.2'] : all.filter(s => /(목표|역점|듣기|말하기|일상|국제|이해|능력)/.test(s))
+  const realityGoalPool = all.filter(s => /(현실|성취|성적|고입|대입|전환)/.test(s))
+  const goalSentences = pickTop(goalPool.length ? goalPool : all, 2, 'goal')
+  const realityGoalSentences = pickTop(realityGoalPool.length ? realityGoalPool : all, 2, 'rgoal')
+
+  // 방법·현황(사례)
   const realityPool = (secSent['2.3']?.length ? secSent['2.3'] : all).filter(s =>
-    /(현황|방법|설명회|프로그램|평가|교육비|특강|기숙|방학)/.test(s)
+    /(현황|방법|설명회|프로그램|평가|교육비|특강|기숙|방학|시험대비|내신|인증시험|운영|비용|강도)/.test(s)
   )
-  const reality: StructuredNode = {
-    id: 'reality',
-    label: '방법 및 현황(사례 중심)',
-    bullets: pickTop(realityPool.length ? realityPool : all, 4, 'rea')
-  }
+  const realitySentences = pickTop(realityPool.length ? realityPool : all, 4, 'rea')
 
-  const gapPool = secSent['2.2']?.length ? secSent['2.2'] : all.filter(s => /(목표|역점|하지만|현실|성적|시험)/.test(s))
-  const gap: StructuredNode = {
-    id: 'gap',
-    label: '목표와 현실의 괴리',
-    bullets: pickTop(gapPool.length ? gapPool : all, 3, 'gap')
-  }
+  // 변천(입시 반영 구조)
+  const policyPool = secSent['2.4']?.length ? secSent['2.4'] : all.filter(s => /(변천|과정|비율|가산점|내신|추세|반영|영어|비중|확대)/.test(s))
+  const policySentences = pickTop(policyPool.length ? policyPool : all, 2, 'pol')
 
-  const policyPool = secSent['2.4']?.length ? secSent['2.4'] : all.filter(s => /(변천|과정|비율|가산점|내신|추세)/.test(s))
-  const policy: StructuredNode = {
-    id: 'policy',
-    label: '제도/변천(입시 구조 변화)',
-    bullets: pickTop(policyPool.length ? policyPool : all, 3, 'pol')
-  }
-
-  const takePool = all.filter(s => /(추세|강화|대응|영향|요인|현실)/.test(s))
-  const takeaway: StructuredNode = {
-    id: 'takeaway',
-    label: '시사점(요약 결론)',
-    bullets: pickTop(takePool.length ? takePool : all, 2, 'tak')
-  }
-
-  return {
+  // Tree 구조 생성
+  const tree: TreeNode = {
     title,
-    core: { id: 'core', bullets: coreBullets },
-    perspectives: { ministry, privateEdu },
-    reality,
-    gap,
-    policy,
-    takeaway
+    children: [
+      {
+        title: '정의·쟁점',
+        type: 'question',
+        collapsed: false,
+        children: [
+          {
+            title: '선행학습 정의',
+            type: 'keyword',
+            pack: ['정규과정 이전', '미리 학습', '학습과정'],
+            explain: defSentences[0]?.text || '교육부 기준 선행학습은 정규 교육과정보다 앞서 미리 학습하는 모든 학습활동을 뜻한다.',
+            collapsed: false,
+            children: []
+          },
+          {
+            title: '쟁점(관점 차이)',
+            type: 'keyword',
+            pack: ['국가', '학생·학부모', '사교육'],
+            explain: issueSentences[0]?.text || '선행학습의 성격과 영향에 대해 국가·학생/학부모·사교육이 서로 다른 주장과 해석을 제시한다.',
+            collapsed: false,
+            children: []
+          }
+        ]
+      },
+      {
+        title: '교육부 관점',
+        type: 'question',
+        collapsed: false,
+        children: ministrySentences.slice(0, 4).map((s, idx) => ({
+          title: [
+            '공교육 정상화 저해',
+            '전인교육 저해·사교육 증폭',
+            '영어 태도 조기 고착 우려',
+            '학습격차·수업참여 악영향'
+          ][idx] || `관점 ${idx + 1}`,
+          type: 'keyword' as const,
+          pack: [
+            ['공교육 방해', '정상화 저해', '핵심 요인'],
+            ['창의·인성', '전인교육', '사교육 관행'],
+            ['호오 조기결정', '자신감 과잉', '무력감'],
+            ['수준 격차', '태도', '참여도']
+          ][idx] || [],
+          explain: s.text,
+          collapsed: false,
+          children: []
+        }))
+      },
+      {
+        title: '사교육 관점',
+        type: 'question',
+        collapsed: false,
+        children: privateSentences.slice(0, 3).map((s, idx) => ({
+          title: [
+            '예습과 선행학습 구분 주장',
+            '예습의 효과 강조',
+            '현장의 선행학습 실태(모순)'
+          ][idx] || `관점 ${idx + 1}`,
+          type: 'keyword' as const,
+          pack: [
+            ['예습≠선행', '대비', '조력'],
+            ['수업 성과', '효율', '흥미·자신감'],
+            ['고학년 교재', '방학·특강', '실질 선행']
+          ][idx] || [],
+          explain: s.text,
+          collapsed: false,
+          children: []
+        }))
+      },
+      {
+        title: '목표(교육부 vs 현실)',
+        type: 'question',
+        collapsed: false,
+        children: [
+          {
+            title: '1998 영어교육 목표',
+            type: 'keyword',
+            pack: ['듣기·말하기', '일상영어', '국제이해'],
+            explain: goalSentences[0]?.text || '교육부(1998)는 음성언어 중심(듣기·말하기)과 일상생활 영어 사용 능력, 국제사회·외국문화 이해 및 국가 발전 기여를 목표로 제시했다.',
+            collapsed: false,
+            children: []
+          },
+          {
+            title: '현실 목표의 전환',
+            type: 'keyword',
+            pack: ['성취·성적', '고입', '대입'],
+            explain: realityGoalSentences[0]?.text || '현장에서는 교육 목표와 달리 학업 성취·성적 향상, 고입·대입 대비가 학습의 중심 목표로 작동하는 경향이 있다.',
+            collapsed: false,
+            children: []
+          }
+        ]
+      },
+      {
+        title: '방법·현황(사례)',
+        type: 'question',
+        collapsed: false,
+        children: realitySentences.slice(0, 4).map((s, idx) => ({
+          title: [
+            '시험대비 프로그램(초등 A학원)',
+            '내신·인증시험 집중(어학 B·C학원)',
+            '운영·비용·강도',
+            '기숙형 선행학습(방학 30일 내외)'
+          ][idx] || `방법 ${idx + 1}`,
+          type: 'keyword' as const,
+          pack: [
+            ['단원평가', '서술형 특강', '성취도 평가'],
+            ['중등 내신', '인증시험', 'L/S/R/W'],
+            ['주5회', '주말 특강', '자습 운영'],
+            ['교육청 연계', '기숙', '스파르타식']
+          ][idx] || [],
+          explain: s.text,
+          collapsed: false,
+          children: []
+        }))
+      },
+      {
+        title: '변천(입시 반영 구조)',
+        type: 'question',
+        collapsed: false,
+        children: policySentences.slice(0, 2).map((s, idx) => ({
+          title: [
+            '내신 반영 비율이 좌우',
+            '영어 비중 확대 추세'
+          ][idx] || `변천 ${idx + 1}`,
+          type: 'keyword' as const,
+          pack: [
+            ['고입', '대입', '내신 비중'],
+            ['필수과목', '가산점', '비중 증가']
+          ][idx] || [],
+          explain: s.text,
+          collapsed: false,
+          children: []
+        }))
+      }
+    ]
   }
+
+  return { title, tree }
 }
 
 /* -------------------------
-   7) downsample: brief ⊂ standard ⊂ detail 강제
+   7) downsample: brief ⊂ standard ⊂ detail 강제 (Tree 기반)
 ------------------------- */
-function subsetBullets(bullets: Bullet[], maxCount: number): Bullet[] {
-  return bullets
-    .slice()
-    .sort((a, b) => b.score - a.score)
-    .slice(0, maxCount)
-    .sort((a, b) => a.id.localeCompare(b.id))
+function downsampleTree(node: TreeNode, depth: number, maxDepth: number): TreeNode {
+  if (depth >= maxDepth) {
+    return { ...node, children: [] }
+  }
+
+  const childrenLimit = {
+    0: 6,  // root: 최대 6개 분기
+    1: 4,  // question: 최대 4개 keyword
+    2: 3   // keyword: 최대 3개 children
+  }[depth] || 2
+
+  return {
+    ...node,
+    children: node.children.slice(0, childrenLimit).map(c => downsampleTree(c, depth + 1, maxDepth))
+  }
 }
 
 function downsampleStructured(detail: StructuredSummary, mode: Mode): StructuredSummary {
-  const cfg = {
-    brief: { core: 2, per: 2, reality: 2, gap: 1, policy: 1, take: 1 },
-    standard: { core: 3, per: 3, reality: 3, gap: 2, policy: 2, take: 2 },
-    detail: { core: 3, per: 3, reality: 4, gap: 3, policy: 3, take: 2 }
-  }[mode]
-
+  const maxDepth = mode === 'brief' ? 2 : mode === 'standard' ? 3 : 4
   return {
     title: detail.title,
-    core: { id: detail.core.id, bullets: subsetBullets(detail.core.bullets, cfg.core) },
-    perspectives: {
-      ministry: { ...detail.perspectives.ministry, bullets: subsetBullets(detail.perspectives.ministry.bullets, cfg.per) },
-      privateEdu: { ...detail.perspectives.privateEdu, bullets: subsetBullets(detail.perspectives.privateEdu.bullets, cfg.per) }
-    },
-    reality: { ...detail.reality, bullets: subsetBullets(detail.reality.bullets, cfg.reality) },
-    gap: { ...detail.gap, bullets: subsetBullets(detail.gap.bullets, cfg.gap) },
-    policy: { ...detail.policy, bullets: subsetBullets(detail.policy.bullets, cfg.policy) },
-    takeaway: { ...detail.takeaway, bullets: subsetBullets(detail.takeaway.bullets, cfg.take) }
+    tree: downsampleTree(detail.tree, 0, maxDepth)
   }
 }
 
@@ -349,17 +463,13 @@ function modeTargets(originalText: string, mode: Mode) {
 function buildNarrativeFromStructured(structured: StructuredSummary, mode: Mode, originalText: string) {
   const { min, max } = modeTargets(originalText, mode)
 
+  // Tree에서 explain 추출
   const buckets: string[] = []
-  const push = (bs: Bullet[]) => bs.forEach(b => buckets.push(b.text))
-
-  // 우선순위(학습엔진 관점)
-  push(structured.core.bullets)
-  push(structured.perspectives.ministry.bullets)
-  push(structured.perspectives.privateEdu.bullets)
-  push(structured.gap.bullets)
-  push(structured.policy.bullets)
-  push(structured.reality.bullets)
-  push(structured.takeaway.bullets)
+  const extractExplains = (node: TreeNode) => {
+    if (node.explain) buckets.push(node.explain)
+    if (node.children) node.children.forEach(extractExplains)
+  }
+  extractExplains(structured.tree)
 
   const chosen: string[] = []
   let cur = 0
@@ -389,21 +499,18 @@ function safeNodeLabel(s: string) {
 
 function buildMindmapFromStructured(structured: StructuredSummary) {
   const center = structured.title || '핵심'
-  const mk = (id: string, label: string, bullets: Bullet[]) => ({
-    id,
-    label,
-    children: bullets.map(b => ({ id: b.id, label: safeNodeLabel(b.text) }))
-  })
 
-  const nodes = [
-    mk('n_core', '핵심 요지', structured.core.bullets),
-    mk('n_min', structured.perspectives.ministry.label, structured.perspectives.ministry.bullets),
-    mk('n_pri', structured.perspectives.privateEdu.label, structured.perspectives.privateEdu.bullets),
-    mk('n_gap', structured.gap.label, structured.gap.bullets),
-    mk('n_pol', structured.policy.label, structured.policy.bullets),
-    mk('n_rea', structured.reality.label, structured.reality.bullets),
-    mk('n_tak', structured.takeaway.label, structured.takeaway.bullets)
-  ]
+  // Tree → mindmap 변환
+  const treeToMindmap = (node: TreeNode, idPrefix: string): any => {
+    const id = `${idPrefix}_${Math.random().toString(36).substring(7)}`
+    return {
+      id,
+      label: safeNodeLabel(node.title),
+      children: node.children.map((c, idx) => treeToMindmap(c, `${id}_${idx}`))
+    }
+  }
+
+  const nodes = structured.tree.children.map((c, idx) => treeToMindmap(c, `n${idx}`))
   return { center, nodes }
 }
 
@@ -413,22 +520,30 @@ function buildMindmapFromStructured(structured: StructuredSummary) {
 function buildSelftestFromStructured(structured: StructuredSummary, mode: Mode) {
   const q: { q: string; a: string; hint?: string }[] = []
 
+  // Tree에서 explain 추출
+  const explains: string[] = []
+  const extractExplains = (node: TreeNode) => {
+    if (node.explain) explains.push(node.explain)
+    if (node.children) node.children.forEach(extractExplains)
+  }
+  extractExplains(structured.tree)
+
   q.push({
     q: '교육부는 선행학습을 왜 문제로 보는가?',
-    a: structured.perspectives.ministry.bullets[0]?.text || '공교육 정상화 저해 및 격차/태도 악화 우려.',
+    a: explains.find(e => /(교육부|공교육|정상화|우려)/.test(e)) || '공교육 정상화 저해 및 격차/태도 악화 우려.',
     hint: '공교육·격차·참여도'
   })
 
   q.push({
     q: '사교육이 말하는 예습과 선행학습의 차이는 무엇인가?',
-    a: structured.perspectives.privateEdu.bullets[0]?.text || '예습은 수업 대비, 선행은 다음 학년 과정의 선학습.',
+    a: explains.find(e => /(사교육|학원|예습|효율)/.test(e)) || '예습은 수업 대비, 선행은 다음 학년 과정의 선학습.',
     hint: '수업 대비 vs 다음 학년'
   })
 
   if (mode !== 'brief') {
     q.push({
       q: '선행학습이 강화되는 제도적 배경은 무엇인가?',
-      a: structured.policy.bullets[0]?.text || '내신 반영비율/전형/가산점 등 구조 변화가 영향을 준다.',
+      a: explains.find(e => /(변천|과정|비율|가산점|내신)/.test(e)) || '내신 반영비율/전형/가산점 등 구조 변화가 영향을 준다.',
       hint: '내신·전형·비율'
     })
   }
@@ -436,7 +551,7 @@ function buildSelftestFromStructured(structured: StructuredSummary, mode: Mode) 
   if (mode === 'detail') {
     q.push({
       q: '선행학습의 현황(방법)에서 핵심 특징 1가지는?',
-      a: structured.reality.bullets[0]?.text || '시험 대비 중심 프로그램과 특강/평가 체계가 운영된다.',
+      a: explains.find(e => /(현황|방법|프로그램|평가)/.test(e)) || '시험 대비 중심 프로그램과 특강/평가 체계가 운영된다.',
       hint: '프로그램·특강·평가'
     })
   }

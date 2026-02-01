@@ -6,6 +6,7 @@
   <title>MindStory - 학습 요약 도우미</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+  <script src="/static/ms-mindmap-svg.js"></script>
   <style>
     body {
       min-height: 100vh;
@@ -204,59 +205,89 @@
     }
 
     // Render result
-    function renderResult(data) {
-      const { summary, meta, title } = data;
-      let html = `<h3 class="text-xl font-bold mb-4">${title || '요약 결과'}</h3>`;
+    function renderResult(response) {
+      const { data, meta } = response;
+      let html = '';
 
-      if (currentView === 'narrative') {
-        html += `<div class="space-y-3">`;
-        html += `<div><strong>핵심 포인트:</strong></div>`;
-        html += `<ul class="list-disc list-inside space-y-1">`;
-        summary.bullets.forEach(bullet => {
-          html += `<li>${bullet}</li>`;
-        });
-        html += `</ul>`;
-        html += `<div class="mt-4"><strong>전체 요약:</strong></div>`;
-        html += `<p class="text-gray-700">${summary.narrative}</p>`;
+      if (currentView === 'narrative' && data.narrative) {
+        html += `<h3 class="text-xl font-bold mb-4">서술형 요약</h3>`;
+        html += `<div class="prose max-w-none">`;
+        html += `<p class="text-gray-700 leading-relaxed">${data.narrative}</p>`;
         html += `</div>`;
-      } else if (currentView === 'structured' && summary.structured) {
+      } else if (currentView === 'structured' && data.structured) {
+        html += `<h3 class="text-xl font-bold mb-4">구조화 요약 (Tree)</h3>`;
+        html += renderTree(data.structured.tree);
+      } else if (currentView === 'mindmap' && data.mindmap) {
+        html += `<h3 class="text-xl font-bold mb-4">마인드맵</h3>`;
+        html += `<div id="mindmapContainer"></div>`;
+        resultContent.innerHTML = html;
+        // 마인드맵 렌더링 (비동기)
+        setTimeout(() => {
+          const container = document.getElementById('mindmapContainer');
+          if (container && window.MS_renderMindmapFromEngineMindmap) {
+            window.MS_renderMindmapFromEngineMindmap(container, data.mindmap);
+          } else {
+            container.innerHTML = '<p class="text-red-500">마인드맵 렌더링 실패</p>';
+          }
+        }, 100);
+        resultMeta.textContent = `엔진: ${meta?.engine || 'local'} | 캐시: ${meta?.cached ? 'HIT' : 'MISS'} | 시간: ${meta?.elapsedMs || 0}ms`;
+        resultSection.classList.remove('hidden');
+        return;
+      } else if (currentView === 'selftest' && data.selftest) {
+        html += `<h3 class="text-xl font-bold mb-4">자가 테스트</h3>`;
         html += `<div class="space-y-4">`;
-        summary.structured.headings.forEach(heading => {
-          html += `<div>`;
-          html += `<h4 class="font-bold text-lg mb-2">${heading.title}</h4>`;
-          html += `<ul class="list-disc list-inside space-y-1">`;
-          heading.items.forEach(item => {
-            html += `<li>${item}</li>`;
-          });
-          html += `</ul>`;
-          html += `</div>`;
-        });
-        html += `</div>`;
-      } else if (currentView === 'mindmap' && summary.mindmap) {
-        html += `<div class="text-center">`;
-        html += `<div class="inline-block p-4 bg-purple-100 rounded-lg mb-4">`;
-        html += `<strong>${summary.mindmap.nodes[0].label}</strong>`;
-        html += `</div>`;
-        html += `<div class="grid grid-cols-3 gap-3">`;
-        summary.mindmap.nodes.slice(1).forEach(node => {
-          html += `<div class="p-3 bg-blue-50 rounded-lg">${node.label}</div>`;
-        });
-        html += `</div>`;
-        html += `</div>`;
-      } else if (currentView === 'selftest' && summary.selftest) {
-        html += `<div class="space-y-4">`;
-        summary.selftest.questions.forEach((q, i) => {
-          html += `<div class="p-4 bg-white rounded-lg">`;
+        data.selftest.forEach((q, i) => {
+          html += `<div class="p-4 bg-white rounded-lg border border-gray-200">`;
           html += `<p class="font-medium mb-2">Q${i + 1}. ${q.q}</p>`;
-          html += `<p class="text-sm text-gray-600">A: ${q.answer || '답변을 작성해보세요'}</p>`;
+          html += `<details class="mt-2">`;
+          html += `<summary class="cursor-pointer text-sm text-blue-600 hover:text-blue-800">답변 보기</summary>`;
+          html += `<p class="text-sm text-gray-700 mt-2">A: ${q.a}</p>`;
+          if (q.hint) {
+            html += `<p class="text-xs text-gray-500 mt-1">힌트: ${q.hint}</p>`;
+          }
+          html += `</details>`;
           html += `</div>`;
         });
         html += `</div>`;
       }
 
       resultContent.innerHTML = html;
-      resultMeta.textContent = `엔진: ${meta?.engine || 'local'} | 캐시: ${meta?.cache || 'none'}`;
+      resultMeta.textContent = `엔진: ${meta?.engine || 'local'} | 캐시: ${meta?.cached ? 'HIT' : 'MISS'} | 시간: ${meta?.elapsedMs || 0}ms`;
       resultSection.classList.remove('hidden');
+    }
+
+    // Render Tree (재귀)
+    function renderTree(node, depth = 0) {
+      if (!node) return '';
+      
+      const indent = depth * 20;
+      let html = `<div style="margin-left: ${indent}px; margin-top: 8px;">`;
+      
+      // 노드 제목
+      html += `<div class="font-semibold text-gray-800 mb-1">${node.title}</div>`;
+      
+      // pack (키워드)
+      if (node.pack) {
+        const packArr = Array.isArray(node.pack) ? node.pack : [node.pack];
+        html += `<div class="text-xs text-purple-600 mb-1">`;
+        html += packArr.map(p => `<span class="inline-block px-2 py-1 bg-purple-100 rounded mr-1">${p}</span>`).join('');
+        html += `</div>`;
+      }
+      
+      // explain (설명)
+      if (node.explain) {
+        html += `<div class="text-sm text-gray-600 mb-2">${node.explain}</div>`;
+      }
+      
+      // 자식 노드
+      if (node.children && node.children.length > 0) {
+        node.children.forEach(child => {
+          html += renderTree(child, depth + 1);
+        });
+      }
+      
+      html += `</div>`;
+      return html;
     }
 
     // Summarize button
@@ -274,11 +305,10 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            kind: 'summary',
             text,
             mode: currentMode,
             viewType: currentView,
-            options: { userId: 'web_user' }
+            userId: 'web_user'
           })
         });
 
@@ -286,14 +316,14 @@
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const data = await response.json();
+        const result = await response.json();
 
-        if (!data.ok) {
-          throw new Error(data.error || 'Unknown error');
+        if (!result.ok) {
+          throw new Error(result.error || 'Unknown error');
         }
 
         loadingIndicator.classList.add('hidden');
-        renderResult(data);
+        renderResult(result);
       } catch (error) {
         console.error('Error:', error);
         showError(error.message || '요약 중 오류가 발생했습니다.');
