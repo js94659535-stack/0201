@@ -223,6 +223,12 @@
 
     // structured (개선된 버전 사용)
     if (currentView === 'structured' && data.structured) {
+      console.log('[DEBUG] Structured rendering:', {
+        hasRenderer: !!window.MS_renderStructuredBetter,
+        dataType: typeof data.structured,
+        structured: data.structured
+      });
+      
       if (window.MS_renderStructuredBetter) {
         container.innerHTML = window.MS_renderStructuredBetter(data.structured);
       } else {
@@ -243,6 +249,12 @@
 
     // mindmap (SVG 렌더링)
     if (currentView === 'mindmap' && data.mindmap) {
+      console.log('[DEBUG] Mindmap rendering:', {
+        hasRenderer: !!window.MS_renderMindmapFromEngineMindmap,
+        dataType: typeof data.mindmap,
+        mindmap: data.mindmap
+      });
+      
       // SVG 마인드맵 렌더링
       if (window.MS_renderMindmapFromEngineMindmap) {
         const wrap = document.createElement('div');
@@ -486,6 +498,14 @@
 
   // Improved structured rendering (hierarchy)
   window.MS_renderStructuredBetter = function(structured){
+    console.log('[MS_renderStructuredBetter] Input:', {
+      type: typeof structured,
+      isObject: structured && typeof structured === 'object',
+      hasTitle: !!(structured && structured.title),
+      hasBullets: !!(structured && Array.isArray(structured.bullets)),
+      structured: structured
+    });
+    
     if (structured && typeof structured === 'object' && structured.title && Array.isArray(structured.bullets)){
       return `
         <div class="ms-structured">

@@ -250,19 +250,35 @@
         }
       } else if (currentView === 'structured' && data.structured) {
         html += `<h3 class="text-xl font-bold mb-4">🧱 구조화 요약</h3>`;
-        // MS_renderStructuredBetter 사용 (계층 구조)
-        if (window.MS_renderStructuredBetter) {
-          html += window.MS_renderStructuredBetter(data.structured);
-        } else if (data.structured.tree) {
+        
+        // DEBUG: Check what's available
+        console.log('[DEBUG] structured render path:', {
+          hasMS_renderStructuredBetter: !!window.MS_renderStructuredBetter,
+          hasTree: !!data.structured.tree,
+          structuredKeys: Object.keys(data.structured),
+          structuredType: typeof data.structured
+        });
+        
+        // Priority 1: Use tree directly (most reliable)
+        if (data.structured.tree) {
           html += renderTree(data.structured.tree);
-        } else if (typeof data.structured === 'object' && data.structured.bullets) {
+        }
+        // Priority 2: Use MS_renderStructuredBetter
+        else if (window.MS_renderStructuredBetter) {
+          html += window.MS_renderStructuredBetter(data.structured);
+        }
+        // Priority 3: bullets array
+        else if (typeof data.structured === 'object' && data.structured.bullets) {
           html += `<ul class="list-disc list-inside space-y-2">`;
           data.structured.bullets.forEach(b => {
             html += `<li class="text-gray-700">${escapeHtml(String(b))}</li>`;
           });
           html += `</ul>`;
-        } else {
-          html += `<pre class="whitespace-pre-wrap text-gray-700">${escapeHtml(String(data.structured))}</pre>`;
+        }
+        // Fallback: JSON display
+        else {
+          console.warn('[WARN] No valid structured format, showing JSON');
+          html += `<pre class="whitespace-pre-wrap text-gray-700 text-sm">${escapeHtml(JSON.stringify(data.structured, null, 2))}</pre>`;
         }
       } else if (currentView === 'mindmap' && data.mindmap) {
         html += `<h3 class="text-xl font-bold mb-4">🧠 마인드맵</h3>`;
