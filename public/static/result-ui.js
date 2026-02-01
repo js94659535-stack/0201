@@ -197,7 +197,7 @@
   }
 
   /**
-   * 기본 렌더러 (마크다운/프리 텍스트)
+   * 기본 렌더러 (개선된 가독성 버전)
    */
   function renderDefault(container, data) {
     container.innerHTML = '';
@@ -207,52 +207,76 @@
       return;
     }
 
-    // narrative
+    // narrative (개선된 버전 사용)
     if (currentView === 'narrative' && data.narrative) {
-      const pre = document.createElement('pre');
-      pre.style.whiteSpace = 'pre-wrap';
-      pre.style.lineHeight = '1.6';
-      pre.textContent = data.narrative;
-      container.appendChild(pre);
+      if (window.MS_renderNarrativeBetter) {
+        container.innerHTML = window.MS_renderNarrativeBetter(data.narrative);
+      } else {
+        const pre = document.createElement('pre');
+        pre.style.whiteSpace = 'pre-wrap';
+        pre.style.lineHeight = '1.6';
+        pre.textContent = data.narrative;
+        container.appendChild(pre);
+      }
       return;
     }
 
-    // structured
+    // structured (개선된 버전 사용)
     if (currentView === 'structured' && data.structured) {
-      const title = document.createElement('h3');
-      title.textContent = data.structured.title || '구조화 요약';
-      container.appendChild(title);
+      if (window.MS_renderStructuredBetter) {
+        container.innerHTML = window.MS_renderStructuredBetter(data.structured);
+      } else {
+        const title = document.createElement('h3');
+        title.textContent = data.structured.title || '구조화 요약';
+        container.appendChild(title);
 
-      const ul = document.createElement('ul');
-      (data.structured.bullets || []).forEach((bullet) => {
-        const li = document.createElement('li');
-        li.textContent = String(bullet).replace(/^[-•]\s*/, '');
-        ul.appendChild(li);
-      });
-      container.appendChild(ul);
-      return;
-    }
-
-    // mindmap
-    if (currentView === 'mindmap' && data.mindmap) {
-      const title = document.createElement('h3');
-      title.textContent = '마인드맵 (간이)';
-      container.appendChild(title);
-
-      const center = document.createElement('div');
-      center.className = 'badge';
-      center.textContent = '🌟 ' + (data.mindmap.center || '핵심');
-      container.appendChild(center);
-
-      const ul = document.createElement('ul');
-      (data.mindmap.nodes || [])
-        .filter((n) => n.id !== 'c')
-        .forEach((node) => {
+        const ul = document.createElement('ul');
+        (data.structured.bullets || []).forEach((bullet) => {
           const li = document.createElement('li');
-          li.textContent = node.label || '';
+          li.textContent = String(bullet).replace(/^[-•]\s*/, '');
           ul.appendChild(li);
         });
-      container.appendChild(ul);
+        container.appendChild(ul);
+      }
+      return;
+    }
+
+    // mindmap (SVG 렌더링)
+    if (currentView === 'mindmap' && data.mindmap) {
+      // SVG 마인드맵 렌더링
+      if (window.MS_renderMindmapFromEngineMindmap) {
+        const wrap = document.createElement('div');
+        wrap.className = 'ms-mindmap-wrap';
+        wrap.style.cssText = 'height: 560px; border-radius: 16px; border:1px solid rgba(128,128,128,.10); background: rgba(128,128,128,.03); overflow:hidden;';
+        container.appendChild(wrap);
+        
+        try {
+          window.MS_renderMindmapFromEngineMindmap(wrap, data.mindmap, { debug: false });
+        } catch (err) {
+          console.error('[Mindmap] Render error:', err);
+          wrap.innerHTML = '<div class="meta" style="padding:20px;">마인드맵 렌더링 오류: ' + err.message + '</div>';
+        }
+      } else {
+        // 폴백: 간이 텍스트 렌더링
+        const title = document.createElement('h3');
+        title.textContent = '마인드맵 (간이)';
+        container.appendChild(title);
+
+        const center = document.createElement('div');
+        center.className = 'badge';
+        center.textContent = '🌟 ' + (data.mindmap.center || data.mindmap.title || '핵심');
+        container.appendChild(center);
+
+        const ul = document.createElement('ul');
+        (data.mindmap.nodes || data.mindmap.children || [])
+          .filter((n) => n.id !== 'c' && n.id !== data.mindmap.center)
+          .forEach((node) => {
+            const li = document.createElement('li');
+            li.textContent = node.label || node.title || '';
+            ul.appendChild(li);
+          });
+        container.appendChild(ul);
+      }
       return;
     }
 
@@ -269,12 +293,12 @@
 
         const qText = document.createElement('div');
         qText.style.cssText = 'font-weight:700; margin-bottom:6px;';
-        qText.textContent = `Q${i + 1}. ${q.question || ''}`;
+        qText.textContent = `Q${i + 1}. ${q.question || q.q || ''}`;
         qBox.appendChild(qText);
 
         const hint = document.createElement('div');
         hint.className = 'meta';
-        hint.textContent = '힌트: ' + (q.answerHint || '');
+        hint.textContent = '힌트: ' + (q.answerHint || q.hint || '');
         qBox.appendChild(hint);
 
         container.appendChild(qBox);

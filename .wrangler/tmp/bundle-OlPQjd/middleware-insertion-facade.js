@@ -1,8 +1,8 @@
-				import worker, * as OTHER_EXPORTS from "/home/user/webapp/.wrangler/tmp/pages-svlb1j/f2wrrusy0g8.js";
+				import worker, * as OTHER_EXPORTS from "/home/user/webapp/.wrangler/tmp/pages-4SL3hA/nuwz2yob5f.js";
 				import * as __MIDDLEWARE_0__ from "/home/user/webapp/node_modules/wrangler/templates/middleware/middleware-ensure-req-body-drained.ts";
 import * as __MIDDLEWARE_1__ from "/home/user/webapp/node_modules/wrangler/templates/middleware/middleware-miniflare3-json-error.ts";
 
-				export * from "/home/user/webapp/.wrangler/tmp/pages-svlb1j/f2wrrusy0g8.js";
+				export * from "/home/user/webapp/.wrangler/tmp/pages-4SL3hA/nuwz2yob5f.js";
 
 				export const __INTERNAL_WRANGLER_MIDDLEWARE__ = [
 					
