@@ -12,6 +12,32 @@
       min-height: 100vh;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
+    
+    /* MindStory Result Rendering V2 (가독성 개선) */
+    .ms-narrative { line-height: 1.65; }
+    .ms-paragraph { margin: 0 0 12px 0; font-size: 14.5px; white-space: pre-wrap; }
+    .ms-quote {
+      margin: 10px 0 14px;
+      padding: 10px 12px;
+      border-left: 3px solid rgba(0,0,0,0.28);
+      background: rgba(0,0,0,0.03);
+      border-radius: 12px;
+      white-space: pre-wrap;
+    }
+    .ms-structured .ms-h1 { font-size: 16px; font-weight: 700; margin: 0 0 10px 0; }
+    .ms-structured .ms-h2 { font-size: 15px; font-weight: 700; margin: 14px 0 8px; }
+    .ms-ul { margin: 0 0 8px 18px; padding: 0; }
+    .ms-ul > li { margin: 0 0 10px 0; }
+    .ms-key { font-weight: 600; margin-bottom: 6px; }
+    .ms-subul { margin: 0 0 0 18px; padding: 0; opacity: 0.95; }
+    .ms-subul > li { margin: 0 0 6px 0; }
+    .ms-chip { display:inline-block; font-size:12px; padding:2px 8px; border-radius:999px; background: rgba(128,128,128,.08); border:1px solid rgba(128,128,128,.10); margin-left:6px; opacity:.9;}
+    .ms-box { border:1px solid rgba(128,128,128,.10); background: rgba(128,128,128,.04); border-radius: 14px; padding: 12px 14px; margin: 10px 0; }
+    .ms-hr { height:1px; background: rgba(128,128,128,.10); border:0; margin: 14px 0; }
+    .ms-q { margin: 10px 0; padding: 10px 12px; border-radius: 14px; background: rgba(128,128,128,.05); border:1px solid rgba(128,128,128,.10); }
+    .ms-q .q { font-weight: 700; }
+    .ms-q .a { margin-top:6px; opacity:.92; }
+    .ms-mindmap-wrap { height: 560px; border-radius: 16px; border:1px solid rgba(128,128,128,.10); background: rgba(128,128,128,.03); overflow:hidden; }
   </style>
 </head>
 <body class="antialiased">

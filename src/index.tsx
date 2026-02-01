@@ -5018,8 +5018,258 @@ app.post('/api/engine', async (c) => {
 })
 
 // ----------------------------
+// D1 Save/Load + Selftest APIs
+// ----------------------------
+
+// Selftest constants
+const SELFTEST_PASS_SCORE = 90 // ✅ 90% pass requirement
+
+// Selftest spec type
+type SelftestItem =
+  | { id: string; type: 'mcq'; q: string; choices: string[]; answer: number; rationale?: string }
+  | { id: string; type: 'short'; q: string; answer: string; rationale?: string }
+  | { id: string; type: 'tf'; q: string; answer: boolean; rationale?: string }
+  | { id: string; type: 'cloze'; q: string; answer: string; rationale?: string };
+
+type SelftestSpec = {
+  version: 'v1';
+  passScore: number;
+  itemCountByMode: { brief: number; standard: number; detail: number };
+  mix: { mcq: number; short: number; tf: number; cloze: number };
+  constraints: {
+    noVerbatimLongQuote: boolean;
+    requireSourceGrounding: boolean;
+    preferKeyClaimsOverTrivia: boolean;
+    avoidPageArtifacts: boolean;
+    koreanGrammarClean: boolean;
+  };
+  scoring: {
+    mcq: { points: number };
+    tf: { points: number };
+    short: { points: number; normalize: 'trim-lower-space' };
+    cloze: { points: number; normalize: 'trim-lower-space' };
+  };
+}
+
+function defaultSelftestSpec(): SelftestSpec {
+  return {
+    version: 'v1',
+    passScore: SELFTEST_PASS_SCORE,
+    itemCountByMode: { brief: 5, standard: 7, detail: 10 },
+    mix: { mcq: 0.5, short: 0.2, tf: 0.2, cloze: 0.1 },
+    constraints: {
+      noVerbatimLongQuote: true,
+      requireSourceGrounding: true,
+      preferKeyClaimsOverTrivia: true,
+      avoidPageArtifacts: true,
+      koreanGrammarClean: true,
+    },
+    scoring: {
+      mcq: { points: 10 },
+      tf: { points: 10 },
+      short: { points: 10, normalize: 'trim-lower-space' },
+      cloze: { points: 10, normalize: 'trim-lower-space' },
+    }
+  }
+}
+
+function normalizeAnswer(s: any) {
+  return safeStr(s).replace(/\s+/g,' ').trim().toLowerCase()
+}
+
+function scoreSelftest(items: SelftestItem[], userAnswers: Record<string, any>, spec: SelftestSpec) {
+  let total = 0
+  let got = 0
+  for (const it of items) {
+    let pts = 10
+    if (it.type === 'mcq') pts = spec.scoring.mcq.points
+    if (it.type === 'tf') pts = spec.scoring.tf.points
+    if (it.type === 'short') pts = spec.scoring.short.points
+    if (it.type === 'cloze') pts = spec.scoring.cloze.points
+    total += pts
+
+    const ua = userAnswers?.[it.id]
+    let ok = false
+    if (it.type === 'mcq') ok = Number(ua) === it.answer
+    else if (it.type === 'tf') ok = Boolean(ua) === it.answer
+    else ok = normalizeAnswer(ua) === normalizeAnswer(it.answer)
+    if (ok) got += pts
+  }
+  const score = total ? Math.round((got / total) * 100) : 0
+  const passed = score >= spec.passScore
+  return { score, passed }
+}
+
+// Helper for sha256
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input || '')
+  const buf = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
+}
+
+// Generate nano ID (simple implementation)
+function nanoid(size = 21): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-'
+  let id = ''
+  const crypto = globalThis.crypto
+  const bytes = crypto.getRandomValues(new Uint8Array(size))
+  for (let i = 0; i < size; i++) {
+    id += chars[bytes[i] % chars.length]
+  }
+  return id
+}
+
+// API: Save session
+app.post('/api/session/save', async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const userId = safeStr(body.userId)
+  const title = safeStr(body.title || '')
+  const sourceText = safeStr(body.sourceText)
+  const allSummaries = body.allSummaries
+  const engineMeta = body.engineMeta || {}
+
+  if (!userId) return c.json({ ok:false, error:'userId required' }, 400)
+  if (!sourceText || sourceText.trim().length < 5) return c.json({ ok:false, error:'sourceText too short' }, 400)
+  if (!allSummaries || typeof allSummaries !== 'object') return c.json({ ok:false, error:'allSummaries required' }, 400)
+
+  const db = c.env.DB
+  if (!db) return c.json({ ok:false, error:'DB not configured' }, 503)
+
+  const sessionId = safeStr(body.sessionId) || nanoid()
+  const hash = await sha256Hex(sourceText)
+  const ts = nowIso()
+
+  const sessStmt = db.prepare(`
+    INSERT INTO ms_sessions (id, user_id, title, source_text, source_hash, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      title=excluded.title,
+      source_text=excluded.source_text,
+      source_hash=excluded.source_hash,
+      updated_at=excluded.updated_at
+  `).bind(sessionId, userId, title, sourceText, hash, ts, ts)
+
+  const sumStmt = db.prepare(`
+    INSERT INTO ms_summaries (session_id, all_summaries_json, engine_meta_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(session_id) DO UPDATE SET
+      all_summaries_json=excluded.all_summaries_json,
+      engine_meta_json=excluded.engine_meta_json,
+      updated_at=excluded.updated_at
+  `).bind(sessionId, JSON.stringify(allSummaries), JSON.stringify(engineMeta), ts, ts)
+
+  await db.batch([sessStmt, sumStmt])
+  return c.json({ ok:true, sessionId, updatedAt: ts })
+})
+
+// API: Load session
+app.get('/api/session/load', async (c) => {
+  const userId = safeStr(c.req.query('userId'))
+  const sessionId = safeStr(c.req.query('sessionId'))
+  if (!userId) return c.json({ ok:false, error:'userId required' }, 400)
+  if (!sessionId) return c.json({ ok:false, error:'sessionId required' }, 400)
+
+  const db = c.env.DB
+  if (!db) return c.json({ ok:false, error:'DB not configured' }, 503)
+
+  const row = await db.prepare(`
+    SELECT s.id, s.user_id, s.title, s.source_text, s.updated_at,
+           m.all_summaries_json, m.engine_meta_json
+    FROM ms_sessions s
+    JOIN ms_summaries m ON m.session_id = s.id
+    WHERE s.id = ? AND s.user_id = ?
+  `).bind(sessionId, userId).first()
+
+  if (!row) return c.json({ ok:false, error:'not found' }, 404)
+  return c.json({
+    ok:true,
+    session: {
+      sessionId: row.id,
+      userId: row.user_id,
+      title: row.title,
+      sourceText: row.source_text,
+      updatedAt: row.updated_at,
+      allSummaries: JSON.parse(String(row.all_summaries_json || '{}')),
+      engineMeta: JSON.parse(String(row.engine_meta_json || '{}')),
+    }
+  })
+})
+
+// API: List sessions
+app.get('/api/session/list', async (c) => {
+  const userId = safeStr(c.req.query('userId'))
+  if (!userId) return c.json({ ok:false, error:'userId required' }, 400)
+  const db = c.env.DB
+  if (!db) return c.json({ ok:false, error:'DB not configured' }, 503)
+
+  const res = await db.prepare(`
+    SELECT id, title, updated_at
+    FROM ms_sessions
+    WHERE user_id = ?
+    ORDER BY updated_at DESC
+    LIMIT 50
+  `).bind(userId).all()
+  return c.json({ ok:true, items: res.results || [] })
+})
+
+// API: Selftest submit
+app.post('/api/selftest/submit', async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const userId = safeStr(body.userId)
+  const sessionId = safeStr(body.sessionId)
+  const mode = safeStr(body.mode || 'standard')
+  const viewType = safeStr(body.viewType || 'selftest')
+  const spec: SelftestSpec = body.spec || defaultSelftestSpec()
+  const items: SelftestItem[] = Array.isArray(body.items) ? body.items : []
+  const answers = body.answers || {}
+
+  if (!userId) return c.json({ ok:false, error:'userId required' }, 400)
+  if (!sessionId) return c.json({ ok:false, error:'sessionId required' }, 400)
+  if (!items.length) return c.json({ ok:false, error:'items required' }, 400)
+
+  // enforce 90 no matter what
+  spec.passScore = SELFTEST_PASS_SCORE
+
+  const { score, passed } = scoreSelftest(items, answers, spec)
+  const db = c.env.DB
+  const ts = nowIso()
+
+  if (db) {
+    const attemptId = nanoid()
+    await db.prepare(`
+      INSERT INTO ms_selftest_attempts
+      (id, session_id, user_id, mode, view_type, spec_json, questions_json, answers_json, score, passed, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      attemptId, sessionId, userId, mode, viewType,
+      JSON.stringify(spec),
+      JSON.stringify(items),
+      JSON.stringify(answers),
+      score, passed ? 1 : 0,
+      ts
+    ).run()
+    return c.json({ ok:true, score, passed, passScore: SELFTEST_PASS_SCORE, attemptId, createdAt: ts })
+  }
+
+  // DB 없으면 점수만
+  return c.json({ ok:true, score, passed, passScore: SELFTEST_PASS_SCORE, createdAt: ts })
+})
+
+// ----------------------------
 // Health check & 404
 // ----------------------------
+app.get('/api/health', async (c) => {
+  const hasDB = !!c.env.DB
+  const hasGeminiKey = !!c.env.GEMINI_API_KEY
+  return c.json({
+    ok: true,
+    ts: nowIso(),
+    hasDB,
+    hasGeminiKey,
+    engineMode: hasGeminiKey ? 'llm' : 'local-only'
+  })
+})
+
 app.get('/health', (c) => c.json({ ok: true, service: 'MindStory v2 Revised' }))
 
 // 404

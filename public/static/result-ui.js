@@ -352,6 +352,175 @@
     console.log('[result-ui] ✅ Result UI initialized');
   }
 
+  // ------------------------------
+  // D1 Save/Load + Selftest 90% Gate
+  // ------------------------------
+  const SELFTEST_PASS_SCORE = 90; // ✅ 90%
+
+  function esc(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+  
+  function cleanPageArtifacts(text){
+    return String(text||'')
+      .replace(/\n?\s*-\s*\d+\s*-\s*\n?/g, '\n')  // "- 8 -" 제거
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  // API helper
+  async function apiJson(url, opts){
+    const res = await fetch(url, opts);
+    const j = await res.json().catch(()=>null);
+    if (!res.ok || !j || j.ok === false) throw new Error((j && j.error) || 'API error');
+    return j;
+  }
+
+  // Save current session
+  window.MS_saveCurrentSession = async function(){
+    const userId = window.__MS_USER_ID__ || localStorage.getItem('ms_user_id') || ('user_' + Date.now());
+    localStorage.setItem('ms_user_id', userId);
+    window.__MS_USER_ID__ = userId;
+
+    const sourceText = (window.__MS_SOURCE_TEXT__ || '').trim();
+    const allSummaries = window.__MS_ALL_SUMMARIES__;
+    const engineMeta = window.__MS_ENGINE_META__ || {};
+    const title = (document.querySelector('#ms-title-input')?.value || '').trim();
+
+    if (!sourceText || sourceText.length < 5) throw new Error('원문이 비어 있습니다');
+    if (!allSummaries) throw new Error('allSummaries가 없습니다. 먼저 요약을 생성하세요.');
+
+    const out = await apiJson('/api/session/save', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ userId, title, sourceText, allSummaries, engineMeta, sessionId: window.__MS_SESSION_ID__ || '' })
+    });
+    window.__MS_SESSION_ID__ = out.sessionId;
+    return out;
+  };
+
+  // Load session
+  window.MS_loadSession = async function(sessionId){
+    const userId = window.__MS_USER_ID__ || localStorage.getItem('ms_user_id');
+    if (!userId) throw new Error('userId가 없습니다. 먼저 저장을 한 번 실행하세요.');
+    const out = await apiJson(`/api/session/load?userId=${encodeURIComponent(userId)}&sessionId=${encodeURIComponent(sessionId)}`);
+    window.__MS_SESSION_ID__ = out.session.sessionId;
+    window.__MS_USER_ID__ = out.session.userId;
+    window.__MS_SOURCE_TEXT__ = out.session.sourceText;
+    window.__MS_ALL_SUMMARIES__ = out.session.allSummaries;
+    window.__MS_ENGINE_META__ = out.session.engineMeta;
+    // 원문 영역에 반영
+    const ta = document.querySelector('#inputText') || document.querySelector('textarea');
+    if (ta) ta.value = out.session.sourceText;
+    // 현재 선택된 mode/view로 다시 렌더
+    if (window.MS_renderFromAllSummaries) window.MS_renderFromAllSummaries();
+    return out;
+  };
+
+  // Selftest submit
+  window.MS_submitSelftest = async function(payload){
+    const userId = window.__MS_USER_ID__ || localStorage.getItem('ms_user_id');
+    if (!userId) throw new Error('userId missing');
+    if (!payload || !payload.items) throw new Error('selftest payload missing');
+    payload.userId = userId;
+    payload.sessionId = payload.sessionId || window.__MS_SESSION_ID__ || '';
+    if (!payload.sessionId) throw new Error('sessionId missing (저장 후 진행 권장)');
+    payload.viewType = 'selftest';
+
+    payload.spec = payload.spec || {};
+    payload.spec.passScore = SELFTEST_PASS_SCORE;
+
+    const out = await apiJson('/api/selftest/submit', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    return out; // {score, passed, passScore:90}
+  };
+
+  // Improved narrative rendering (paragraphs/quotes)
+  window.MS_renderNarrativeBetter = function(text){
+    const t = cleanPageArtifacts(text);
+    // 섹션 헤더/번호 패턴 앞에서 줄바꿈
+    const spaced = t
+      .replace(/(\n)?(2\.\d+\.\s)/g, '\n\n$2')
+      .replace(/(\n)?(\(\d+\)\s)/g, '\n\n$2')
+      .replace(/(\n)?([①②③④⑤⑥⑦⑧⑨⑩]\s)/g, '\n$2')
+      .replace(/([.?!])\s+(?=[가-힣A-Z0-9(])/g, '$1\n');
+
+    const paras = spaced.split(/\n{2,}/).map(p=>p.trim()).filter(Boolean);
+    return `
+      <div class="ms-narrative">
+        ${paras.map(p=>{
+          const isQuote = /「|」|"|"|\"/.test(p) && p.length > 60;
+          return isQuote
+            ? `<div class="ms-quote">${esc(p)}</div>`
+            : `<p class="ms-paragraph">${esc(p)}</p>`;
+        }).join('')}
+      </div>
+    `;
+  };
+
+  // Improved structured rendering (hierarchy)
+  window.MS_renderStructuredBetter = function(structured){
+    if (structured && typeof structured === 'object' && structured.title && Array.isArray(structured.bullets)){
+      return `
+        <div class="ms-structured">
+          <div class="ms-h1">${esc(structured.title)}</div>
+          <ul class="ms-ul">
+            ${structured.bullets.map(b=>`<li>${esc(b)}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+    }
+    // 문자열이면 파싱
+    const t = cleanPageArtifacts(structured);
+    const lines = t.split('\n').map(s=>s.trim()).filter(Boolean);
+    const blocks = [];
+    let cur = null;
+    for (const line of lines){
+      const sec = line.match(/^(2\.\d+\.)\s*(.+)$/);
+      const item = line.match(/^\((\d+)\)\s*(.+)$/);
+      if (sec){
+        if (cur) blocks.push(cur);
+        cur = { h: `${sec[1]} ${sec[2]}`, items: [] };
+        continue;
+      }
+      if (!cur) cur = { h: '핵심 구조', items: [] };
+      if (item){
+        cur.items.push({ k: item[2], subs: [] });
+        continue;
+      }
+      const sub = line.match(/^([①②③④⑤⑥⑦⑧⑨⑩])\s*(.+)$/);
+      if (sub && cur.items.length){
+        cur.items[cur.items.length-1].subs.push(sub[2]);
+      } else if (cur.items.length){
+        cur.items[cur.items.length-1].subs.push(line);
+      } else {
+        cur.items.push({ k: line, subs: [] });
+      }
+    }
+    if (cur) blocks.push(cur);
+    return `
+      <div class="ms-structured">
+        ${blocks.map(b=>`
+          <div class="ms-h2">${esc(b.h)}</div>
+          <ul class="ms-ul">
+            ${b.items.map(it=>`
+              <li>
+                <div class="ms-key">${esc(it.k)}</div>
+                ${it.subs && it.subs.length ? `
+                  <ul class="ms-subul">
+                    ${it.subs.slice(0,6).map(s=>`<li>${esc(s)}</li>`).join('')}
+                  </ul>
+                `:''}
+              </li>
+            `).join('')}
+          </ul>
+        `).join('')}
+      </div>
+    `;
+  };
+
   // 전역 노출
   window.MS_ResultUI = {
     init,
