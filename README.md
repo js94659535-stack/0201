@@ -20,7 +20,14 @@
 
 ### 0. **🎉 최신 패치 (2026-02-01)**
 ```typescript
-// ✅ UI 이벤트 핸들러 연결 및 중복 제거
+// ✅ Brief/Standard/Detail 모드별 차별화 (Latest)
+1️⃣ 모드별 allSummaries 저장: base cache에 3단계 모두 저장
+2️⃣ 로컬 폴백 3단계 생성: 각 모드마다 별도 요약 생성
+3️⃣ 첫 번째 문장 보존: pickTopByScore에서 도입부 항상 포함
+4️⃣ Mode별 narrative 선택: allSummaries[mode]로 정확한 단계 반환
+5️⃣ 계층 관계 유지: Brief ⊂ Standard ⊂ Detail
+
+// Previous: UI 이벤트 핸들러 연결 및 중복 제거
 1️⃣ 입력 필드 이벤트 리스너 추가 (글자 수 카운트 및 버튼 활성화)
 2️⃣ 요약하기 버튼 클릭 핸들러 구현 (SummaryPipeline.run() 호출)
 3️⃣ 4가지 뷰 타입 렌더링 함수 구현 (narrative/structured/mindmap/selftest)
@@ -29,8 +36,7 @@
 6️⃣ 지우기/복사 버튼 기능 추가
 7️⃣ 에러 메시지 표시 개선
 
-// Previous Patch (2026-01-31)
-// ✅ Hierarchical Consistency Enforcer + Structured-First Engine
+// Previous: Hierarchical Consistency Enforcer + Structured-First Engine (2026-01-31)
 1️⃣ splitSentences 교체: 유니코드 따옴표 ASCII 정규화 (빌드 안정)
 2️⃣ 문장 중간 잘림 방지: '다/요/죠' 글자 1개로 분리 금지
 3️⃣ Structured/Mindmap/Selftest Hierarchy Enforcer 추가
@@ -40,6 +46,14 @@
 7️⃣ Hallucination 방지 (증식 금지, truncate only)
 8️⃣ 80% 통과 게이트 메타 제공 (selftest)
 ```
+
+**문제 해결**:
+- ❌ **이전**: Brief/Standard가 동일한 요약 결과 반환
+- ✅ **현재**: 각 모드별로 차별화된 길이와 내용
+- ❌ **이전**: Base cache가 mode 무시하고 동일한 narrative 사용
+- ✅ **현재**: allSummaries에서 mode에 맞는 narrative 선택
+- ❌ **이전**: 로컬 폴백이 1개 모드만 생성
+- ✅ **현재**: 로컬 폴백도 3단계 모두 생성하여 캐시
 
 **문제 해결**:
 - ❌ **이전**: 문장 중간에서 "바다 는"처럼 잘림
