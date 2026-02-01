@@ -4948,41 +4948,76 @@ app.post('/api/engine', async (c) => {
   }
 
   // ----------------------------
-  // ✅ 로컬 폴백: 3단계 모두 생성
+  // ✅ NEW: 학습엔진 품질 패치 v4.2 적용
   // ----------------------------
-  const fallbackBrief = localSummary(text, 'brief', viewType)
-  const fallbackStandard = localSummary(text, 'standard', viewType)
-  const fallbackDetail = localSummary(text, 'detail', viewType)
+  const { buildAllSummariesV4_Quality } = await import('./lib/summary-quality-v4.js')
+  const allSummaries = buildAllSummariesV4_Quality(text)
   
   // 현재 mode에 해당하는 결과 선택
-  const fallback = mode === 'brief' ? fallbackBrief : mode === 'standard' ? fallbackStandard : fallbackDetail
+  const pack = allSummaries[mode] || allSummaries.standard
   
-  await setCache(db, derivedKey, userId || 'anon', fallback)
-  
-  // Base narrative도 저장 (로컬) - 3단계 모두 포함
-  if (fallbackBrief.narrative && fallbackStandard.narrative && fallbackDetail.narrative) {
-    const baseData = { 
-      kind: 'summary', 
+  // viewType에 따라 data 구성
+  let derivedData: any
+  if (viewType === 'narrative') {
+    derivedData = { 
+      kind, 
       mode, 
-      viewType: 'narrative', 
-      narrative: fallback.narrative,
-      allSummaries: {
-        brief: fallbackBrief.narrative,
-        standard: fallbackStandard.narrative,
-        detail: fallbackDetail.narrative
-      }
+      viewType, 
+      narrative: pack.narrative 
     }
-    await setCache(db, baseKey, userId || 'anon', baseData)
+  } else if (viewType === 'structured') {
+    derivedData = { 
+      kind, 
+      mode, 
+      viewType, 
+      structured: pack.structured 
+    }
+  } else if (viewType === 'mindmap') {
+    derivedData = { 
+      kind, 
+      mode, 
+      viewType, 
+      mindmap: pack.mindmap 
+    }
+  } else if (viewType === 'selftest') {
+    derivedData = { 
+      kind, 
+      mode, 
+      viewType, 
+      selftest: pack.selftest 
+    }
   }
+  
+  await setCache(db, derivedKey, userId || 'anon', derivedData)
+  
+  // Base narrative도 저장 (3단계 모두 포함)
+  const baseData = { 
+    kind: 'summary', 
+    mode, 
+    viewType: 'narrative', 
+    narrative: pack.narrative,
+    allSummaries: {
+      brief: allSummaries.brief.narrative,
+      standard: allSummaries.standard.narrative,
+      detail: allSummaries.detail.narrative
+    }
+  }
+  await setCache(db, baseKey, userId || 'anon', baseData)
   
   return c.json(
     {
       ok: true,
-      data: fallback,
+      data: derivedData,
       meta: {
         cached: false,
-        engine: 'local',
-        elapsedMs: Date.now() - start
+        engine: 'quality-v4.2',
+        elapsedMs: Date.now() - start,
+        features: [
+          '압축률 강제 (중간 절단 금지)',
+          '구조화: 논지/대립/현황/괴리/변천/시사점',
+          '마인드맵: 노드 단위 축약',
+          'brief ⊂ standard ⊂ detail 강제'
+        ]
       }
     },
     200
