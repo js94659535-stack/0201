@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// ../.wrangler/tmp/bundle-vQdgKd/checked-fetch.js
+// .wrangler/tmp/bundle-ZBZwOK/checked-fetch.js
 var urls = /* @__PURE__ */ new Set();
 function checkURL(request, init) {
   const url = request instanceof URL ? request : new URL(
@@ -27,7 +27,7 @@ globalThis.fetch = new Proxy(globalThis.fetch, {
   }
 });
 
-// ../.wrangler/tmp/bundle-vQdgKd/strip-cf-connecting-ip-header.js
+// .wrangler/tmp/bundle-ZBZwOK/strip-cf-connecting-ip-header.js
 function stripCfConnectingIPHeader(input, init) {
   const request = new Request(input, init);
   request.headers.delete("CF-Connecting-IP");
@@ -42,24 +42,65 @@ globalThis.fetch = new Proxy(globalThis.fetch, {
   }
 });
 
-// _worker.js
+// .wrangler/tmp/pages-PYyCvb/bundledWorker-0.7491335485956525.mjs
+var __defProp2 = Object.defineProperty;
+var __name2 = /* @__PURE__ */ __name((target, value) => __defProp2(target, "name", { value, configurable: true }), "__name");
+var urls2 = /* @__PURE__ */ new Set();
+function checkURL2(request, init) {
+  const url = request instanceof URL ? request : new URL(
+    (typeof request === "string" ? new Request(request, init) : request).url
+  );
+  if (url.port && url.port !== "443" && url.protocol === "https:") {
+    if (!urls2.has(url.toString())) {
+      urls2.add(url.toString());
+      console.warn(
+        `WARNING: known issue with \`fetch()\` requests to custom HTTPS ports in published Workers:
+ - ${url.toString()} - the custom port will be ignored when the Worker is published using the \`wrangler deploy\` command.
+`
+      );
+    }
+  }
+}
+__name(checkURL2, "checkURL");
+__name2(checkURL2, "checkURL");
+globalThis.fetch = new Proxy(globalThis.fetch, {
+  apply(target, thisArg, argArray) {
+    const [request, init] = argArray;
+    checkURL2(request, init);
+    return Reflect.apply(target, thisArg, argArray);
+  }
+});
+function stripCfConnectingIPHeader2(input, init) {
+  const request = new Request(input, init);
+  request.headers.delete("CF-Connecting-IP");
+  return request;
+}
+__name(stripCfConnectingIPHeader2, "stripCfConnectingIPHeader");
+__name2(stripCfConnectingIPHeader2, "stripCfConnectingIPHeader");
+globalThis.fetch = new Proxy(globalThis.fetch, {
+  apply(target, thisArg, argArray) {
+    return Reflect.apply(target, thisArg, [
+      stripCfConnectingIPHeader2.apply(null, argArray)
+    ]);
+  }
+});
 var un = Object.defineProperty;
-var lt = /* @__PURE__ */ __name((t) => {
+var lt = /* @__PURE__ */ __name2((t) => {
   throw TypeError(t);
 }, "lt");
-var pn = /* @__PURE__ */ __name((t, e, n) => e in t ? un(t, e, { enumerable: true, configurable: true, writable: true, value: n }) : t[e] = n, "pn");
-var S = /* @__PURE__ */ __name((t, e, n) => pn(t, typeof e != "symbol" ? e + "" : e, n), "S");
-var tt = /* @__PURE__ */ __name((t, e, n) => e.has(t) || lt("Cannot " + n), "tt");
-var u = /* @__PURE__ */ __name((t, e, n) => (tt(t, e, "read from private field"), n ? n.call(t) : e.get(t)), "u");
-var T = /* @__PURE__ */ __name((t, e, n) => e.has(t) ? lt("Cannot add the same private member more than once") : e instanceof WeakSet ? e.add(t) : e.set(t, n), "T");
-var w = /* @__PURE__ */ __name((t, e, n, r) => (tt(t, e, "write to private field"), r ? r.call(t, n) : e.set(t, n), n), "w");
-var C = /* @__PURE__ */ __name((t, e, n) => (tt(t, e, "access private method"), n), "C");
-var dt = /* @__PURE__ */ __name((t, e, n, r) => ({ set _(s) {
+var pn = /* @__PURE__ */ __name2((t, e, n) => e in t ? un(t, e, { enumerable: true, configurable: true, writable: true, value: n }) : t[e] = n, "pn");
+var S = /* @__PURE__ */ __name2((t, e, n) => pn(t, typeof e != "symbol" ? e + "" : e, n), "S");
+var tt = /* @__PURE__ */ __name2((t, e, n) => e.has(t) || lt("Cannot " + n), "tt");
+var u = /* @__PURE__ */ __name2((t, e, n) => (tt(t, e, "read from private field"), n ? n.call(t) : e.get(t)), "u");
+var T = /* @__PURE__ */ __name2((t, e, n) => e.has(t) ? lt("Cannot add the same private member more than once") : e instanceof WeakSet ? e.add(t) : e.set(t, n), "T");
+var w = /* @__PURE__ */ __name2((t, e, n, r) => (tt(t, e, "write to private field"), r ? r.call(t, n) : e.set(t, n), n), "w");
+var C = /* @__PURE__ */ __name2((t, e, n) => (tt(t, e, "access private method"), n), "C");
+var dt = /* @__PURE__ */ __name2((t, e, n, r) => ({ set _(s) {
   w(t, e, s, n);
 }, get _() {
   return u(t, e, r);
 } }), "dt");
-var ut = /* @__PURE__ */ __name((t, e, n) => (r, s) => {
+var ut = /* @__PURE__ */ __name2((t, e, n) => (r, s) => {
   let i = -1;
   return a(0);
   async function a(o) {
@@ -81,9 +122,10 @@ var ut = /* @__PURE__ */ __name((t, e, n) => (r, s) => {
     return c && (r.finalized === false || l) && (r.res = c), r;
   }
   __name(a, "a");
+  __name2(a, "a");
 }, "ut");
 var hn = Symbol();
-var fn = /* @__PURE__ */ __name(async (t, e = /* @__PURE__ */ Object.create(null)) => {
+var fn = /* @__PURE__ */ __name2(async (t, e = /* @__PURE__ */ Object.create(null)) => {
   const { all: n = false, dot: r = false } = e, i = (t instanceof Lt ? t.raw.headers : t.headers).get("Content-Type");
   return i != null && i.startsWith("multipart/form-data") || i != null && i.startsWith("application/x-www-form-urlencoded") ? mn(t, { all: n, dot: r }) : {};
 }, "fn");
@@ -92,6 +134,7 @@ async function mn(t, e) {
   return n ? gn(n, e) : {};
 }
 __name(mn, "mn");
+__name2(mn, "mn");
 function gn(t, e) {
   const n = /* @__PURE__ */ Object.create(null);
   return t.forEach((r, s) => {
@@ -101,32 +144,33 @@ function gn(t, e) {
   }), n;
 }
 __name(gn, "gn");
-var xn = /* @__PURE__ */ __name((t, e, n) => {
+__name2(gn, "gn");
+var xn = /* @__PURE__ */ __name2((t, e, n) => {
   t[e] !== void 0 ? Array.isArray(t[e]) ? t[e].push(n) : t[e] = [t[e], n] : e.endsWith("[]") ? t[e] = [n] : t[e] = n;
 }, "xn");
-var yn = /* @__PURE__ */ __name((t, e, n) => {
+var yn = /* @__PURE__ */ __name2((t, e, n) => {
   let r = t;
   const s = e.split(".");
   s.forEach((i, a) => {
     a === s.length - 1 ? r[i] = n : ((!r[i] || typeof r[i] != "object" || Array.isArray(r[i]) || r[i] instanceof File) && (r[i] = /* @__PURE__ */ Object.create(null)), r = r[i]);
   });
 }, "yn");
-var Mt = /* @__PURE__ */ __name((t) => {
+var Mt = /* @__PURE__ */ __name2((t) => {
   const e = t.split("/");
   return e[0] === "" && e.shift(), e;
 }, "Mt");
-var vn = /* @__PURE__ */ __name((t) => {
+var vn = /* @__PURE__ */ __name2((t) => {
   const { groups: e, path: n } = bn(t), r = Mt(n);
   return wn(r, e);
 }, "vn");
-var bn = /* @__PURE__ */ __name((t) => {
+var bn = /* @__PURE__ */ __name2((t) => {
   const e = [];
   return t = t.replace(/\{[^}]+\}/g, (n, r) => {
     const s = `@${r}`;
     return e.push([s, n]), s;
   }), { groups: e, path: t };
 }, "bn");
-var wn = /* @__PURE__ */ __name((t, e) => {
+var wn = /* @__PURE__ */ __name2((t, e) => {
   for (let n = e.length - 1; n >= 0; n--) {
     const [r] = e[n];
     for (let s = t.length - 1; s >= 0; s--)
@@ -138,7 +182,7 @@ var wn = /* @__PURE__ */ __name((t, e) => {
   return t;
 }, "wn");
 var Ge = {};
-var Sn = /* @__PURE__ */ __name((t, e) => {
+var Sn = /* @__PURE__ */ __name2((t, e) => {
   if (t === "*")
     return "*";
   const n = t.match(/^\:([^\{\}]+)(?:\{(.+)\})?$/);
@@ -148,7 +192,7 @@ var Sn = /* @__PURE__ */ __name((t, e) => {
   }
   return null;
 }, "Sn");
-var ot = /* @__PURE__ */ __name((t, e) => {
+var ot = /* @__PURE__ */ __name2((t, e) => {
   try {
     return e(t);
   } catch {
@@ -161,8 +205,8 @@ var ot = /* @__PURE__ */ __name((t, e) => {
     });
   }
 }, "ot");
-var En = /* @__PURE__ */ __name((t) => ot(t, decodeURI), "En");
-var Dt = /* @__PURE__ */ __name((t) => {
+var En = /* @__PURE__ */ __name2((t) => ot(t, decodeURI), "En");
+var Dt = /* @__PURE__ */ __name2((t) => {
   const e = t.url, n = e.indexOf("/", e.indexOf(":") + 4);
   let r = n;
   for (; r < e.length; r++) {
@@ -175,12 +219,12 @@ var Dt = /* @__PURE__ */ __name((t) => {
   }
   return e.slice(n, r);
 }, "Dt");
-var _n = /* @__PURE__ */ __name((t) => {
+var _n = /* @__PURE__ */ __name2((t) => {
   const e = Dt(t);
   return e.length > 1 && e.at(-1) === "/" ? e.slice(0, -1) : e;
 }, "_n");
-var Ee = /* @__PURE__ */ __name((t, e, ...n) => (n.length && (e = Ee(e, ...n)), `${(t == null ? void 0 : t[0]) === "/" ? "" : "/"}${t}${e === "/" ? "" : `${(t == null ? void 0 : t.at(-1)) === "/" ? "" : "/"}${(e == null ? void 0 : e[0]) === "/" ? e.slice(1) : e}`}`), "Ee");
-var Pt = /* @__PURE__ */ __name((t) => {
+var Ee = /* @__PURE__ */ __name2((t, e, ...n) => (n.length && (e = Ee(e, ...n)), `${(t == null ? void 0 : t[0]) === "/" ? "" : "/"}${t}${e === "/" ? "" : `${(t == null ? void 0 : t.at(-1)) === "/" ? "" : "/"}${(e == null ? void 0 : e[0]) === "/" ? e.slice(1) : e}`}`), "Ee");
+var Pt = /* @__PURE__ */ __name2((t) => {
   if (t.charCodeAt(t.length - 1) !== 63 || !t.includes(":"))
     return null;
   const e = t.split("/"), n = [];
@@ -197,8 +241,8 @@ var Pt = /* @__PURE__ */ __name((t) => {
         r += "/" + s;
   }), n.filter((s, i, a) => a.indexOf(s) === i);
 }, "Pt");
-var nt = /* @__PURE__ */ __name((t) => /[%+]/.test(t) ? (t.indexOf("+") !== -1 && (t = t.replace(/\+/g, " ")), t.indexOf("%") !== -1 ? ot(t, Bt) : t) : t, "nt");
-var $t = /* @__PURE__ */ __name((t, e, n) => {
+var nt = /* @__PURE__ */ __name2((t) => /[%+]/.test(t) ? (t.indexOf("+") !== -1 && (t = t.replace(/\+/g, " ")), t.indexOf("%") !== -1 ? ot(t, Bt) : t) : t, "nt");
+var $t = /* @__PURE__ */ __name2((t, e, n) => {
   let r;
   if (!n && e && !/[%+]/.test(e)) {
     let a = t.indexOf("?", 8);
@@ -232,9 +276,9 @@ var $t = /* @__PURE__ */ __name((t, e, n) => {
   return e ? s[e] : s;
 }, "$t");
 var Tn = $t;
-var An = /* @__PURE__ */ __name((t, e) => $t(t, e, true), "An");
+var An = /* @__PURE__ */ __name2((t, e) => $t(t, e, true), "An");
 var Bt = decodeURIComponent;
-var pt = /* @__PURE__ */ __name((t) => ot(t, Bt), "pt");
+var pt = /* @__PURE__ */ __name2((t) => ot(t, Bt), "pt");
 var Ae;
 var J;
 var te;
@@ -243,7 +287,7 @@ var Ht;
 var at;
 var ie;
 var Ct;
-var Lt = (Ct = /* @__PURE__ */ __name(class {
+var Lt = (Ct = /* @__PURE__ */ __name2(class {
   constructor(t, e = "/", n = [[]]) {
     T(this, te);
     S(this, "raw");
@@ -318,27 +362,27 @@ var Lt = (Ct = /* @__PURE__ */ __name(class {
   get routePath() {
     return u(this, J)[0].map(([[, t]]) => t)[this.routeIndex].path;
   }
-}, "Ct"), Ae = /* @__PURE__ */ new WeakMap(), J = /* @__PURE__ */ new WeakMap(), te = /* @__PURE__ */ new WeakSet(), qt = /* @__PURE__ */ __name(function(t) {
+}, "Ct"), Ae = /* @__PURE__ */ new WeakMap(), J = /* @__PURE__ */ new WeakMap(), te = /* @__PURE__ */ new WeakSet(), qt = /* @__PURE__ */ __name2(function(t) {
   const e = u(this, J)[0][this.routeIndex][1][t], n = C(this, te, at).call(this, e);
   return n && /\%/.test(n) ? pt(n) : n;
-}, "qt"), Ht = /* @__PURE__ */ __name(function() {
+}, "qt"), Ht = /* @__PURE__ */ __name2(function() {
   const t = {}, e = Object.keys(u(this, J)[0][this.routeIndex][1]);
   for (const n of e) {
     const r = C(this, te, at).call(this, u(this, J)[0][this.routeIndex][1][n]);
     r !== void 0 && (t[n] = /\%/.test(r) ? pt(r) : r);
   }
   return t;
-}, "Ht"), at = /* @__PURE__ */ __name(function(t) {
+}, "Ht"), at = /* @__PURE__ */ __name2(function(t) {
   return u(this, J)[1] ? u(this, J)[1][t] : t;
 }, "at"), ie = /* @__PURE__ */ new WeakMap(), Ct);
 var On = { Stringify: 1 };
-var zt = /* @__PURE__ */ __name(async (t, e, n, r, s) => {
+var zt = /* @__PURE__ */ __name2(async (t, e, n, r, s) => {
   typeof t == "object" && !(t instanceof String) && (t instanceof Promise || (t = t.toString()), t instanceof Promise && (t = await t));
   const i = t.callbacks;
   return i != null && i.length ? (s ? s[0] += t : s = [t], Promise.all(i.map((o) => o({ phase: e, buffer: s, context: r }))).then((o) => Promise.all(o.filter(Boolean).map((c) => zt(c, e, false, r, s))).then(() => s[0]))) : Promise.resolve(t);
 }, "zt");
 var Cn = "text/plain; charset=UTF-8";
-var rt = /* @__PURE__ */ __name((t, e) => ({ "Content-Type": t, ...e }), "rt");
+var rt = /* @__PURE__ */ __name2((t, e) => ({ "Content-Type": t, ...e }), "rt");
 var $e;
 var Be;
 var X;
@@ -354,7 +398,7 @@ var He;
 var ae;
 var _e;
 var kt;
-var kn = (kt = /* @__PURE__ */ __name(class {
+var kn = (kt = /* @__PURE__ */ __name2(class {
   constructor(t, e) {
     T(this, ae);
     T(this, $e);
@@ -395,7 +439,7 @@ var kn = (kt = /* @__PURE__ */ __name(class {
     S(this, "text", (t2, e2, n) => !u(this, me) && !u(this, Oe) && !e2 && !n && !this.finalized ? new Response(t2) : C(this, ae, _e).call(this, t2, e2, rt(Cn, n)));
     S(this, "json", (t2, e2, n) => C(this, ae, _e).call(this, JSON.stringify(t2), e2, rt("application/json", n)));
     S(this, "html", (t2, e2, n) => {
-      const r = /* @__PURE__ */ __name((s) => C(this, ae, _e).call(this, s, e2, rt("text/html; charset=UTF-8", n)), "r");
+      const r = /* @__PURE__ */ __name2((s) => C(this, ae, _e).call(this, s, e2, rt("text/html; charset=UTF-8", n)), "r");
       return typeof t2 == "object" ? zt(t2, On.Stringify, false, {}).then(r) : r(t2);
     });
     S(this, "redirect", (t2, e2) => {
@@ -439,7 +483,7 @@ var kn = (kt = /* @__PURE__ */ __name(class {
   get var() {
     return u(this, X) ? Object.fromEntries(u(this, X)) : {};
   }
-}, "kt"), $e = /* @__PURE__ */ new WeakMap(), Be = /* @__PURE__ */ new WeakMap(), X = /* @__PURE__ */ new WeakMap(), Oe = /* @__PURE__ */ new WeakMap(), Q = /* @__PURE__ */ new WeakMap(), G = /* @__PURE__ */ new WeakMap(), Le = /* @__PURE__ */ new WeakMap(), Ce = /* @__PURE__ */ new WeakMap(), ke = /* @__PURE__ */ new WeakMap(), me = /* @__PURE__ */ new WeakMap(), qe = /* @__PURE__ */ new WeakMap(), He = /* @__PURE__ */ new WeakMap(), ae = /* @__PURE__ */ new WeakSet(), _e = /* @__PURE__ */ __name(function(t, e, n) {
+}, "kt"), $e = /* @__PURE__ */ new WeakMap(), Be = /* @__PURE__ */ new WeakMap(), X = /* @__PURE__ */ new WeakMap(), Oe = /* @__PURE__ */ new WeakMap(), Q = /* @__PURE__ */ new WeakMap(), G = /* @__PURE__ */ new WeakMap(), Le = /* @__PURE__ */ new WeakMap(), Ce = /* @__PURE__ */ new WeakMap(), ke = /* @__PURE__ */ new WeakMap(), me = /* @__PURE__ */ new WeakMap(), qe = /* @__PURE__ */ new WeakMap(), He = /* @__PURE__ */ new WeakMap(), ae = /* @__PURE__ */ new WeakSet(), _e = /* @__PURE__ */ __name2(function(t, e, n) {
   const r = u(this, G) ? new Headers(u(this, G).headers) : u(this, me) ?? new Headers();
   if (typeof e == "object" && "headers" in e) {
     const i = e.headers instanceof Headers ? e.headers : new Headers(e.headers);
@@ -462,11 +506,11 @@ var P = "ALL";
 var Nn = "all";
 var In = ["get", "post", "put", "delete", "options", "patch"];
 var Ft = "Can not add a route since the matcher is already built.";
-var Gt = /* @__PURE__ */ __name(class extends Error {
+var Gt = /* @__PURE__ */ __name2(class extends Error {
 }, "Gt");
 var jn = "__COMPOSED_HANDLER";
-var Rn = /* @__PURE__ */ __name((t) => t.text("404 Not Found", 404), "Rn");
-var ht = /* @__PURE__ */ __name((t, e) => {
+var Rn = /* @__PURE__ */ __name2((t) => t.text("404 Not Found", 404), "Rn");
+var ht = /* @__PURE__ */ __name2((t, e) => {
   if ("getResponse" in t) {
     const n = t.getResponse();
     return e.newResponse(n.body, n);
@@ -481,7 +525,7 @@ var he;
 var Ke;
 var Je;
 var Ne;
-var Mn = (Ne = /* @__PURE__ */ __name(class {
+var Mn = (Ne = /* @__PURE__ */ __name2(class {
   constructor(e = {}) {
     T(this, $);
     S(this, "get");
@@ -533,7 +577,7 @@ var Mn = (Ne = /* @__PURE__ */ __name(class {
     return n.routes.map((s) => {
       var a;
       let i;
-      n.errorHandler === ht ? i = s.handler : (i = /* @__PURE__ */ __name(async (o, c) => (await ut([], n.errorHandler)(o, () => s.handler(o, c))).res, "i"), i[jn] = s.handler), C(a = r, $, he).call(a, s.method, s.path, i);
+      n.errorHandler === ht ? i = s.handler : (i = /* @__PURE__ */ __name2(async (o, c) => (await ut([], n.errorHandler)(o, () => s.handler(o, c))).res, "i"), i[jn] = s.handler), C(a = r, $, he).call(a, s.method, s.path, i);
     }), this;
   }
   basePath(e) {
@@ -542,7 +586,7 @@ var Mn = (Ne = /* @__PURE__ */ __name(class {
   }
   mount(e, n, r) {
     let s, i;
-    r && (typeof r == "function" ? i = r : (i = r.optionHandler, r.replaceRequest === false ? s = /* @__PURE__ */ __name((c) => c, "s") : s = r.replaceRequest));
+    r && (typeof r == "function" ? i = r : (i = r.optionHandler, r.replaceRequest === false ? s = /* @__PURE__ */ __name2((c) => c, "s") : s = r.replaceRequest));
     const a = i ? (c) => {
       const l = i(c);
       return Array.isArray(l) ? l : [l];
@@ -561,7 +605,7 @@ var Mn = (Ne = /* @__PURE__ */ __name(class {
         return p.pathname = p.pathname.slice(l) || "/", new Request(p, d);
       };
     })());
-    const o = /* @__PURE__ */ __name(async (c, l) => {
+    const o = /* @__PURE__ */ __name2(async (c, l) => {
       const d = await n(s(c.req.raw), ...a(c));
       if (d)
         return d;
@@ -569,18 +613,18 @@ var Mn = (Ne = /* @__PURE__ */ __name(class {
     }, "o");
     return C(this, $, he).call(this, P, Ee(e, "*"), o), this;
   }
-}, "Ne"), V = /* @__PURE__ */ new WeakMap(), $ = /* @__PURE__ */ new WeakSet(), Ut = /* @__PURE__ */ __name(function() {
+}, "Ne"), V = /* @__PURE__ */ new WeakMap(), $ = /* @__PURE__ */ new WeakSet(), Ut = /* @__PURE__ */ __name2(function() {
   const e = new Ne({ router: this.router, getPath: this.getPath });
   return e.errorHandler = this.errorHandler, w(e, Y, u(this, Y)), e.routes = this.routes, e;
-}, "Ut"), Y = /* @__PURE__ */ new WeakMap(), he = /* @__PURE__ */ __name(function(e, n, r) {
+}, "Ut"), Y = /* @__PURE__ */ new WeakMap(), he = /* @__PURE__ */ __name2(function(e, n, r) {
   e = e.toUpperCase(), n = Ee(this._basePath, n);
   const s = { basePath: this._basePath, path: n, method: e, handler: r };
   this.router.add(e, n, [r, s]), this.routes.push(s);
-}, "he"), Ke = /* @__PURE__ */ __name(function(e, n) {
+}, "he"), Ke = /* @__PURE__ */ __name2(function(e, n) {
   if (e instanceof Error)
     return this.errorHandler(e, n);
   throw e;
-}, "Ke"), Je = /* @__PURE__ */ __name(function(e, n, r, s) {
+}, "Ke"), Je = /* @__PURE__ */ __name2(function(e, n, r, s) {
   if (s === "HEAD")
     return (async () => new Response(null, await C(this, $, Je).call(this, e, n, r, "GET")))();
   const i = this.getPath(e, { env: r }), a = this.router.match(s, i), o = new kn(e, { path: i, matchResult: a, env: r, executionCtx: n, notFoundHandler: u(this, Y) });
@@ -609,7 +653,7 @@ var Mn = (Ne = /* @__PURE__ */ __name(class {
 }, "Je"), Ne);
 var Kt = [];
 function Dn(t, e) {
-  const n = this.buildAllMatchers(), r = /* @__PURE__ */ __name((s, i) => {
+  const n = this.buildAllMatchers(), r = /* @__PURE__ */ __name2((s, i) => {
     const a = n[s] || n[P], o = a[2][i];
     if (o)
       return o;
@@ -622,6 +666,7 @@ function Dn(t, e) {
   return this.match = r, r(t, e);
 }
 __name(Dn, "Dn");
+__name2(Dn, "Dn");
 var Xe = "[^/]+";
 var De = ".*";
 var Pe = "(?:|/.*)";
@@ -631,11 +676,12 @@ function $n(t, e) {
   return t.length === 1 ? e.length === 1 ? t < e ? -1 : 1 : -1 : e.length === 1 || t === De || t === Pe ? 1 : e === De || e === Pe ? -1 : t === Xe ? 1 : e === Xe ? -1 : t.length === e.length ? t < e ? -1 : 1 : e.length - t.length;
 }
 __name($n, "$n");
+__name2($n, "$n");
 var ge;
 var xe;
 var W;
 var be;
-var Bn = (be = /* @__PURE__ */ __name(class {
+var Bn = (be = /* @__PURE__ */ __name2(class {
   constructor() {
     T(this, ge);
     T(this, xe);
@@ -685,7 +731,7 @@ var Bn = (be = /* @__PURE__ */ __name(class {
 var Qe;
 var ze;
 var Nt;
-var Ln = (Nt = /* @__PURE__ */ __name(class {
+var Ln = (Nt = /* @__PURE__ */ __name2(class {
   constructor() {
     T(this, Qe, { varIndex: 0 });
     T(this, ze, new Bn());
@@ -726,10 +772,12 @@ function Jt(t) {
   return Ve[t] ?? (Ve[t] = new RegExp(t === "*" ? "" : `^${t.replace(/\/\*$|([.\\+*[^\]$()])/g, (e, n) => n ? `\\${n}` : "(?:|/.*)")}$`));
 }
 __name(Jt, "Jt");
+__name2(Jt, "Jt");
 function Hn() {
   Ve = /* @__PURE__ */ Object.create(null);
 }
 __name(Hn, "Hn");
+__name2(Hn, "Hn");
 function zn(t) {
   var l;
   const e = new Ln(), n = [];
@@ -770,6 +818,7 @@ function zn(t) {
   return [i, c, s];
 }
 __name(zn, "zn");
+__name2(zn, "zn");
 function Se(t, e) {
   if (t) {
     for (const n of Object.keys(t).sort((r, s) => s.length - r.length))
@@ -778,12 +827,13 @@ function Se(t, e) {
   }
 }
 __name(Se, "Se");
+__name2(Se, "Se");
 var oe;
 var ce;
 var Ze;
 var Vt;
 var It;
-var Fn = (It = /* @__PURE__ */ __name(class {
+var Fn = (It = /* @__PURE__ */ __name2(class {
   constructor() {
     T(this, Ze);
     S(this, "name", "RegExpRouter");
@@ -832,7 +882,7 @@ var Fn = (It = /* @__PURE__ */ __name(class {
       t[e] || (t[e] = C(this, Ze, Vt).call(this, e));
     }), w(this, oe, w(this, ce, void 0)), Hn(), t;
   }
-}, "It"), oe = /* @__PURE__ */ new WeakMap(), ce = /* @__PURE__ */ new WeakMap(), Ze = /* @__PURE__ */ new WeakSet(), Vt = /* @__PURE__ */ __name(function(t) {
+}, "It"), oe = /* @__PURE__ */ new WeakMap(), ce = /* @__PURE__ */ new WeakMap(), Ze = /* @__PURE__ */ new WeakSet(), Vt = /* @__PURE__ */ __name2(function(t) {
   const e = [];
   let n = t === P;
   return [u(this, oe), u(this, ce)].forEach((r) => {
@@ -843,7 +893,7 @@ var Fn = (It = /* @__PURE__ */ __name(class {
 var le;
 var Z;
 var jt;
-var Gn = (jt = /* @__PURE__ */ __name(class {
+var Gn = (jt = /* @__PURE__ */ __name2(class {
   constructor(t) {
     S(this, "name", "SmartRouter");
     T(this, le, []);
@@ -893,7 +943,7 @@ var B;
 var ee;
 var fe;
 var je;
-var Un = (je = /* @__PURE__ */ __name(class {
+var Un = (je = /* @__PURE__ */ __name2(class {
   constructor(e, n, r) {
     T(this, ee);
     T(this, de);
@@ -961,7 +1011,7 @@ var Un = (je = /* @__PURE__ */ __name(class {
     }
     return r.length > 1 && r.sort((l, d) => l.score - d.score), [r.map(({ handler: l, params: d }) => [l, d])];
   }
-}, "je"), de = /* @__PURE__ */ new WeakMap(), q = /* @__PURE__ */ new WeakMap(), ye = /* @__PURE__ */ new WeakMap(), Ie = /* @__PURE__ */ new WeakMap(), B = /* @__PURE__ */ new WeakMap(), ee = /* @__PURE__ */ new WeakSet(), fe = /* @__PURE__ */ __name(function(e, n, r, s) {
+}, "je"), de = /* @__PURE__ */ new WeakMap(), q = /* @__PURE__ */ new WeakMap(), ye = /* @__PURE__ */ new WeakMap(), Ie = /* @__PURE__ */ new WeakMap(), B = /* @__PURE__ */ new WeakMap(), ee = /* @__PURE__ */ new WeakSet(), fe = /* @__PURE__ */ __name2(function(e, n, r, s) {
   const i = [];
   for (let a = 0, o = u(e, de).length; a < o; a++) {
     const c = u(e, de)[a], l = c[n] || c[P], d = {};
@@ -975,7 +1025,7 @@ var Un = (je = /* @__PURE__ */ __name(class {
 }, "fe"), je);
 var ve;
 var Rt;
-var Kn = (Rt = /* @__PURE__ */ __name(class {
+var Kn = (Rt = /* @__PURE__ */ __name2(class {
   constructor() {
     S(this, "name", "TrieRouter");
     T(this, ve);
@@ -994,12 +1044,12 @@ var Kn = (Rt = /* @__PURE__ */ __name(class {
     return u(this, ve).search(t, e);
   }
 }, "Rt"), ve = /* @__PURE__ */ new WeakMap(), Rt);
-var Yt = /* @__PURE__ */ __name(class extends Mn {
+var Yt = /* @__PURE__ */ __name2(class extends Mn {
   constructor(t = {}) {
     super(t), this.router = t.router ?? new Gn({ routers: [new Fn(), new Kn()] });
   }
 }, "Yt");
-var Jn = /* @__PURE__ */ __name((t) => {
+var Jn = /* @__PURE__ */ __name2((t) => {
   const n = { ...{ origin: "*", allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"], allowHeaders: [], exposeHeaders: [] }, ...t }, r = ((i) => typeof i == "string" ? i === "*" ? () => i : (a) => i === a ? a : null : typeof i == "function" ? i : (a) => i.includes(a) ? a : null)(n.origin), s = ((i) => typeof i == "function" ? i : Array.isArray(i) ? () => i : () => [])(n.allowMethods);
   return async function(a, o) {
     var d;
@@ -1007,6 +1057,7 @@ var Jn = /* @__PURE__ */ __name((t) => {
       a.res.headers.set(p, m);
     }
     __name(c, "c");
+    __name2(c, "c");
     const l = await r(a.req.header("origin") || "", a);
     if (l && c("Access-Control-Allow-Origin", l), n.credentials && c("Access-Control-Allow-Credentials", "true"), (d = n.exposeHeaders) != null && d.length && c("Access-Control-Expose-Headers", n.exposeHeaders.join(",")), a.req.method === "OPTIONS") {
       n.origin !== "*" && c("Vary", "Origin"), n.maxAge != null && c("Access-Control-Max-Age", n.maxAge.toString());
@@ -1023,7 +1074,7 @@ var Jn = /* @__PURE__ */ __name((t) => {
   };
 }, "Jn");
 var Vn = /^\s*(?:text\/(?!event-stream(?:[;\s]|$))[^;\s]+|application\/(?:javascript|json|xml|xml-dtd|ecmascript|dart|postscript|rtf|tar|toml|vnd\.dart|vnd\.ms-fontobject|vnd\.ms-opentype|wasm|x-httpd-php|x-javascript|x-ns-proxy-autoconfig|x-sh|x-tar|x-virtualbox-hdd|x-virtualbox-ova|x-virtualbox-ovf|x-virtualbox-vbox|x-virtualbox-vdi|x-virtualbox-vhd|x-virtualbox-vmdk|x-www-form-urlencoded)|font\/(?:otf|ttf)|image\/(?:bmp|vnd\.adobe\.photoshop|vnd\.microsoft\.icon|vnd\.ms-dds|x-icon|x-ms-bmp)|message\/rfc822|model\/gltf-binary|x-shader\/x-fragment|x-shader\/x-vertex|[^;\s]+?\+(?:json|text|xml|yaml))(?:[;\s]|$)/i;
-var ft = /* @__PURE__ */ __name((t, e = Wn) => {
+var ft = /* @__PURE__ */ __name2((t, e = Wn) => {
   const n = /\.([a-zA-Z0-9]+?)$/, r = t.match(n);
   if (!r)
     return;
@@ -1032,7 +1083,7 @@ var ft = /* @__PURE__ */ __name((t, e = Wn) => {
 }, "ft");
 var Yn = { aac: "audio/aac", avi: "video/x-msvideo", avif: "image/avif", av1: "video/av1", bin: "application/octet-stream", bmp: "image/bmp", css: "text/css", csv: "text/csv", eot: "application/vnd.ms-fontobject", epub: "application/epub+zip", gif: "image/gif", gz: "application/gzip", htm: "text/html", html: "text/html", ico: "image/x-icon", ics: "text/calendar", jpeg: "image/jpeg", jpg: "image/jpeg", js: "text/javascript", json: "application/json", jsonld: "application/ld+json", map: "application/json", mid: "audio/x-midi", midi: "audio/x-midi", mjs: "text/javascript", mp3: "audio/mpeg", mp4: "video/mp4", mpeg: "video/mpeg", oga: "audio/ogg", ogv: "video/ogg", ogx: "application/ogg", opus: "audio/opus", otf: "font/otf", pdf: "application/pdf", png: "image/png", rtf: "application/rtf", svg: "image/svg+xml", tif: "image/tiff", tiff: "image/tiff", ts: "video/mp2t", ttf: "font/ttf", txt: "text/plain", wasm: "application/wasm", webm: "video/webm", weba: "audio/webm", webmanifest: "application/manifest+json", webp: "image/webp", woff: "font/woff", woff2: "font/woff2", xhtml: "application/xhtml+xml", xml: "application/xml", zip: "application/zip", "3gp": "video/3gpp", "3g2": "video/3gpp2", gltf: "model/gltf+json", glb: "model/gltf-binary" };
 var Wn = Yn;
-var Xn = /* @__PURE__ */ __name((...t) => {
+var Xn = /* @__PURE__ */ __name2((...t) => {
   let e = t.filter((s) => s !== "").join("/");
   e = e.replace(new RegExp("(?<=\\/)\\/+", "g"), "");
   const n = e.split("/"), r = [];
@@ -1043,7 +1094,7 @@ var Xn = /* @__PURE__ */ __name((...t) => {
 var Wt = { br: ".br", zstd: ".zst", gzip: ".gz" };
 var Qn = Object.keys(Wt);
 var Zn = "index.html";
-var er = /* @__PURE__ */ __name((t) => {
+var er = /* @__PURE__ */ __name2((t) => {
   const e = t.root ?? "./", n = t.path, r = t.join ?? Xn;
   return async (s, i) => {
     var d, p, m, v;
@@ -1084,7 +1135,7 @@ var er = /* @__PURE__ */ __name((t) => {
     await ((v = t.onNotFound) == null ? void 0 : v.call(t, o, s)), await i();
   };
 }, "er");
-var tr = /* @__PURE__ */ __name(async (t, e) => {
+var tr = /* @__PURE__ */ __name2(async (t, e) => {
   let n;
   e && e.manifest ? typeof e.manifest == "string" ? n = JSON.parse(e.manifest) : n = e.manifest : typeof __STATIC_CONTENT_MANIFEST == "string" ? n = JSON.parse(__STATIC_CONTENT_MANIFEST) : n = __STATIC_CONTENT_MANIFEST;
   let r;
@@ -1095,10 +1146,10 @@ var tr = /* @__PURE__ */ __name(async (t, e) => {
   const i = await r.get(s, { type: "stream" });
   return i || null;
 }, "tr");
-var nr = /* @__PURE__ */ __name((t) => async function(n, r) {
+var nr = /* @__PURE__ */ __name2((t) => async function(n, r) {
   return er({ ...t, getContent: async (i) => tr(i, { manifest: t.manifest, namespace: t.namespace ? t.namespace : n.env ? n.env.__STATIC_CONTENT : void 0 }) })(n, r);
 }, "nr");
-var rr = /* @__PURE__ */ __name((t) => nr(t), "rr");
+var rr = /* @__PURE__ */ __name2((t) => nr(t), "rr");
 var H = new Yt();
 var Ye = /* @__PURE__ */ new Map();
 var sr = 1e3 * 60 * 60 * 24 * 7;
@@ -1107,22 +1158,27 @@ function Fe() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
 __name(Fe, "Fe");
+__name2(Fe, "Fe");
 function k(t) {
   return t == null ? "" : String(t);
 }
 __name(k, "k");
+__name2(k, "k");
 function ir(t) {
   return (t || "").replace(/\s+/g, "");
 }
 __name(ir, "ir");
+__name2(ir, "ir");
 function Xt(t) {
   return ir(t).length;
 }
 __name(Xt, "Xt");
+__name2(Xt, "Xt");
 function ar(t) {
   return (t || "").replace(/-\s*[ivxIVX]+-\s*/gi, "").replace(/\(p\.\s*\d+\)/gi, "").replace(/\[p\.\s*\d+\]/gi, "").replace(/p\.\s*\d+/gi, "").replace(/\n+/g, " ").replace(/\s{2,}/g, " ").trim();
 }
 __name(ar, "ar");
+__name2(ar, "ar");
 function or(t) {
   if (!t)
     return "";
@@ -1133,6 +1189,7 @@ function or(t) {
 `), e = e.replace(/[ \t]{2,}/g, " "), e = e.replace(/[「『]/g, '"').replace(/[」』]/g, '"'), e = e.replace(/[〈《]/g, '"').replace(/[〉》]/g, '"'), e = e.replace(/\s+([,.;:!?])/g, "$1").replace(/([,.;:!?])\s+/g, "$1 "), e.trim();
 }
 __name(or, "or");
+__name2(or, "or");
 function mt(t) {
   const e = (t || "").trim();
   if (!e)
@@ -1149,11 +1206,13 @@ function mt(t) {
   return r;
 }
 __name(mt, "mt");
+__name2(mt, "mt");
 function cr(t) {
   const e = (t || "").trim();
   return !!(!e || e.length < 12 && !(/[.?!]$/.test(e) || /(?:이다|된다|한다|있다|없다|말한다|주장한다)\.?$/.test(e)) || /[-–—]\s*\d{1,4}\s*[-–—]/.test(e) || /^["")\]\}]+$/.test(e) || /^["(\[\{]+$/.test(e) || /^(?:\(\d+\)|\d+\)|[①-⑳])\s*["")\]]*\s*$/.test(e) || /(완전\s*정복|쏙쏙|콕콕|실력을\s*쑥쑥|고득점|전문\s*대비반|특강|홍보)/.test(e) && (/[""]/.test(e) || /!$/.test(e)) || (e.match(/["""'(){}\[\]<>]/g) || []).length >= 10 && e.length < 80);
 }
 __name(cr, "cr");
+__name2(cr, "cr");
 function lr(t) {
   const e = [], n = /* @__PURE__ */ new Set();
   for (const r of t) {
@@ -1166,26 +1225,31 @@ function lr(t) {
   return e;
 }
 __name(lr, "lr");
+__name2(lr, "lr");
 function dr(t) {
   const e = or(t), n = lr(mt(e)), r = n.length >= 3 ? n : mt(e);
   return { text: e, sentences: r };
 }
 __name(dr, "dr");
+__name2(dr, "dr");
 function Qt(t) {
   const e = k(t).trim().toLowerCase();
   return e ? e === "brief" || e === "simple" || e === "short" || e === "lite" ? "brief" : e === "detail" || e === "detailed" || e === "full" ? "detail" : "standard" : "standard";
 }
 __name(Qt, "Qt");
+__name2(Qt, "Qt");
 function Zt(t) {
   const e = k(t).trim().toLowerCase();
   return e ? e === "narrative" || e === "structured" || e === "mindmap" || e === "selftest" ? e : e === "mind-map" || e === "mind_map" ? "mindmap" : "narrative" : "narrative";
 }
 __name(Zt, "Zt");
+__name2(Zt, "Zt");
 function ur(t) {
   const e = k(t).trim().toLowerCase();
   return e === "concept" ? "concept" : e === "exam" ? "exam" : "summary";
 }
 __name(ur, "ur");
+__name2(ur, "ur");
 function pr(t) {
   let e = k(t).replace(/\s+/g, " ").trim();
   if (!e)
@@ -1193,7 +1257,7 @@ function pr(t) {
   e = e.replace(/[\u201C\u201D\u2033\u00AB\u00BB]/g, '"').replace(/[\u2018\u2019\u2032]/g, "'");
   const n = [];
   let r = "", s = null, i = 0;
-  const a = /* @__PURE__ */ __name(() => {
+  const a = /* @__PURE__ */ __name2(() => {
     const o = r.trim();
     o && n.push(o), r = "";
   }, "a");
@@ -1211,22 +1275,26 @@ function pr(t) {
   return a(), n.length ? n : [e];
 }
 __name(pr, "pr");
+__name2(pr, "pr");
 var et = { narrative: { brief: 4, standard: 6, detail: 9 }, structured: { brief: 3, standard: 5, detail: 8 }, mindmap: { brief: 4, standard: 6, detail: 10 }, selftest: { brief: 3, standard: 5, detail: 8 } };
 function hr(t) {
   const e = String(t || "").trim().toLowerCase();
   return e === "brief" || e === "standard" || e === "detail" ? e : e === "simple" ? "brief" : "standard";
 }
 __name(hr, "hr");
+__name2(hr, "hr");
 function fr(t) {
   const e = String(t || "").trim().toLowerCase();
   return e === "narrative" || e === "structured" || e === "mindmap" || e === "selftest" ? e : e === "mind-map" ? "mindmap" : "narrative";
 }
 __name(fr, "fr");
+__name2(fr, "fr");
 function mr(t) {
   const e = String(t || "").trim(), n = e.indexOf("{"), r = e.lastIndexOf("}");
   return n >= 0 && r > n ? e.slice(n, r + 1) : e;
 }
 __name(mr, "mr");
+__name2(mr, "mr");
 function gt(t) {
   const e = mr(t);
   try {
@@ -1241,51 +1309,60 @@ function gt(t) {
   return null;
 }
 __name(gt, "gt");
+__name2(gt, "gt");
 function gr(t) {
   return ["\uB2F9\uC2E0\uC740 \uCD08\xB7\uC911\xB7\uACE0 \uD559\uC0DD\uC758 '\uD559\uC2B5 \uB2E8\uC704' \uAE30\uC900\uC73C\uB85C \uB0B4\uC6A9\uC744 \uAD6C\uC870\uD654\uD558\uB294 \uC804\uBB38\uAC00\uC785\uB2C8\uB2E4.", "\uC808\uB300 \uADDC\uCE59:", "- \uC6D0\uBB38\uC5D0 \uC5C6\uB294 \uB0B4\uC6A9 \uC0DD\uC131 \uAE08\uC9C0(\uCD94\uCE21/\uACFC\uC7A5 \uAE08\uC9C0)", "- \uBB38\uC790 \uB2E8\uC21C \uC790\uB974\uAE30 \uAE08\uC9C0, \uC758\uBBF8 \uB2E8\uC704\uB85C \uC7AC\uAD6C\uC131", "- \uBC18\uB4DC\uC2DC JSON\uB9CC \uCD9C\uB825(\uC124\uBA85\uBB38/\uBA38\uB9AC\uB9D0/\uAF2C\uB9AC\uB9D0/\uCF54\uB4DC\uBE14\uB85D \uAE08\uC9C0)", "", "\uAD6C\uC870\uD654\uC758 \uBF08\uB300(\uBC18\uB4DC\uC2DC \uD3EC\uD568):", "- anchor: \uD575\uC2EC \uC8FC\uC7A5 1\uBB38\uC7A5", "- sections: \uD559\uC2B5 \uB2E8\uC704 \uC870\uBAA9\uD654, \uAC01 section\uC740 keywords/lvl25/explain \uD3EC\uD568", "- glossary: term/def\uB85C \uAD6C\uC131", "- links: anchor(A0) -> section \uC5F0\uACB0", "", "\uCD9C\uB825 \uC2A4\uD0A4\uB9C8:", "{", '  "anchor": "\uD575\uC2EC \uC8FC\uC7A5 1\uBB38\uC7A5",', '  "hierarchy": { "big": "\uB300\uB2E8\uC6D0", "mid": "\uC911\uB2E8\uC6D0", "small": "\uC18C\uB2E8\uC6D0", "subtitles": ["\uC18C\uC81C\uBAA9"] },', '  "sections": [', '    { "id": "S1", "title": "\uC139\uC158 \uC81C\uBAA9", "keywords": ["\uD575\uC2EC\uC5B4"], "lvl25": ["\uC758\uBBF8\uD0A4\uC6CC\uB4DC"], "explain": "1~3\uBB38\uC7A5 \uC124\uBA85" }', "  ],", '  "glossary": [ { "term": "\uC6A9\uC5B4", "def": "\uC815\uC758" } ],', '  "links": [ { "from": "A0", "to": "S1", "rel": "covers" } ]', "}", "", `\uC6D0\uBB38(\uACF5\uBC31\uC81C\uC678 ${Xt(t)}\uC790):`, t].join(`
 `);
 }
 __name(gr, "gr");
+__name2(gr, "gr");
 function xr(t, e) {
   const n = Xt(t), r = (e == null ? void 0 : e.anchor) || "", s = ((e == null ? void 0 : e.sections) || []).map((i) => i.title).slice(0, 10);
   return ["\uB2F9\uC2E0\uC740 \uCD08\xB7\uC911\xB7\uACE0 \uD559\uC0DD\uC758 \uC2DC\uD5D8/\uC774\uD574/\uAE30\uC5B5\uC744 \uC704\uD55C \uC11C\uC220\uD615 \uC694\uC57D \uC804\uBB38\uAC00\uC785\uB2C8\uB2E4.", "\uC808\uB300 \uADDC\uCE59:", "- \uC6D0\uBB38\uC5D0 \uC5C6\uB294 \uB0B4\uC6A9 \uC0DD\uC131 \uAE08\uC9C0", "- \uBC18\uB4DC\uC2DC JSON\uB9CC \uCD9C\uB825(\uC124\uBA85\uBB38/\uCF54\uB4DC\uBE14\uB85D \uAE08\uC9C0)", '- \uC544\uB798 "\uAD6C\uC870\uD654 \uBF08\uB300"\uB97C \uBC97\uC5B4\uB098\uC9C0 \uB9D0\uACE0, \uADF8 \uB0B4\uC6A9\uC744 \uC790\uC5F0\uC2A4\uB7EC\uC6B4 \uBB38\uC7A5\uC73C\uB85C \uC5F0\uACB0\uD574 \uC11C\uC220\uD558\uC138\uC694.', "", "\uAD6C\uC870\uD654 \uBF08\uB300:", `- anchor: ${r}`, `- sections: ${JSON.stringify(s)}`, "", "\uC694\uAD6C:", "- summary\uB294 6~10\uBB38\uC7A5(\uC0C1\uC138)", "- keyPoints 4~7\uAC1C, examHints 2~4\uAC1C", "", "\uCD9C\uB825 \uC2A4\uD0A4\uB9C8:", "{", '  "title": "\uC694\uC57D \uC81C\uBAA9",', '  "summary": "\uC790\uC5F0\uC2A4\uB7EC\uC6B4 \uBB38\uC7A5 \uC694\uC57D(6~10\uBB38\uC7A5)",', '  "keyPoints": ["\uD575\uC2EC\uD3EC\uC778\uD2B8"],', '  "examHints": ["\uC2DC\uD5D8\uD3EC\uC778\uD2B8"]', "}", "", `\uC6D0\uBB38(\uACF5\uBC31\uC81C\uC678 ${n}\uC790):`, t].join(`
 `);
 }
 __name(xr, "xr");
+__name2(xr, "xr");
 function yr(t) {
   const e = (t == null ? void 0 : t.anchor) || "", n = ((t == null ? void 0 : t.sections) || []).map((s) => ({ id: s.id, title: s.title, keywords: s.keywords.slice(0, 5) })), r = ((t == null ? void 0 : t.glossary) || []).slice(0, 20);
   return ["\uB2F9\uC2E0\uC740 \uD559\uC2B5\uC6A9 \uB9C8\uC778\uB4DC\uB9F5 JSON\uC744 \uB9CC\uB4DC\uB294 \uC804\uBB38\uAC00\uC785\uB2C8\uB2E4.", "\uC808\uB300 \uADDC\uCE59:", "- \uBC18\uB4DC\uC2DC JSON\uB9CC \uCD9C\uB825", "- \uB178\uB4DC id \uC911\uBCF5/\uB204\uB77D \uAE08\uC9C0, edge \uCC38\uC870 \uC77C\uAD00", "- \uC544\uB798 \uAD6C\uC870\uD654 \uC815\uBCF4\uB97C \uADF8\uB300\uB85C \uBC14\uD0D5\uC73C\uB85C \uAD6C\uC131(\uC0C8 \uB0B4\uC6A9 \uC0DD\uC131 \uAE08\uC9C0)", "", "\uAD6C\uC870\uD654 \uC785\uB825:", `anchor: ${e}`, `sections: ${JSON.stringify(n)}`, `glossary: ${JSON.stringify(r)}`, "", "\uCD9C\uB825 \uC2A4\uD0A4\uB9C8:", "{", '  "center": { "id": "C0", "label": "\uC911\uC2EC \uC8FC\uC81C", "type": "root", "note": "\uC9E7\uC740 \uC124\uBA85" },', '  "nodes": [', '    { "id": "S1", "label": "\uC139\uC158", "type": "section", "note": "\uC124\uBA85" },', '    { "id": "T1", "label": "\uC6A9\uC5B4", "type": "term", "note": "\uC815\uC758" }', "  ],", '  "edges": [ { "from": "C0", "to": "S1", "rel": "has" } ]', "}"].join(`
 `);
 }
 __name(yr, "yr");
+__name2(yr, "yr");
 function vr(t) {
   const e = (t == null ? void 0 : t.anchor) || "", n = ((t == null ? void 0 : t.sections) || []).map((s) => ({ id: s.id, title: s.title, keywords: s.keywords.slice(0, 6) })), r = ((t == null ? void 0 : t.glossary) || []).slice(0, 25);
   return ["\uB2F9\uC2E0\uC740 \uCD08\xB7\uC911\xB7\uACE0 \uD559\uC0DD\uC6A9 \uC140\uD504\uD14C\uC2A4\uD2B8\uB97C \uB9CC\uB4DC\uB294 \uC804\uBB38\uAC00\uC785\uB2C8\uB2E4.", "\uC808\uB300 \uADDC\uCE59:", "- \uBC18\uB4DC\uC2DC JSON\uB9CC \uCD9C\uB825", "- \uC6D0\uBB38/\uAD6C\uC870\uD654\uC5D0 \uC5C6\uB294 \uB0B4\uC6A9 \uAE08\uC9C0", "- \uBB38\uD56D id\uB294 q1, q2... \uACE0\uC720", "", "\uAD6C\uC870\uD654 \uC785\uB825:", `anchor: ${e}`, `sections: ${JSON.stringify(n)}`, `glossary: ${JSON.stringify(r)}`, "", "\uC694\uAD6C(\uC0C1\uC138):", "- \uCD1D 8\uBB38\uD56D", "- type\uC740 reorder/blank/multiple_choice \uC11E\uAE30", "", "\uCD9C\uB825 \uC2A4\uD0A4\uB9C8:", "{", '  "questions": [', '    { "id": "q1", "type": "multiple_choice", "prompt": "\uC9C8\uBB38", "choices": ["a","b","c"], "answer": 1 },', '    { "id": "q2", "type": "blank", "prompt": "\uBE48\uCE78", "answer": "\uC815\uB2F5" },', '    { "id": "q3", "type": "reorder", "prompt": "\uC21C\uC11C", "choices": ["A","B","C"], "answer": [0,2,1] }', "  ]", "}"].join(`
 `);
 }
 __name(vr, "vr");
+__name2(vr, "vr");
 function xt(t, e) {
   const n = et.structured[e], r = (t.sections || []).slice(0, n).map((c) => ({ ...c, keywords: (c.keywords || []).slice(0, e === "brief" ? 4 : 6), lvl25: (c.lvl25 || []).slice(0, e === "brief" ? 2 : 3), explain: String(c.explain || "").trim() })), s = e === "brief" ? 8 : e === "standard" ? 14 : 20, i = (t.glossary || []).slice(0, s), a = new Set(r.map((c) => c.id)), o = (t.links || []).filter((c) => c.from === "A0" && a.has(c.to));
   return { ...t, sections: r, glossary: i, links: o };
 }
 __name(xt, "xt");
+__name2(xt, "xt");
 function yt(t, e) {
   const n = et.mindmap[e], r = (t.nodes || []).slice(0, Math.max(0, n - 1)), s = /* @__PURE__ */ new Set(["C0", ...r.map((a) => a.id)]), i = (t.edges || []).filter((a) => s.has(a.from) && s.has(a.to));
   return { ...t, nodes: r, edges: i };
 }
 __name(yt, "yt");
+__name2(yt, "yt");
 function vt(t, e) {
   const n = et.selftest[e];
   return { questions: (t.questions || []).slice(0, n) };
 }
 __name(vt, "vt");
+__name2(vt, "vt");
 function bt(t, e) {
   const n = et.narrative[e], i = pr(t.summary || "").slice(0, n).join(" "), a = (t.keyPoints || []).slice(0, e === "brief" ? 3 : 4), o = (t.examHints || []).slice(0, e === "brief" ? 2 : 3);
   return { ...t, summary: i, keyPoints: a, examHints: o };
 }
 __name(bt, "bt");
+__name2(bt, "bt");
 async function Ue(t, e) {
-  const n = /* @__PURE__ */ __name(async () => {
+  const n = /* @__PURE__ */ __name2(async () => {
     const o = await tn(t, e);
     return String(o || "");
   }, "n"), r = await n(), s = gt(r);
@@ -1297,6 +1374,7 @@ async function Ue(t, e) {
   throw new Error("MODEL_JSON_PARSE_FAILED");
 }
 __name(Ue, "Ue");
+__name2(Ue, "Ue");
 async function br(t, e) {
   const n = await Ue(t, gr(e));
   if (!(n != null && n.anchor) || !Array.isArray(n.sections))
@@ -1316,6 +1394,7 @@ async function br(t, e) {
   return { structured: a, narrative: o, mindmap: c, selftest: l };
 }
 __name(br, "br");
+__name2(br, "br");
 function en(t) {
   if (!t)
     return "empty";
@@ -1328,16 +1407,19 @@ function en(t) {
   return `${t.length.toString(16)}_${r}_${s}`;
 }
 __name(en, "en");
+__name2(en, "en");
 function wr(t, e, n, r) {
   const s = en(n);
   return `${t}::${r || "anon"}::${e}::base::${s}`;
 }
 __name(wr, "wr");
+__name2(wr, "wr");
 function Sr(t, e, n, r, s) {
   const i = en(r);
   return `${t}::${s || "anon"}::${e}::${n}::${i}`;
 }
 __name(Sr, "Sr");
+__name2(Sr, "Sr");
 async function Er(t) {
   if (!st) {
     if (!t) {
@@ -1354,6 +1436,7 @@ async function Er(t) {
   }
 }
 __name(Er, "Er");
+__name2(Er, "Er");
 async function wt(t, e) {
   const n = Date.now(), r = Ye.get(e);
   if (r && n - r.createdAt < sr)
@@ -1371,12 +1454,14 @@ async function wt(t, e) {
   }
 }
 __name(wt, "wt");
+__name2(wt, "wt");
 async function Me(t, e, n, r) {
   const s = Date.now();
   Ye.set(e, { data: r, createdAt: s }), t && await t.prepare(`INSERT OR REPLACE INTO summary_cache(cache_key, user_id, response_json, created_at)
      VALUES (?,?,?,?)`).bind(e, n, JSON.stringify(r), Fe()).run();
 }
 __name(Me, "Me");
+__name2(Me, "Me");
 async function _r(t, e) {
   var c, l, d, p, m;
   const n = k(t.GEMINI_API_KEY).trim();
@@ -1401,6 +1486,7 @@ async function _r(t, e) {
   throw new Error("Gemini retry exceeded");
 }
 __name(_r, "_r");
+__name2(_r, "_r");
 async function Tr(t, e, n) {
   var l, d, p, m, v;
   const r = k(t.GEMINI_API_KEY).trim();
@@ -1425,47 +1511,56 @@ async function Tr(t, e, n) {
   throw new Error("Gemini retry exceeded");
 }
 __name(Tr, "Tr");
+__name2(Tr, "Tr");
 async function tn(t, e) {
   const n = await _r(t, e);
   return typeof n == "string" ? n : ((n == null ? void 0 : n.text) ?? "").toString();
 }
 __name(tn, "tn");
+__name2(tn, "tn");
 var Ar = (() => {
   const e = { brief: { min: 0.1, max: 0.15 }, standard: { min: 0.25, max: 0.3 }, detail: { min: 0.45, max: 0.55 } }, n = { brief: 6, standard: 10, detail: 14 }, r = ["narrative", "structured", "mindmap"], s = ["preview", "exam"];
   function i(b) {
     return (b || "").replace(/\s+/g, "");
   }
   __name(i, "i");
+  __name2(i, "i");
   function a(b, f) {
     const x = Math.max(200, i(b || "").length), y = e[f] || e.standard, g = Math.floor(x * y.min), O = Math.ceil(x * y.max);
     return { base: x, min: Math.max(80, g), max: Math.max(120, O) };
   }
   __name(a, "a");
+  __name2(a, "a");
   function o(b) {
     const f = (b || "").trim();
     return f ? f.replace(/\r/g, "").split(new RegExp("(?<=[\\.\\?\\!])\\s+|\\n+")).map((x) => x.trim()).filter(Boolean) : [];
   }
   __name(o, "o");
+  __name2(o, "o");
   function c(b) {
     return o(b).map((h, x) => ({ sid: `S${x + 1}`, text: h }));
   }
   __name(c, "c");
+  __name2(c, "c");
   function l(b, f, h) {
     const x = b.find((y) => y.sid === f);
     return !x || !h || typeof h != "string" ? false : x.text.includes(h.trim());
   }
   __name(l, "l");
+  __name2(l, "l");
   function d() {
     return ["\uB2F9\uC2E0\uC740 \uAD50\uC721\uACF5\uD559 \uAE30\uBC18 \uC694\uC57D\xB7\uC140\uD504\uD14C\uC2A4\uD2B8 \uC0DD\uC131 \uC5D4\uC9C4\uC774\uB2E4.", "\uCD94\uCD9C\uD615 \uBCF5\uBD99 \uAE08\uC9C0. \uBC18\uB4DC\uC2DC \uC758\uBBF8 \uB2E8\uC704\uB85C \uC7AC\uAD6C\uC131\uD558\uB77C.", "\uAC00\uC7A5 \uC911\uC694\uD55C 1\uC21C\uC704\uB294 \uBB38\uC790\uC218(\uACF5\uBC31 \uC81C\uC678) \uC81C\uD55C \uC900\uC218\uB2E4.", "\uD5C8\uC704 \uC815\uBCF4(\uC6D0\uBB38/\uC694\uC57D\uC5D0 \uC5C6\uB294 \uB0B4\uC6A9) \uC0DD\uC131 \uAE08\uC9C0.", "JSON \uCD9C\uB825\uC774 \uC694\uAD6C\uB418\uBA74 JSON\uB9CC \uCD9C\uB825\uD558\uB77C."].join(`
 `);
   }
   __name(d, "d");
+  __name2(d, "d");
   function p({ originalText: b, mode: f, format: h }) {
     const x = a(b, f), y = ar(b), g = h === "narrative" ? "\uC11C\uC220\uD615: \uC5F0\uACB0\uC5B4\uB97C \uC0AC\uC6A9\uD574 \uD750\uB984/\uC778\uACFC\uAC00 \uBCF4\uC774\uB3C4\uB85D 1~3\uBB38\uB2E8\uC73C\uB85C \uAD6C\uC131" : h === "structured" ? "\uAD6C\uC870\uD654: \uC0C1\uC704-\uD558\uC704 \uC704\uACC4\uAC00 \uB4DC\uB7EC\uB098\uB294 \uC870\uBAA9(\uAC00/\uB098/\uB2E4 \uB610\uB294 \u2460\u2461\u2462) \uD615\uD0DC" : "\uB9C8\uC778\uB4DC\uB9F5: \uD14D\uC2A4\uD2B8\uB85C \uD45C\uD604\uB41C \uB178\uB4DC-\uAD00\uACC4 \uBAA9\uB85D(\uC911\uC2EC\uB178\uB4DC/\uD558\uC704\uB178\uB4DC/\uC5F0\uACB0\uB77C\uBCA8) \uD615\uD0DC";
     return ["[TASK] \uC544\uB798 \uD559\uC220 \uB17C\uBB38\uC744 \uC0DD\uC131\uC801 \uC694\uC57D(Abstractive Summarization) \uBC29\uC2DD\uC73C\uB85C \uC9C0\uC815\uB41C \uD615\uC2DD\uC5D0 \uB9DE\uCDB0 \uC694\uC57D\uD558\uB77C.", `- \uBAA8\uB4DC: ${f} (\uAC04\uB2E8/\uD45C\uC900/\uC0C1\uC138)`, `- \uD615\uC2DD: ${h} (${g})`, `- \uBB38\uC790\uC218 \uBAA9\uD45C(\uACF5\uBC31 \uC81C\uC678): \uCD5C\uC18C ${x.min}\uC790 ~ \uCD5C\uB300 ${x.max}\uC790`, "", "[\u{1F539} C. \uB17C\uBB38\uD615 \uD14D\uC2A4\uD2B8 \uC804\uC6A9 \uC694\uC57D \uAD6C\uC870 - \uBC18\uB4DC\uC2DC \uC900\uC218]", "\uC774 \uD14D\uC2A4\uD2B8\uB294 \uD559\uC220 \uB17C\uBB38\uC785\uB2C8\uB2E4.", "\uC694\uC57D \uC2DC \uBC18\uB4DC\uC2DC \uB2E4\uC74C \uC21C\uC11C\uB97C \uC720\uC9C0\uD558\uC138\uC694:", "1. \uC5F0\uAD6C \uBAA9\uC801 (\uBB34\uC5C7\uC744 \uC5F0\uAD6C\uD588\uB294\uAC00?)", "2. \uC5F0\uAD6C \uC124\uACC4 \uBC0F \uBC29\uBC95 (\uC5B4\uB5BB\uAC8C \uC5F0\uAD6C\uD588\uB294\uAC00?)", "3. \uD575\uC2EC \uACB0\uACFC (\uBB34\uC5C7\uC744 \uBC1C\uACAC\uD588\uB294\uAC00?)", "4. \uACB0\uACFC \uD574\uC11D (\uACB0\uACFC\uAC00 \uC758\uBBF8\uD558\uB294 \uBC14\uB294?)", "5. \uAD50\uC721\uC801 \uC758\uC758 (\uC2E4\uBB34/\uAD50\uC721\uC5D0 \uC5B4\uB5A4 \uC2DC\uC0AC\uC810\uC744 \uC8FC\uB294\uAC00?)", "\uAC01 \uB2E8\uACC4\uB294 1\uBB38\uB2E8 \uC774\uC0C1\uC744 \uB118\uC9C0 \uB9C8\uC138\uC694.", "", "[\uC694\uC57D \uD488\uC9C8 \uADDC\uCE59]", "1. \uB2E8\uC21C \uCD94\uCD9C/\uBCF5\uBD99 \uAE08\uC9C0: \uC6D0\uBB38 \uBB38\uC7A5\uC744 \uADF8\uB300\uB85C \uB098\uC5F4\uD558\uC9C0 \uB9D0\uACE0 \uC0DD\uC131\uC801\uC73C\uB85C \uC7AC\uAD6C\uC131\uD558\uC5EC \uB9E4\uB044\uB7EC\uC6B4 \uAE00 \uC791\uC131", "2. \uD14D\uC2A4\uD2B8 \uC815\uC81C: \uD398\uC774\uC9C0 \uBC88\uD638(p.XX), \uAC01\uC8FC, \uD2B9\uC218\uAE30\uD638, \uC9C8\uBB38\uD615 \uBB38\uC7A5 \uC81C\uAC70 \u2192 \uD559\uC220\uC801 \uD3C9\uC11C\uBB38\uC73C\uB85C \uC804\uD658", "3. \uC2A4\uB9C8\uD2B8 \uD3B8\uC9D1: \uC911\uBCF5 \uD45C\uD604 \uD1B5\uD569, \uC804\uBB38 \uC6A9\uC5B4 \uC77C\uAD00\uC131 \uC720\uC9C0, \uD55C \uBB38\uC7A5 2\uC904 \uC774\uB0B4\uB85C \uB2E8\uBB38 \uC704\uC8FC", "4. \uD034\uC988 \uC5F0\uB3D9: \uD575\uC2EC \uD0A4\uC6CC\uB4DC\uC640 \uC778\uACFC\uAD00\uACC4\uB97C \uBB38\uC7A5 \uB0B4\uC5D0 \uC804\uB7B5\uC801\uC73C\uB85C \uBC30\uCE58 (\uD034\uC988 \uC575\uCEE4 \uD655\uBCF4)", "5. \uD560\uB8E8\uC2DC\uB124\uC774\uC158 \uAE08\uC9C0: \uC6D0\uBB38\uC5D0 \uC5C6\uB294 \uC8FC\uC7A5/\uC0AC\uB840/\uC778\uACFC/\uC218\uCE58 \uCD94\uAC00 \uC808\uB300 \uAE08\uC9C0", "6. \u{1F539} B. \uACB0\uACFC \uB2E8\uB3C5 \uBC1C\uCDCC \uAE08\uC9C0: \uAC04\uB2E8 \uBAA8\uB4DC\uC5D0\uC11C\uB294 DLPFC, VLPFC, OFC \uB4F1 \uC138\uBD80 \uB1CC \uC601\uC5ED \uBA85\uCE6D \uC0AC\uC6A9 \uAE08\uC9C0", "", "[\uBE44\uC728 \uC5C4\uC218]", "- \uAC04\uB2E8 10~15%, \uD45C\uC900 25~30%, \uC0C1\uC138 45~55% \uAE00\uC790\uC218 \uBE44\uC728\uC740 \uC808\uB300\uC801 \uAE30\uC900", "- \uC0C1\uC138 \uC694\uC57D\uC774 \uD45C\uC900\uBCF4\uB2E4 \uC9E7\uC544\uC9C0\uB294 \uC5ED\uC804 \uD604\uC0C1 \uAE08\uC9C0", "- \uAC01 \uB2E8\uACC4\uB9C8\uB2E4 \uC815\uBCF4\uC758 \uAE4A\uC774\uC640 \uC591\uC744 \uACC4\uCE35\uC801\uC73C\uB85C \uBA85\uD655\uD788 \uCC28\uBCC4\uD654", "", "[ORIGINAL]", y].join(`
 `);
   }
   __name(p, "p");
+  __name2(p, "p");
   function m({ summaryText: b, format: f }) {
     return ["[TASK] \uC544\uB798 \uC694\uC57D\uBB38\uC5D0\uC11C \uD559\uC2B5 \uC575\uCEE4(\uD575\uC2EC \uAC1C\uB150/\uAD00\uACC4)\uB97C \uCD94\uCD9C\uD558\uB77C.", "- \uCD9C\uB825\uC740 JSON\uB9CC. \uD55C\uAD6D\uC5B4\uB85C.", "- \uC575\uCEE4 \uC218: 6~14\uAC1C \uBC94\uC704(\uC694\uC57D \uAE38\uC774\uC5D0 \uB9DE\uCDB0 \uC801\uC808\uD788).", "- \uAC01 \uC575\uCEE4\uB294 \uC694\uC57D\uBB38\uC5D0 \uC2E4\uC81C\uB85C \uB4F1\uC7A5\uD558\uB294 \uD45C\uD604\uC744 \uADFC\uAC70(quote)\uB85C \uAC00\uC838\uC640\uC57C \uD55C\uB2E4.", "- quote\uB294 \uC694\uC57D\uBB38 \uC77C\uBD80\uB97C \uADF8\uB300\uB85C \uBCF5\uC0AC(\uC9E7\uAC8C 8~25\uC790).", "", "[OUTPUT JSON SCHEMA]", `{
   "anchors":[
@@ -1482,6 +1577,7 @@ var Ar = (() => {
 `);
   }
   __name(m, "m");
+  __name2(m, "m");
   function v({ mode: b, purpose: f, format: h, summaryText: x, sentTable: y, anchors: g }) {
     const O = n[b] || 10, j = f === "preview" ? "\uC608\uC2B5\uC6A9 \uC140\uD504\uD14C\uC2A4\uD2B8: \uC694\uC57D\uBB38 \uC548\uC5D0\uC11C \uBC14\uB85C \uD655\uC778 \uAC00\uB2A5\uD55C \uC7AC\uC778 \uC911\uC2EC(\uC2A4\uD0A4\uB9C8 \uD615\uC131). \uACFC\uB3C4\uD55C \uCD94\uB860 \uAE08\uC9C0." : "\uC2DC\uD5D8\uB300\uBE44 \uC140\uD504\uD14C\uC2A4\uD2B8: \uC694\uC57D\uBB38\uC5D0 \uC788\uB294 \uADFC\uAC70\uB97C \uBC14\uD0D5\uC73C\uB85C \uC778\uACFC/\uAD00\uACC4/\uBD84\uB958\uB97C \uC778\uCD9C\uD558\uB294 \uD68C\uC0C1 \uC911\uC2EC. \uC694\uC57D\uC5D0 \uC5C6\uB294 \uC815\uBCF4 \uAE08\uC9C0.", U = h === "narrative" ? "\uBB38\uD56D \uC2A4\uD0C0\uC77C: \uBB38\uC7A5 \uBE48\uCE78, \uBB38\uC7A5 \uC21C\uC11C \uBC30\uC5F4, \uC778\uACFC\uAD00\uACC4 \uB2E8\uB2F5/\uC11C\uC220(\uC694\uC57D \uADFC\uAC70 \uD544\uC218)" : h === "structured" ? "\uBB38\uD56D \uC2A4\uD0C0\uC77C: \uD56D\uBAA9-\uC815\uC758 \uB9E4\uCE6D, \uBD84\uB958 \uCC44\uC6B0\uAE30, \uC0C1\uD558\uC704 \uCCB4\uACC4, \uC0AC\uB840-\uBC94\uC8FC \uB9E4\uCE6D(\uC694\uC57D \uADFC\uAC70 \uD544\uC218)" : "\uBB38\uD56D \uC2A4\uD0C0\uC77C: \uB178\uB4DC \uB77C\uBCA8 \uB9DE\uCD94\uAE30, \uC5F0\uACB0 \uB77C\uBCA8\uB9C1, \uB204\uB77D \uB178\uB4DC/\uC5F0\uACB0 \uBCF5\uC6D0, \uAD00\uACC4 \uC774\uC720 \uB2E8\uB2F5(\uC694\uC57D \uADFC\uAC70 \uD544\uC218)";
     return ["[TASK] \uC544\uB798 \uC694\uC57D\uBB38\uACFC \uC575\uCEE4\uB9CC\uC744 \uADFC\uAC70\uB85C \uC140\uD504\uD14C\uC2A4\uD2B8 \uBB38\uD56D\uC744 \uC0DD\uC131\uD558\uB77C.", `- \uBAA8\uB4DC: ${b} (\uBB38\uD56D\uC218 ${O})`, `- \uBAA9\uC801: ${f} (${j})`, `- \uC694\uC57D \uD615\uC2DD: ${h} (${U})`, "- \uADDC\uCE591: \uC694\uC57D\uBB38\uC5D0 \uC5C6\uB294 \uC815\uBCF4\uB85C \uBB38\uC81C \uB9CC\uB4E4\uC9C0 \uB9D0 \uAC83(\uD560\uB8E8\uC2DC\uB124\uC774\uC158 \uAE08\uC9C0).", "- \uADDC\uCE592: \uAC01 \uBB38\uD56D\uC740 \uBC18\uB4DC\uC2DC evidence\uB97C \uD3EC\uD568: sid + quote(\uC694\uC57D \uBB38\uC7A5 \uC77C\uBD80 8~25\uC790).", "- \uADDC\uCE593: quote\uB294 \uBC18\uB4DC\uC2DC \uD574\uB2F9 sid \uBB38\uC7A5\uC5D0 \uC2E4\uC81C\uB85C \uD3EC\uD568\uB418\uC5B4\uC57C \uD55C\uB2E4.", "- \uADDC\uCE594: \uC815\uB2F5/\uD574\uC124\uC740 \uAC04\uACB0\uD558\uAC8C. \uD574\uC124\uC740 evidence\uC640 \uC5F0\uACB0\uB418\uAC8C.", "", "[OUTPUT JSON ONLY]", `{
@@ -1501,6 +1597,7 @@ var Ar = (() => {
 `);
   }
   __name(v, "v");
+  __name2(v, "v");
   function _(b, f) {
     const h = f && f.anchors ? f.anchors : [], x = [], y = [];
     for (const g of h) {
@@ -1518,6 +1615,7 @@ var Ar = (() => {
     return { ok: x, bad: y };
   }
   __name(_, "_");
+  __name2(_, "_");
   function A(b, f) {
     const h = f && Array.isArray(f.items) ? f.items : [], x = [], y = [];
     for (const g of h) {
@@ -1539,11 +1637,13 @@ var Ar = (() => {
     return { ok: x, bad: y };
   }
   __name(A, "A");
+  __name2(A, "A");
   function E({ summaryText: b, sentTable: f, anchors: h, badItems: x, mode: y, purpose: g, format: O }) {
     return ["[TASK] \uC544\uB798\uB294 \uAC80\uC99D\uC5D0\uC11C \uD0C8\uB77D\uD55C \uBB38\uD56D\uB4E4\uC774\uB2E4. \uC694\uC57D\uBB38 \uADFC\uAC70(sid+quote)\uB97C \uB9CC\uC871\uD558\uB3C4\uB85D \uBB38\uD56D\uC744 \uB2E4\uC2DC \uC0DD\uC131\uD558\uB77C.", `- \uC7AC\uC0DD\uC131 \uBB38\uD56D \uC218: ${x.length}`, `- \uBAA8\uB4DC: ${y}, \uBAA9\uC801: ${g}, \uD615\uC2DD: ${O}`, "- \uADDC\uCE59: \uC694\uC57D\uBB38 \uBC16 \uC815\uBCF4 \uAE08\uC9C0. \uBC18\uB4DC\uC2DC sid+quote\uAC00 \uC2E4\uC81C\uB85C \uD574\uB2F9 \uBB38\uC7A5\uC5D0 \uD3EC\uD568\uB418\uC5B4\uC57C \uD55C\uB2E4.", "- \uCD9C\uB825: JSON\uB9CC. items \uAE38\uC774\uB294 \uC815\uD655\uD788 \uC7AC\uC0DD\uC131 \uBB38\uD56D \uC218\uC640 \uAC19\uC544\uC57C \uD55C\uB2E4.", "", "[OUTPUT JSON ONLY]", '{"items":[{ "id":"Qx","type":"blank|match|order|label|short|mcq","question":"...","choices":[],"answer":"...","explanation":"...","evidence":{"sid":"S1","quote":"..." },"anchorIds":["A1"] }]}', "", "[SUMMARY SENTENCES WITH ID]", JSON.stringify(f, null, 2), "", "[ANCHORS]", JSON.stringify(h, null, 2), "", "[BAD ITEMS]", JSON.stringify(x, null, 2), "", "[SUMMARY]", b].join(`
 `);
   }
   __name(E, "E");
+  __name2(E, "E");
   async function I({ llmCall: b, originalText: f, mode: h, format: x }) {
     if (!b)
       throw new Error("llmCall is required");
@@ -1559,6 +1659,7 @@ var Ar = (() => {
     return { summaryText: g, sentTable: O, anchors: pe };
   }
   __name(I, "I");
+  __name2(I, "I");
   function z(b) {
     const f = [];
     for (let h = 0; h < Math.min(8, b.length); h++) {
@@ -1568,6 +1669,7 @@ var Ar = (() => {
     return f;
   }
   __name(z, "z");
+  __name2(z, "z");
   async function L({ llmCall: b, mode: f, purpose: h, format: x, summaryText: y, sentTable: g, anchors: O }) {
     e[f] || (f = "standard"), s.includes(h) || (h = "preview"), r.includes(x) || (x = "narrative");
     const j = v({ mode: f, purpose: h, format: x, summaryText: y, sentTable: g, anchors: O });
@@ -1602,6 +1704,7 @@ var Ar = (() => {
     return { items: M };
   }
   __name(L, "L");
+  __name2(L, "L");
   function F({ sentTable: b, anchors: f, count: h, format: x, purpose: y }) {
     const g = [], O = f.slice(0, Math.max(h, 1));
     for (let j = 0; j < h; j++) {
@@ -1611,6 +1714,7 @@ var Ar = (() => {
     return g;
   }
   __name(F, "F");
+  __name2(F, "F");
   class R {
     constructor(f, { passScore: h = 90 } = {}) {
       this.items = Array.isArray(f) ? f : [], this.passScore = h, this.state = { idx: 0, attempts: 1, correct: 0, wrongIds: /* @__PURE__ */ new Set(), finished: false };
@@ -1662,11 +1766,13 @@ var Ar = (() => {
     }
   }
   __name(R, "R");
+  __name2(R, "R");
   async function ne({ llmCall: b, originalText: f, mode: h, format: x, purpose: y }) {
     const g = await I({ llmCall: b, originalText: f, mode: h, format: x }), O = await L({ llmCall: b, mode: h, purpose: y, format: x, summaryText: g.summaryText, sentTable: g.sentTable, anchors: g.anchors });
     return { summary: { mode: h, format: x, text: g.summaryText, sentences: g.sentTable, anchors: g.anchors }, selfTest: { purpose: y, passScore: 90, items: O.items } };
   }
   __name(ne, "ne");
+  __name2(ne, "ne");
   return { computeCharTargets: a, splitSentencesKR: o, makeSentenceTable: c, generateBundle: I, generateSelfTest: L, runPipeline: ne, MasteryRunner: R };
 })();
 var Or = `/* MindStory Engine Bundle (compat) */
@@ -2313,7 +2419,7 @@ H.post("/api/gens/run", async (t) => {
   const o = !!k(t.env.GEMINI_API_KEY).trim(), c = k(t.env.USE_MOCK).trim().toLowerCase() === "true";
   if (!o || c)
     return t.json({ ok: false, error: { code: "GEMINI_REQUIRED", message: "GENS Engine\uC740 Gemini API\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4. .dev.vars\uC5D0 GEMINI_API_KEY\uB97C \uC124\uC815\uD558\uC138\uC694." }, guide: { step1: ".dev.vars \uD30C\uC77C \uC0DD\uC131", step2: "GEMINI_API_KEY=your_api_key_here \uCD94\uAC00", step3: "\uC11C\uBE44\uC2A4 \uC7AC\uC2DC\uC791: pm2 restart webapp" } }, 503);
-  const l = /* @__PURE__ */ __name(async ({ system: d, user: p, json: m }) => {
+  const l = /* @__PURE__ */ __name2(async ({ system: d, user: p, json: m }) => {
     if (m) {
       const v = `${d}
 
@@ -2388,10 +2494,12 @@ function Cr() {
   return { version: "v1", passScore: We, itemCountByMode: { brief: 5, standard: 7, detail: 10 }, mix: { mcq: 0.5, short: 0.2, tf: 0.2, cloze: 0.1 }, constraints: { noVerbatimLongQuote: true, requireSourceGrounding: true, preferKeyClaimsOverTrivia: true, avoidPageArtifacts: true, koreanGrammarClean: true }, scoring: { mcq: { points: 10 }, tf: { points: 10 }, short: { points: 10, normalize: "trim-lower-space" }, cloze: { points: 10, normalize: "trim-lower-space" } } };
 }
 __name(Cr, "Cr");
+__name2(Cr, "Cr");
 function St(t) {
   return k(t).replace(/\s+/g, " ").trim().toLowerCase();
 }
 __name(St, "St");
+__name2(St, "St");
 function kr(t, e, n) {
   let r = 0, s = 0;
   for (const o of t) {
@@ -2405,11 +2513,13 @@ function kr(t, e, n) {
   return { score: i, passed: a };
 }
 __name(kr, "kr");
+__name2(kr, "kr");
 async function Nr(t) {
   const e = new TextEncoder().encode(t || ""), n = await crypto.subtle.digest("SHA-256", e);
   return Array.from(new Uint8Array(n)).map((r) => r.toString(16).padStart(2, "0")).join("");
 }
 __name(Nr, "Nr");
+__name2(Nr, "Nr");
 function nn(t = 21) {
   const e = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
   let n = "";
@@ -2419,6 +2529,7 @@ function nn(t = 21) {
   return n;
 }
 __name(nn, "nn");
+__name2(nn, "nn");
 H.post("/api/session/save", async (t) => {
   const e = await t.req.json().catch(() => ({})), n = k(e.userId), r = k(e.title || ""), s = k(e.sourceText), i = e.allSummaries, a = e.engineMeta || {};
   if (!n)
@@ -2519,18 +2630,22 @@ function _t(t, e, n) {
   return Math.max(e, Math.min(n, t));
 }
 __name(_t, "_t");
+__name2(_t, "_t");
 function ct(t) {
   return (t || "").replace(/\s+/g, "").length;
 }
 __name(ct, "ct");
+__name2(ct, "ct");
 function ue(t) {
   return (t || "").replace(/[ \t]{2,}/g, " ").replace(/\s+([,.;:!?])/g, "$1").trim();
 }
 __name(ue, "ue");
+__name2(ue, "ue");
 function jr(t, e) {
   return `${t}_${e.toString(36)}`;
 }
 __name(jr, "jr");
+__name2(jr, "jr");
 function sn(t) {
   if (!t)
     return "";
@@ -2541,6 +2656,7 @@ function sn(t) {
 `), e = e.replace(/[ \t]{2,}/g, " "), e.trim();
 }
 __name(sn, "sn");
+__name2(sn, "sn");
 function Tt(t) {
   const e = (t || "").trim();
   if (!e)
@@ -2559,11 +2675,13 @@ function Tt(t) {
   return r;
 }
 __name(Tt, "Tt");
+__name2(Tt, "Tt");
 function Rr(t) {
   const e = (t || "").trim();
   return !!(!e || e.length < 12 && !(/[.?!]$/.test(e) || /(?:이다|된다|한다|있다|없다|말한다|주장한다)\.?$/.test(e)) || /^["")\]\}]+$/.test(e) || /^["(\[\{]+$/.test(e) || /^(?:\(\d+\)|\d+\)|[①-⑳])\s*["")\]]*\s*$/.test(e) || /(완전\s*정복|쏙쏙|콕콕|실력을\s*쑥쑥|고득점|특강|전문\s*대비)/.test(e) && (/[""]/.test(e) || /!$/.test(e)));
 }
 __name(Rr, "Rr");
+__name2(Rr, "Rr");
 function At(t) {
   const e = [], n = /* @__PURE__ */ new Set();
   for (const r of t) {
@@ -2576,6 +2694,7 @@ function At(t) {
   return e;
 }
 __name(At, "At");
+__name2(At, "At");
 function Mr(t) {
   const e = /(^|\n)\s*(\d+\.\d+)\.\s*([^\n]+)\n?/g, n = [];
   let r;
@@ -2591,6 +2710,7 @@ function Mr(t) {
   return s;
 }
 __name(Mr, "Mr");
+__name2(Mr, "Mr");
 function Dr(t) {
   let e = 1;
   /(교육부|공교육|정상화|사교육|입시|내신|대입|고입)/.test(t) && (e += 2), /(방해|요인|우려|격차|부정적|증폭|현실)/.test(t) && (e += 1.5), /(반해|반면|하지만|그러나|이에\s*반해)/.test(t) && (e += 1.5), /(목표|역점|능력|국제|문화|듣기|말하기)/.test(t) && (e += 1.2), /(현황|방법|프로그램|평가|설명회|학원|교육비|기숙)/.test(t) && (e += 1), /(변천|과정|비율|가산점|전형|선발\s*시험)/.test(t) && (e += 1.6);
@@ -2598,15 +2718,18 @@ function Dr(t) {
   return n > 180 && (e -= 0.6), n > 260 && (e -= 1), e;
 }
 __name(Dr, "Dr");
+__name2(Dr, "Dr");
 function an(t) {
   let e = ue(t);
   return e = e.replace(/\([^)]*\d{4}[^)]*\)/g, "").trim(), e = e.replace(/"([^"]{60,})"/g, '"(\uC778\uC6A9\uBB38 \uC694\uC9C0)"'), e = e.replace(/본수업/g, "\uBCF8 \uC218\uC5C5"), e = e.replace(/국력신장/g, "\uAD6D\uB825 \uC2E0\uC7A5"), e = e.replace(/내신대비/g, "\uB0B4\uC2E0 \uB300\uBE44"), e = e.replace(/지원현황/g, "\uC9C0\uC6D0 \uD604\uD669"), e = e.replace(/또한출판/g, "\uB610\uD55C \uCD9C\uD310"), e = e.replace(/그리고입과/g, "\uADF8\uB9AC\uACE0 \uACE0\uC785\uACFC"), e = e.replace(/통한대비/g, "\uD1B5\uD55C \uB300\uBE44"), /[.?!]$/.test(e) || (e += "."), ue(e);
 }
 __name(an, "an");
+__name2(an, "an");
 function se(t, e, n) {
   return t.map((s, i) => ({ id: jr(n, i), text: s, score: Dr(s) })).sort((s, i) => i.score - s.score).slice(0, e).map((s) => ({ id: s.id, text: an(s.text), score: s.score }));
 }
 __name(se, "se");
+__name2(se, "se");
 function Pr(t) {
   var ne, b, f, h, x, y, g, O, j, U, K, M, pe, we, re;
   const e = Mr(t), n = {};
@@ -2616,6 +2739,7 @@ function Pr(t) {
   return { title: s, tree: R };
 }
 __name(Pr, "Pr");
+__name2(Pr, "Pr");
 function on(t, e, n) {
   if (e >= n)
     return { ...t, children: [] };
@@ -2623,18 +2747,21 @@ function on(t, e, n) {
   return { ...t, children: t.children.slice(0, r).map((s) => on(s, e + 1, n)) };
 }
 __name(on, "on");
+__name2(on, "on");
 function Ot(t, e) {
   const n = e === "brief" ? 2 : e === "standard" ? 3 : 4;
   return { title: t.title, tree: on(t.tree, 0, n) };
 }
 __name(Ot, "Ot");
+__name2(Ot, "Ot");
 function $r(t, e) {
   const n = Math.max(120, ct(t)), r = e === "brief" ? 0.13 : e === "standard" ? 0.3 : 0.55, s = Math.floor(n * (r - 0.03)), i = Math.ceil(n * (r + 0.05));
   return { min: _t(s, 80, 999999), max: _t(i, 110, 999999) };
 }
 __name($r, "$r");
+__name2($r, "$r");
 function it(t, e, n) {
-  const { min: r, max: s } = $r(n, e), i = [], a = e === "brief" ? 2 : e === "standard" ? 4 : 6, o = e === "brief" ? 1 : e === "standard" ? 2 : 4, c = /* @__PURE__ */ __name((p, m, v, _) => {
+  const { min: r, max: s } = $r(n, e), i = [], a = e === "brief" ? 2 : e === "standard" ? 4 : 6, o = e === "brief" ? 1 : e === "standard" ? 2 : 4, c = /* @__PURE__ */ __name2((p, m, v, _) => {
     m === 0 ? p.children.slice(0, a).forEach((A, E) => {
       c(A, m + 1);
     }) : m === 1 ? p.children.slice(0, o).forEach((A, E) => {
@@ -2652,35 +2779,38 @@ function it(t, e, n) {
   return ue(l.join(" "));
 }
 __name(it, "it");
+__name2(it, "it");
 function Br(t) {
   const e = an(t), n = e.split(/,\s+/g);
   return n.length >= 3 ? ue(n.slice(0, 2).join(", ") + ".") : e;
 }
 __name(Br, "Br");
+__name2(Br, "Br");
 function Lr(t) {
-  const e = t.title || "\uD575\uC2EC", n = /* @__PURE__ */ __name((s, i) => {
+  const e = t.title || "\uD575\uC2EC", n = /* @__PURE__ */ __name2((s, i) => {
     const a = `${i}_${Math.random().toString(36).substring(7)}`;
     return { id: a, label: Br(s.title), children: s.children.map((o, c) => n(o, `${a}_${c}`)) };
   }, "n"), r = t.tree.children.map((s, i) => n(s, `n${i}`));
   return { center: e, nodes: r };
 }
 __name(Lr, "Lr");
+__name2(Lr, "Lr");
 function qr(t, e) {
-  const n = [], r = [], s = /* @__PURE__ */ __name((i) => {
+  const n = [], r = [], s = /* @__PURE__ */ __name2((i) => {
     i.explain && r.push(i.explain), i.children && i.children.forEach(s);
   }, "s");
   return s(t.tree), n.push({ q: "\uAD50\uC721\uBD80\uB294 \uC120\uD589\uD559\uC2B5\uC744 \uC65C \uBB38\uC81C\uB85C \uBCF4\uB294\uAC00?", a: r.find((i) => /(교육부|공교육|정상화|우려)/.test(i)) || "\uACF5\uAD50\uC721 \uC815\uC0C1\uD654 \uC800\uD574 \uBC0F \uACA9\uCC28/\uD0DC\uB3C4 \uC545\uD654 \uC6B0\uB824.", hint: "\uACF5\uAD50\uC721\xB7\uACA9\uCC28\xB7\uCC38\uC5EC\uB3C4" }), n.push({ q: "\uC0AC\uAD50\uC721\uC774 \uB9D0\uD558\uB294 \uC608\uC2B5\uACFC \uC120\uD589\uD559\uC2B5\uC758 \uCC28\uC774\uB294 \uBB34\uC5C7\uC778\uAC00?", a: r.find((i) => /(사교육|학원|예습|효율)/.test(i)) || "\uC608\uC2B5\uC740 \uC218\uC5C5 \uB300\uBE44, \uC120\uD589\uC740 \uB2E4\uC74C \uD559\uB144 \uACFC\uC815\uC758 \uC120\uD559\uC2B5.", hint: "\uC218\uC5C5 \uB300\uBE44 vs \uB2E4\uC74C \uD559\uB144" }), e !== "brief" && n.push({ q: "\uC120\uD589\uD559\uC2B5\uC774 \uAC15\uD654\uB418\uB294 \uC81C\uB3C4\uC801 \uBC30\uACBD\uC740 \uBB34\uC5C7\uC778\uAC00?", a: r.find((i) => /(변천|과정|비율|가산점|내신)/.test(i)) || "\uB0B4\uC2E0 \uBC18\uC601\uBE44\uC728/\uC804\uD615/\uAC00\uC0B0\uC810 \uB4F1 \uAD6C\uC870 \uBCC0\uD654\uAC00 \uC601\uD5A5\uC744 \uC900\uB2E4.", hint: "\uB0B4\uC2E0\xB7\uC804\uD615\xB7\uBE44\uC728" }), e === "detail" && n.push({ q: "\uC120\uD589\uD559\uC2B5\uC758 \uD604\uD669(\uBC29\uBC95)\uC5D0\uC11C \uD575\uC2EC \uD2B9\uC9D5 1\uAC00\uC9C0\uB294?", a: r.find((i) => /(현황|방법|프로그램|평가)/.test(i)) || "\uC2DC\uD5D8 \uB300\uBE44 \uC911\uC2EC \uD504\uB85C\uADF8\uB7A8\uACFC \uD2B9\uAC15/\uD3C9\uAC00 \uCCB4\uACC4\uAC00 \uC6B4\uC601\uB41C\uB2E4.", hint: "\uD504\uB85C\uADF8\uB7A8\xB7\uD2B9\uAC15\xB7\uD3C9\uAC00" }), n;
 }
 __name(qr, "qr");
+__name2(qr, "qr");
 function Hr(t) {
-  const e = sn(t), n = Pr(e), r = Ot(n, "standard"), s = Ot(n, "brief"), i = it(n, "detail", e), a = it(r, "standard", e), o = it(s, "brief", e), c = /* @__PURE__ */ __name((l, d, p) => ({ mode: l, narrative: p, structured: d, mindmap: Lr(d), selftest: qr(d, l) }), "c");
+  const e = sn(t), n = Pr(e), r = Ot(n, "standard"), s = Ot(n, "brief"), i = it(n, "detail", e), a = it(r, "standard", e), o = it(s, "brief", e), c = /* @__PURE__ */ __name2((l, d, p) => ({ mode: l, narrative: p, structured: d, mindmap: Lr(d), selftest: qr(d, l) }), "c");
   return { brief: c("brief", s, o), standard: c("standard", r, a), detail: c("detail", n, i) };
 }
 __name(Hr, "Hr");
+__name2(Hr, "Hr");
 var zr = Object.freeze(Object.defineProperty({ __proto__: null, buildAllSummariesV4_Quality: Hr, sanitizeKoreanAcademicText: sn }, Symbol.toStringTag, { value: "Module" }));
-
-// ../node_modules/wrangler/templates/middleware/middleware-ensure-req-body-drained.ts
-var drainBody = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx) => {
+var drainBody = /* @__PURE__ */ __name2(async (request, env, _ctx, middlewareCtx) => {
   try {
     return await middlewareCtx.next(request, env);
   } finally {
@@ -2696,8 +2826,6 @@ var drainBody = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx)
   }
 }, "drainBody");
 var middleware_ensure_req_body_drained_default = drainBody;
-
-// ../node_modules/wrangler/templates/middleware/middleware-miniflare3-json-error.ts
 function reduceError(e) {
   return {
     name: e?.name,
@@ -2707,7 +2835,8 @@ function reduceError(e) {
   };
 }
 __name(reduceError, "reduceError");
-var jsonError = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx) => {
+__name2(reduceError, "reduceError");
+var jsonError = /* @__PURE__ */ __name2(async (request, env, _ctx, middlewareCtx) => {
   try {
     return await middlewareCtx.next(request, env);
   } catch (e) {
@@ -2719,20 +2848,17 @@ var jsonError = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx)
   }
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
-
-// ../.wrangler/tmp/bundle-vQdgKd/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
 ];
 var middleware_insertion_facade_default = Et;
-
-// ../node_modules/wrangler/templates/middleware/common.ts
 var __facade_middleware__ = [];
 function __facade_register__(...args) {
   __facade_middleware__.push(...args.flat());
 }
 __name(__facade_register__, "__facade_register__");
+__name2(__facade_register__, "__facade_register__");
 function __facade_invokeChain__(request, env, ctx, dispatch, middlewareChain) {
   const [head, ...tail] = middlewareChain;
   const middlewareCtx = {
@@ -2744,6 +2870,7 @@ function __facade_invokeChain__(request, env, ctx, dispatch, middlewareChain) {
   return head(request, env, ctx, middlewareCtx);
 }
 __name(__facade_invokeChain__, "__facade_invokeChain__");
+__name2(__facade_invokeChain__, "__facade_invokeChain__");
 function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
   return __facade_invokeChain__(request, env, ctx, dispatch, [
     ...__facade_middleware__,
@@ -2751,9 +2878,8 @@ function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
   ]);
 }
 __name(__facade_invoke__, "__facade_invoke__");
-
-// ../.wrangler/tmp/bundle-vQdgKd/middleware-loader.entry.ts
-var __Facade_ScheduledController__ = class {
+__name2(__facade_invoke__, "__facade_invoke__");
+var __Facade_ScheduledController__ = /* @__PURE__ */ __name(class {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
     this.cron = cron;
@@ -2766,8 +2892,8 @@ var __Facade_ScheduledController__ = class {
     }
     this.#noRetry();
   }
-};
-__name(__Facade_ScheduledController__, "__Facade_ScheduledController__");
+}, "__Facade_ScheduledController__");
+__name2(__Facade_ScheduledController__, "__Facade_ScheduledController__");
 function wrapExportedHandler(worker) {
   if (__INTERNAL_WRANGLER_MIDDLEWARE__ === void 0 || __INTERNAL_WRANGLER_MIDDLEWARE__.length === 0) {
     return worker;
@@ -2775,7 +2901,7 @@ function wrapExportedHandler(worker) {
   for (const middleware of __INTERNAL_WRANGLER_MIDDLEWARE__) {
     __facade_register__(middleware);
   }
-  const fetchDispatcher = /* @__PURE__ */ __name(function(request, env, ctx) {
+  const fetchDispatcher = /* @__PURE__ */ __name2(function(request, env, ctx) {
     if (worker.fetch === void 0) {
       throw new Error("Handler does not export a fetch() function.");
     }
@@ -2784,7 +2910,7 @@ function wrapExportedHandler(worker) {
   return {
     ...worker,
     fetch(request, env, ctx) {
-      const dispatcher = /* @__PURE__ */ __name(function(type, init) {
+      const dispatcher = /* @__PURE__ */ __name2(function(type, init) {
         if (type === "scheduled" && worker.scheduled !== void 0) {
           const controller = new __Facade_ScheduledController__(
             Date.now(),
@@ -2800,6 +2926,7 @@ function wrapExportedHandler(worker) {
   };
 }
 __name(wrapExportedHandler, "wrapExportedHandler");
+__name2(wrapExportedHandler, "wrapExportedHandler");
 function wrapWorkerEntrypoint(klass) {
   if (__INTERNAL_WRANGLER_MIDDLEWARE__ === void 0 || __INTERNAL_WRANGLER_MIDDLEWARE__.length === 0) {
     return klass;
@@ -2839,6 +2966,7 @@ function wrapWorkerEntrypoint(klass) {
   };
 }
 __name(wrapWorkerEntrypoint, "wrapWorkerEntrypoint");
+__name2(wrapWorkerEntrypoint, "wrapWorkerEntrypoint");
 var WRAPPED_ENTRY;
 if (typeof middleware_insertion_facade_default === "object") {
   WRAPPED_ENTRY = wrapExportedHandler(middleware_insertion_facade_default);
@@ -2846,8 +2974,230 @@ if (typeof middleware_insertion_facade_default === "object") {
   WRAPPED_ENTRY = wrapWorkerEntrypoint(middleware_insertion_facade_default);
 }
 var middleware_loader_entry_default = WRAPPED_ENTRY;
-export {
-  __INTERNAL_WRANGLER_MIDDLEWARE__,
-  middleware_loader_entry_default as default
+
+// node_modules/wrangler/templates/pages-dev-util.ts
+function isRoutingRuleMatch(pathname, routingRule) {
+  if (!pathname) {
+    throw new Error("Pathname is undefined.");
+  }
+  if (!routingRule) {
+    throw new Error("Routing rule is undefined.");
+  }
+  const ruleRegExp = transformRoutingRuleToRegExp(routingRule);
+  return pathname.match(ruleRegExp) !== null;
+}
+__name(isRoutingRuleMatch, "isRoutingRuleMatch");
+function transformRoutingRuleToRegExp(rule) {
+  let transformedRule;
+  if (rule === "/" || rule === "/*") {
+    transformedRule = rule;
+  } else if (rule.endsWith("/*")) {
+    transformedRule = `${rule.substring(0, rule.length - 2)}(/*)?`;
+  } else if (rule.endsWith("/")) {
+    transformedRule = `${rule.substring(0, rule.length - 1)}(/)?`;
+  } else if (rule.endsWith("*")) {
+    transformedRule = rule;
+  } else {
+    transformedRule = `${rule}(/)?`;
+  }
+  transformedRule = `^${transformedRule.replaceAll(/\./g, "\\.").replaceAll(/\*/g, ".*")}$`;
+  return new RegExp(transformedRule);
+}
+__name(transformRoutingRuleToRegExp, "transformRoutingRuleToRegExp");
+
+// .wrangler/tmp/pages-PYyCvb/ay3nxskeiga.js
+var define_ROUTES_default = { version: 1, include: ["/*"], exclude: ["/index.html", "/static/*"] };
+var routes = define_ROUTES_default;
+var pages_dev_pipeline_default = {
+  fetch(request, env, context) {
+    const { pathname } = new URL(request.url);
+    for (const exclude of routes.exclude) {
+      if (isRoutingRuleMatch(pathname, exclude)) {
+        return env.ASSETS.fetch(request);
+      }
+    }
+    for (const include of routes.include) {
+      if (isRoutingRuleMatch(pathname, include)) {
+        const workerAsHandler = middleware_loader_entry_default;
+        if (workerAsHandler.fetch === void 0) {
+          throw new TypeError("Entry point missing `fetch` handler");
+        }
+        return workerAsHandler.fetch(request, env, context);
+      }
+    }
+    return env.ASSETS.fetch(request);
+  }
 };
-//# sourceMappingURL=bundledWorker-0.3463375133896167.mjs.map
+
+// node_modules/wrangler/templates/middleware/middleware-ensure-req-body-drained.ts
+var drainBody2 = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx) => {
+  try {
+    return await middlewareCtx.next(request, env);
+  } finally {
+    try {
+      if (request.body !== null && !request.bodyUsed) {
+        const reader = request.body.getReader();
+        while (!(await reader.read()).done) {
+        }
+      }
+    } catch (e) {
+      console.error("Failed to drain the unused request body.", e);
+    }
+  }
+}, "drainBody");
+var middleware_ensure_req_body_drained_default2 = drainBody2;
+
+// node_modules/wrangler/templates/middleware/middleware-miniflare3-json-error.ts
+function reduceError2(e) {
+  return {
+    name: e?.name,
+    message: e?.message ?? String(e),
+    stack: e?.stack,
+    cause: e?.cause === void 0 ? void 0 : reduceError2(e.cause)
+  };
+}
+__name(reduceError2, "reduceError");
+var jsonError2 = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx) => {
+  try {
+    return await middlewareCtx.next(request, env);
+  } catch (e) {
+    const error = reduceError2(e);
+    return Response.json(error, {
+      status: 500,
+      headers: { "MF-Experimental-Error-Stack": "true" }
+    });
+  }
+}, "jsonError");
+var middleware_miniflare3_json_error_default2 = jsonError2;
+
+// .wrangler/tmp/bundle-ZBZwOK/middleware-insertion-facade.js
+var __INTERNAL_WRANGLER_MIDDLEWARE__2 = [
+  middleware_ensure_req_body_drained_default2,
+  middleware_miniflare3_json_error_default2
+];
+var middleware_insertion_facade_default2 = pages_dev_pipeline_default;
+
+// node_modules/wrangler/templates/middleware/common.ts
+var __facade_middleware__2 = [];
+function __facade_register__2(...args) {
+  __facade_middleware__2.push(...args.flat());
+}
+__name(__facade_register__2, "__facade_register__");
+function __facade_invokeChain__2(request, env, ctx, dispatch, middlewareChain) {
+  const [head, ...tail] = middlewareChain;
+  const middlewareCtx = {
+    dispatch,
+    next(newRequest, newEnv) {
+      return __facade_invokeChain__2(newRequest, newEnv, ctx, dispatch, tail);
+    }
+  };
+  return head(request, env, ctx, middlewareCtx);
+}
+__name(__facade_invokeChain__2, "__facade_invokeChain__");
+function __facade_invoke__2(request, env, ctx, dispatch, finalMiddleware) {
+  return __facade_invokeChain__2(request, env, ctx, dispatch, [
+    ...__facade_middleware__2,
+    finalMiddleware
+  ]);
+}
+__name(__facade_invoke__2, "__facade_invoke__");
+
+// .wrangler/tmp/bundle-ZBZwOK/middleware-loader.entry.ts
+var __Facade_ScheduledController__2 = class {
+  constructor(scheduledTime, cron, noRetry) {
+    this.scheduledTime = scheduledTime;
+    this.cron = cron;
+    this.#noRetry = noRetry;
+  }
+  #noRetry;
+  noRetry() {
+    if (!(this instanceof __Facade_ScheduledController__2)) {
+      throw new TypeError("Illegal invocation");
+    }
+    this.#noRetry();
+  }
+};
+__name(__Facade_ScheduledController__2, "__Facade_ScheduledController__");
+function wrapExportedHandler2(worker) {
+  if (__INTERNAL_WRANGLER_MIDDLEWARE__2 === void 0 || __INTERNAL_WRANGLER_MIDDLEWARE__2.length === 0) {
+    return worker;
+  }
+  for (const middleware of __INTERNAL_WRANGLER_MIDDLEWARE__2) {
+    __facade_register__2(middleware);
+  }
+  const fetchDispatcher = /* @__PURE__ */ __name(function(request, env, ctx) {
+    if (worker.fetch === void 0) {
+      throw new Error("Handler does not export a fetch() function.");
+    }
+    return worker.fetch(request, env, ctx);
+  }, "fetchDispatcher");
+  return {
+    ...worker,
+    fetch(request, env, ctx) {
+      const dispatcher = /* @__PURE__ */ __name(function(type, init) {
+        if (type === "scheduled" && worker.scheduled !== void 0) {
+          const controller = new __Facade_ScheduledController__2(
+            Date.now(),
+            init.cron ?? "",
+            () => {
+            }
+          );
+          return worker.scheduled(controller, env, ctx);
+        }
+      }, "dispatcher");
+      return __facade_invoke__2(request, env, ctx, dispatcher, fetchDispatcher);
+    }
+  };
+}
+__name(wrapExportedHandler2, "wrapExportedHandler");
+function wrapWorkerEntrypoint2(klass) {
+  if (__INTERNAL_WRANGLER_MIDDLEWARE__2 === void 0 || __INTERNAL_WRANGLER_MIDDLEWARE__2.length === 0) {
+    return klass;
+  }
+  for (const middleware of __INTERNAL_WRANGLER_MIDDLEWARE__2) {
+    __facade_register__2(middleware);
+  }
+  return class extends klass {
+    #fetchDispatcher = (request, env, ctx) => {
+      this.env = env;
+      this.ctx = ctx;
+      if (super.fetch === void 0) {
+        throw new Error("Entrypoint class does not define a fetch() function.");
+      }
+      return super.fetch(request);
+    };
+    #dispatcher = (type, init) => {
+      if (type === "scheduled" && super.scheduled !== void 0) {
+        const controller = new __Facade_ScheduledController__2(
+          Date.now(),
+          init.cron ?? "",
+          () => {
+          }
+        );
+        return super.scheduled(controller);
+      }
+    };
+    fetch(request) {
+      return __facade_invoke__2(
+        request,
+        this.env,
+        this.ctx,
+        this.#dispatcher,
+        this.#fetchDispatcher
+      );
+    }
+  };
+}
+__name(wrapWorkerEntrypoint2, "wrapWorkerEntrypoint");
+var WRAPPED_ENTRY2;
+if (typeof middleware_insertion_facade_default2 === "object") {
+  WRAPPED_ENTRY2 = wrapExportedHandler2(middleware_insertion_facade_default2);
+} else if (typeof middleware_insertion_facade_default2 === "function") {
+  WRAPPED_ENTRY2 = wrapWorkerEntrypoint2(middleware_insertion_facade_default2);
+}
+var middleware_loader_entry_default2 = WRAPPED_ENTRY2;
+export {
+  __INTERNAL_WRANGLER_MIDDLEWARE__2 as __INTERNAL_WRANGLER_MIDDLEWARE__,
+  middleware_loader_entry_default2 as default
+};
+//# sourceMappingURL=ay3nxskeiga.js.map
