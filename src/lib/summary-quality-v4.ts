@@ -491,19 +491,40 @@ function modeTargets(originalText: string, mode: Mode) {
 function buildNarrativeFromStructured(structured: StructuredSummary, mode: Mode, originalText: string) {
   const { min, max } = modeTargets(originalText, mode)
 
-  // Tree에서 explain 추출
+  // Tree에서 explain 추출 (depth 제한 적용)
   const buckets: string[] = []
-  const extractExplains = (node: TreeNode) => {
-    if (node.explain) buckets.push(node.explain)
-    if (node.children) node.children.forEach(extractExplains)
+  const maxBranches = mode === 'brief' ? 2 : mode === 'standard' ? 4 : 6
+  const maxKeywordsPerBranch = mode === 'brief' ? 1 : mode === 'standard' ? 2 : 4
+  
+  const extractExplains = (node: TreeNode, depth: number, branchIdx?: number, keywordIdx?: number) => {
+    // Brief: 2개 분기, 각 1개 키워드
+    // Standard: 4개 분기, 각 2개 키워드
+    // Detail: 6개 분기, 각 4개 키워드
+    
+    if (depth === 0) {
+      // Root: children은 분기
+      node.children.slice(0, maxBranches).forEach((branch, idx) => {
+        extractExplains(branch, depth + 1, idx)
+      })
+    } else if (depth === 1) {
+      // Branch (question): children은 키워드
+      node.children.slice(0, maxKeywordsPerBranch).forEach((keyword, idx) => {
+        extractExplains(keyword, depth + 1, branchIdx, idx)
+      })
+    } else if (depth === 2) {
+      // Keyword: explain 추출
+      if (node.explain) buckets.push(node.explain)
+    }
   }
-  extractExplains(structured.tree)
+  
+  extractExplains(structured.tree, 0)
 
+  // 목표 길이에 맞게 선택
   const chosen: string[] = []
   let cur = 0
   for (const s of buckets) {
     const c = countKoreanFriendlyChars(s)
-    if (cur + c > max && chosen.length >= 2) continue
+    if (cur + c > max && chosen.length >= 2) break
     chosen.push(s)
     cur += c
     if (cur >= min && chosen.length >= (mode === 'brief' ? 2 : mode === 'standard' ? 4 : 6)) break
