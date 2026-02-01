@@ -1227,13 +1227,25 @@ function scoreSentences(sents: string[]) {
 }
 
 function pickTopByScore(sents: string[], count: number) {
+  if (sents.length === 0) return []
+  
   const scored = scoreSentences(sents)
-  const picked = scored
+  
+  // ✅ 첫 번째 문장은 항상 포함 (도입부 중요)
+  const first = scored[0]
+  const rest = scored.slice(1)
+  
+  // 나머지 문장 중 점수 높은 것 선택
+  const pickedRest = rest
     .slice()
     .sort((a, b) => b.score - a.score)
-    .slice(0, clamp(count, 1, Math.max(1, sents.length)))
+    .slice(0, clamp(count - 1, 0, Math.max(0, rest.length)))
+  
+  // 첫 번째 + 나머지를 원래 순서대로 정렬
+  const picked = [first, ...pickedRest]
     .sort((a, b) => a.idx - b.idx)
     .map((x) => x.s)
+  
   return picked
 }
 
@@ -4669,29 +4681,42 @@ app.post('/api/engine', async (c) => {
   const baseCached = await getCache(db, baseKey)
   
   // ✅ Base cache가 있으면 로컬 변환 후 derived cache 저장
-  if (baseCached.hit && baseCached.data?.narrative) {
-    const baseNarrative = baseCached.data.narrative
-    let derivedData: any
-    
-    if (viewType === 'narrative') {
-      derivedData = { kind, mode, viewType, narrative: baseNarrative }
-    } else if (viewType === 'structured') {
-      derivedData = { kind, mode, ...narrativeToStructured(baseNarrative) }
-    } else if (viewType === 'mindmap') {
-      derivedData = { kind, mode, ...narrativeToMindmap(baseNarrative) }
+  if (baseCached.hit && baseCached.data) {
+    // ✅ allSummaries가 있으면 mode에 맞는 narrative 선택
+    let baseNarrative: string
+    if (baseCached.data.allSummaries && baseCached.data.allSummaries[mode]) {
+      baseNarrative = baseCached.data.allSummaries[mode]
+    } else if (baseCached.data.narrative) {
+      baseNarrative = baseCached.data.narrative
     } else {
-      derivedData = { kind, mode, ...narrativeToSelftest(baseNarrative) }
+      // narrative가 없으면 캐시 건너뛰기
+      console.warn('[Cache] Base cache has no narrative, skipping')
+      // 다음 단계로 진행 (캐시 무시)
     }
     
-    await setCache(db, derivedKey, userId || 'anon', derivedData)
-    return c.json(
-      {
-        ok: true,
-        data: derivedData,
-        meta: { cached: true, cacheStore: 'derived', cacheType: 'converted', engine: 'local-convert', elapsedMs: Date.now() - start }
-      },
-      200
-    )
+    if (baseNarrative) {
+      let derivedData: any
+      
+      if (viewType === 'narrative') {
+        derivedData = { kind, mode, viewType, narrative: baseNarrative }
+      } else if (viewType === 'structured') {
+        derivedData = { kind, mode, ...narrativeToStructured(baseNarrative) }
+      } else if (viewType === 'mindmap') {
+        derivedData = { kind, mode, ...narrativeToMindmap(baseNarrative) }
+      } else {
+        derivedData = { kind, mode, ...narrativeToSelftest(baseNarrative) }
+      }
+      
+      await setCache(db, derivedKey, userId || 'anon', derivedData)
+      return c.json(
+        {
+          ok: true,
+          data: derivedData,
+          meta: { cached: true, cacheStore: 'derived', cacheType: 'converted', engine: 'local-convert', elapsedMs: Date.now() - start }
+        },
+        200
+      )
+    }
   }
 
   // ----------------------------
@@ -4773,14 +4798,30 @@ app.post('/api/engine', async (c) => {
   }
 
   // ----------------------------
-  // ✅ 로컬 폴백: buildNarrativeSummary
+  // ✅ 로컬 폴백: 3단계 모두 생성
   // ----------------------------
-  const fallback = localSummary(text, mode, viewType)
+  const fallbackBrief = localSummary(text, 'brief', viewType)
+  const fallbackStandard = localSummary(text, 'standard', viewType)
+  const fallbackDetail = localSummary(text, 'detail', viewType)
+  
+  // 현재 mode에 해당하는 결과 선택
+  const fallback = mode === 'brief' ? fallbackBrief : mode === 'standard' ? fallbackStandard : fallbackDetail
+  
   await setCache(db, derivedKey, userId || 'anon', fallback)
   
-  // Base narrative도 저장 (로컬)
-  if (fallback.narrative) {
-    const baseData = { kind: 'summary', mode, viewType: 'narrative', narrative: fallback.narrative }
+  // Base narrative도 저장 (로컬) - 3단계 모두 포함
+  if (fallbackBrief.narrative && fallbackStandard.narrative && fallbackDetail.narrative) {
+    const baseData = { 
+      kind: 'summary', 
+      mode, 
+      viewType: 'narrative', 
+      narrative: fallback.narrative,
+      allSummaries: {
+        brief: fallbackBrief.narrative,
+        standard: fallbackStandard.narrative,
+        detail: fallbackDetail.narrative
+      }
+    }
     await setCache(db, baseKey, userId || 'anon', baseData)
   }
   
