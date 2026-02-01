@@ -4830,8 +4830,8 @@ app.post('/api/engine', async (c) => {
   const baseKey = baseCacheKey(kind, mode, text, userId || null)
   const baseCached = await getCache(db, baseKey)
   
-  // ✅ Base cache가 있으면 로컬 변환 후 derived cache 저장
-  if (baseCached.hit && baseCached.data) {
+  // ✅ Base cache가 있으면 narrative만 변환, structured/mindmap/selftest는 로컬 폴백
+  if (baseCached.hit && baseCached.data && viewType === 'narrative') {
     // ✅ allSummaries가 있으면 mode에 맞는 narrative 선택
     let baseNarrative: string
     if (baseCached.data.allSummaries && baseCached.data.allSummaries[mode]) {
@@ -4845,29 +4845,22 @@ app.post('/api/engine', async (c) => {
     }
     
     if (baseNarrative) {
-      let derivedData: any
-      
-      if (viewType === 'narrative') {
-        derivedData = { kind, mode, viewType, narrative: baseNarrative }
-      } else if (viewType === 'structured') {
-        derivedData = { kind, mode, ...narrativeToStructured(baseNarrative) }
-      } else if (viewType === 'mindmap') {
-        derivedData = { kind, mode, ...narrativeToMindmap(baseNarrative) }
-      } else {
-        derivedData = { kind, mode, ...narrativeToSelftest(baseNarrative) }
-      }
+      const derivedData = { kind, mode, viewType, narrative: baseNarrative }
       
       await setCache(db, derivedKey, userId || 'anon', derivedData)
       return c.json(
         {
           ok: true,
           data: derivedData,
-          meta: { cached: true, cacheStore: 'derived', cacheType: 'converted', engine: 'local-convert', elapsedMs: Date.now() - start }
+          meta: { cached: true, cacheStore: 'derived', cacheType: 'base-narrative', engine: 'cache', elapsedMs: Date.now() - start }
         },
         200
       )
     }
   }
+  
+  // ✅ structured/mindmap/selftest는 base cache가 있어도 로컬 폴백으로 진행
+  // (Tree 구조가 필요하므로)
 
   // ----------------------------
   // ✅ V4: ENGINE PATCH V4 (detail 1회 생성 + 서버 다운샘플)

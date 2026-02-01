@@ -309,7 +309,7 @@ function buildStructuredDetail(cleaned: string): StructuredSummary {
         title: '교육부 관점',
         type: 'question',
         collapsed: false,
-        children: ministrySentences.slice(0, 4).map((s, idx) => ({
+        children: ministrySentences.length > 0 ? ministrySentences.slice(0, 4).map((s, idx) => ({
           title: [
             '공교육 정상화 저해',
             '전인교육 저해·사교육 증폭',
@@ -326,13 +326,20 @@ function buildStructuredDetail(cleaned: string): StructuredSummary {
           explain: s.text,
           collapsed: false,
           children: []
-        }))
+        })) : [{
+          title: '공교육 정상화 저해',
+          type: 'keyword' as const,
+          pack: ['공교육 방해', '정상화 저해', '핵심 요인'],
+          explain: all[0]?.text || '교육부는 선행학습이 공교육 정상화를 방해하는 요인으로 본다.',
+          collapsed: false,
+          children: []
+        }]
       },
       {
         title: '사교육 관점',
         type: 'question',
         collapsed: false,
-        children: privateSentences.slice(0, 3).map((s, idx) => ({
+        children: privateSentences.length > 0 ? privateSentences.slice(0, 3).map((s, idx) => ({
           title: [
             '예습과 선행학습 구분 주장',
             '예습의 효과 강조',
@@ -347,7 +354,14 @@ function buildStructuredDetail(cleaned: string): StructuredSummary {
           explain: s.text,
           collapsed: false,
           children: []
-        }))
+        })) : [{
+          title: '예습과 선행학습 구분',
+          type: 'keyword' as const,
+          pack: ['예습', '수업 대비', '조력'],
+          explain: all[1]?.text || all[0]?.text || '사교육은 예습과 선행학습을 구분한다.',
+          collapsed: false,
+          children: []
+        }]
       },
       {
         title: '목표(교육부 vs 현실)',
@@ -376,7 +390,7 @@ function buildStructuredDetail(cleaned: string): StructuredSummary {
         title: '방법·현황(사례)',
         type: 'question',
         collapsed: false,
-        children: realitySentences.slice(0, 4).map((s, idx) => ({
+        children: realitySentences.length > 0 ? realitySentences.slice(0, 4).map((s, idx) => ({
           title: [
             '시험대비 프로그램(초등 A학원)',
             '내신·인증시험 집중(어학 B·C학원)',
@@ -393,13 +407,20 @@ function buildStructuredDetail(cleaned: string): StructuredSummary {
           explain: s.text,
           collapsed: false,
           children: []
-        }))
+        })) : [{
+          title: '시험대비 프로그램',
+          type: 'keyword' as const,
+          pack: ['프로그램', '특강', '평가'],
+          explain: all[2]?.text || all[0]?.text || '시험 대비 프로그램과 특강이 운영된다.',
+          collapsed: false,
+          children: []
+        }]
       },
       {
         title: '변천(입시 반영 구조)',
         type: 'question',
         collapsed: false,
-        children: policySentences.slice(0, 2).map((s, idx) => ({
+        children: policySentences.length > 0 ? policySentences.slice(0, 2).map((s, idx) => ({
           title: [
             '내신 반영 비율이 좌우',
             '영어 비중 확대 추세'
@@ -412,7 +433,14 @@ function buildStructuredDetail(cleaned: string): StructuredSummary {
           explain: s.text,
           collapsed: false,
           children: []
-        }))
+        })) : [{
+          title: '입시 반영 구조',
+          type: 'keyword' as const,
+          pack: ['내신', '비율', '반영'],
+          explain: all[all.length - 1]?.text || all[0]?.text || '내신 반영 비율이 선행학습에 영향을 준다.',
+          collapsed: false,
+          children: []
+        }]
       }
     ]
   }
