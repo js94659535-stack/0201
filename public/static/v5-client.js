@@ -31,30 +31,47 @@ $('summarizeBtn').addEventListener('click', async () => {
     const text = $('inputText').value.trim();
     if (!text) { alert('텍스트를 입력하세요.'); return; }
 
+    console.log('[V5 Client] 요약 시작:', { mode: currentMode, view: currentView, textLength: text.length });
+
     $('loadingIndicator').classList.remove('hidden');
     $('errorBox').classList.add('hidden');
     $('resultSection').classList.add('hidden');
 
-    const result = await window.MS_V5_renderResult({
-        containerEl: $('resultContent'),
-        inputText: text,
-        userId: 'demo-user',
-        mode: currentMode,
-        viewType: currentView,
-        onSelftestPassed: (r) => {
-            alert('자가테스트 통과! 점수: ' + r.pct + '%');
+    try {
+        console.log('[V5 Client] MS_V5_renderResult 호출 전');
+        
+        if (typeof window.MS_V5_renderResult !== 'function') {
+            throw new Error('MS_V5_renderResult가 로드되지 않았습니다. ms-learn-v5.js를 확인하세요.');
         }
-    });
 
-    $('loadingIndicator').classList.add('hidden');
-    if (result.ok) {
-        $('resultSection').classList.remove('hidden');
-        $('saveBtn').classList.remove('hidden');
-        currentAllSummaries = result.resp.allSummaries;
-        $('resultMeta').textContent = '엔진: ' + result.resp.meta.engine + ' | 모드: ' + result.resp.meta.mode + ' | 뷰: ' + result.resp.meta.viewType;
-    } else {
+        const result = await window.MS_V5_renderResult({
+            containerEl: $('resultContent'),
+            inputText: text,
+            userId: 'demo-user',
+            mode: currentMode,
+            viewType: currentView,
+            onSelftestPassed: (r) => {
+                alert('자가테스트 통과! 점수: ' + r.pct + '%');
+            }
+        });
+
+        console.log('[V5 Client] MS_V5_renderResult 결과:', result);
+
+        $('loadingIndicator').classList.add('hidden');
+        if (result.ok) {
+            $('resultSection').classList.remove('hidden');
+            $('saveBtn').classList.remove('hidden');
+            currentAllSummaries = result.resp.allSummaries;
+            $('resultMeta').textContent = '엔진: ' + result.resp.meta.engine + ' | 모드: ' + result.resp.meta.mode + ' | 뷰: ' + result.resp.meta.viewType;
+        } else {
+            $('errorBox').classList.remove('hidden');
+            $('errorText').textContent = result.resp?.message || result.resp?.error || '알 수 없는 오류';
+        }
+    } catch (err) {
+        console.error('[V5 Client] 오류:', err);
+        $('loadingIndicator').classList.add('hidden');
         $('errorBox').classList.remove('hidden');
-        $('errorText').textContent = result.resp?.message || result.resp?.error || '알 수 없는 오류';
+        $('errorText').textContent = err.message || String(err);
     }
 });
 
