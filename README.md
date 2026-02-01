@@ -523,7 +523,7 @@ MIT License
 
 - **Sandbox**: https://3000-ij4pmtzwfidun6lv3m0wf-5185f4aa.sandbox.novita.ai
 - **Production**: (배포 후 추가)
-- **GitHub**: (GitHub 푸시 후 추가)
+- **GitHub**: https://github.com/js94659535-stack/0201
 - **Tech Stack**: Hono + TypeScript + Vite + Cloudflare Pages + D1
 - **Last Updated**: 2026-02-01
 
