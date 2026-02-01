@@ -4193,9 +4193,6 @@ app.get('/', (c) => {
        위치: </body> 직전
   ======================================================= -->
 
-  <!-- 0) 번들 (라우트로 제공됨 /ms-engine-bundle.js) -->
-  <script src="/ms-engine-bundle.js"></script>
-
   <!-- 1) API 호출 래퍼 -->
   <script src="/static/engine-api-client.js"></script>
 
