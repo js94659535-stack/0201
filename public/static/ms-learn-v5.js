@@ -70,16 +70,19 @@
 
   // ---------------------------
   // Mindmap SVG: 사용자가 올린 MS MindmapSVG V3가 이미 로드되어 있다고 가정
-  // - tree는 API가 동일 구조 유지해서 내려줌: {tree:{title,children...}}
+  // - tree는 API가 동일 구조 유지해서 내려줌: {tree:{title,children...}} 또는 {title,children...}
   // ---------------------------
   function renderMindmap(container, mindmapData) {
-    const tree = mindmapData?.tree;
-    if (!tree) {
+    // tree 속성이 있으면 사용, 없으면 mindmapData 자체가 tree
+    const tree = mindmapData?.tree || mindmapData;
+    if (!tree || !tree.title) {
       container.innerHTML = `<div class="ms-card"><div class="ms-muted">마인드맵 데이터가 없습니다.</div></div>`;
       return;
     }
-    container.innerHTML = `<div id="msMindmapBox" style="width:100%;height:560px;"></div>`;
-    const box = $('msMindmapBox');
+    // ① 고유 ID 생성 (중복 방지)
+    const uniqueId = 'msMindmapBox_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    container.innerHTML = `<div id="${uniqueId}" style="width:100%;height:560px;"></div>`;
+    const box = $(uniqueId);
     // MS_buildMindmapTreeV3 / MS_renderMindmapSVG 가 있으면 사용
     if (window.MS_buildMindmapTreeV3 && window.MS_renderMindmapSVG) {
       const enriched = window.MS_buildMindmapTreeV3(tree, { autoEnrich: true });
@@ -183,21 +186,27 @@
     const views = data?.views || {};
     const levelData = views[viewType]?.[mode];
     
-    if (viewType === 'narrative') {
-      const text = levelData?.text || '';
-      renderNarrative(containerEl, text);
-    }
-    if (viewType === 'structured') {
-      // local-fallback-generators 구조: { toc, hierarchy, glossary }
-      renderStructured(containerEl, levelData);
-    }
-    if (viewType === 'mindmap') {
-      // local-fallback-generators 구조: { title, children }
-      renderMindmap(containerEl, { tree: levelData });
-    }
-    if (viewType === 'selftest') {
-      const questions = levelData?.questions || [];
-      await renderSelftest(containerEl, questions, onSelftestPassed);
+    // ② viewType 분기를 switch로 고정 (독립 if 4개 → 상호배타적 분기)
+    switch (viewType) {
+      case 'narrative':
+        const text = levelData?.text || '';
+        renderNarrative(containerEl, text);
+        break;
+      case 'structured':
+        // local-fallback-generators 구조: { toc, hierarchy, glossary }
+        renderStructured(containerEl, levelData);
+        break;
+      case 'mindmap':
+        // local-fallback-generators 구조: { title, children }
+        // tree 속성 없이 levelData를 직접 전달
+        renderMindmap(containerEl, levelData);
+        break;
+      case 'selftest':
+        const questions = levelData?.questions || [];
+        await renderSelftest(containerEl, questions, onSelftestPassed);
+        break;
+      default:
+        containerEl.innerHTML = `<div class="ms-card"><div class="ms-muted">알 수 없는 viewType: ${escapeHtml(viewType)}</div></div>`;
     }
 
     return { ok:true, resp };

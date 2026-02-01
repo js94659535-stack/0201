@@ -8,21 +8,67 @@ $('inputText').addEventListener('input', (e) => {
     $('charCount').textContent = e.target.value.length + '자';
 });
 
-// Mode selection
+// Mode selection - 클릭 시 즉시 재렌더링
 document.querySelectorAll('.mode-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
         document.querySelectorAll('.mode-btn').forEach(b => b.classList.replace('bg-blue-600', 'bg-gray-700'));
         btn.classList.replace('bg-gray-700', 'bg-blue-600');
         currentMode = btn.dataset.mode;
+        
+        // 이미 요약된 결과가 있으면 mode만 바꿔서 재렌더링
+        const text = $('inputText').value.trim();
+        if (text && $('resultSection').classList.contains('hidden') === false) {
+            console.log('[V5 Client] mode 변경으로 재렌더링:', currentMode);
+            try {
+                const result = await window.MS_V5_renderResult({
+                    containerEl: $('resultContent'),
+                    inputText: text,
+                    userId: 'demo-user',
+                    mode: currentMode,
+                    viewType: currentView,
+                    onSelftestPassed: (r) => {
+                        alert('자가테스트 통과! 점수: ' + r.pct + '%');
+                    }
+                });
+                if (result.ok) {
+                    $('resultMeta').textContent = '엔진: ' + result.resp.meta.engine + ' | 모드: ' + result.resp.meta.mode + ' | 뷰: ' + result.resp.meta.viewType;
+                }
+            } catch (err) {
+                console.error('[V5 Client] mode 변경 오류:', err);
+            }
+        }
     });
 });
 
-// View selection
+// View selection - 클릭 시 즉시 재렌더링
 document.querySelectorAll('.view-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
         document.querySelectorAll('.view-btn').forEach(b => b.classList.replace('bg-green-600', 'bg-gray-700'));
         btn.classList.replace('bg-gray-700', 'bg-green-600');
         currentView = btn.dataset.view;
+        
+        // 이미 요약된 결과가 있으면 viewType만 바꿔서 재렌더링
+        const text = $('inputText').value.trim();
+        if (text && $('resultSection').classList.contains('hidden') === false) {
+            console.log('[V5 Client] viewType 변경으로 재렌더링:', currentView);
+            try {
+                const result = await window.MS_V5_renderResult({
+                    containerEl: $('resultContent'),
+                    inputText: text,
+                    userId: 'demo-user',
+                    mode: currentMode,
+                    viewType: currentView,
+                    onSelftestPassed: (r) => {
+                        alert('자가테스트 통과! 점수: ' + r.pct + '%');
+                    }
+                });
+                if (result.ok) {
+                    $('resultMeta').textContent = '엔진: ' + result.resp.meta.engine + ' | 모드: ' + result.resp.meta.mode + ' | 뷰: ' + result.resp.meta.viewType;
+                }
+            } catch (err) {
+                console.error('[V5 Client] viewType 변경 오류:', err);
+            }
+        }
     });
 });
 
