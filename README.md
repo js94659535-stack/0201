@@ -4,11 +4,22 @@
 
 **MindStory**는 학습 텍스트를 진정한 요약으로 변환하는 학습 요약 엔진입니다.
 
-### ✨ **현재 상태 (v4.3.0 - Tree 기반 구조화)**
-- **✅ 완성**: UI + 학습엔진 v4.2 + Tree 구조화 + 마인드맵 V3.2 + PDF 전처리
-- **⏳ 미완성**: LLM 연결, D1 연결, 프로덕션 배포
-- **🔧 동작 모드**: quality-v4.2 (Tree 기반 학습엔진)
+### ✨ **현재 상태 (v4.4.0 - D1 저장/불러오기 + Selftest 90%)**
+- **✅ 완성**: UI + 학습엔진 v4.2 + Tree 구조화 + 마인드맵 V3.2 + PDF 전처리 + **D1 API + Selftest 90% 게이트**
+- **⏳ 미완성**: LLM 연결, D1 연동 (마이그레이션 대기), 프로덕션 배포
+- **🔧 동작 모드**: quality-v4.2 (Tree 기반 학습엔진) + **Selftest 90% Gate**
 - **🌐 환경**: Sandbox 데모 (https://3000-ij4pmtzwfidun6lv3m0wf-5185f4aa.sandbox.novita.ai)
+
+### 🆕 **v4.4.0 주요 개선사항 (2026-02-01)**
+
+#### **0. D1 저장/불러오기 + Selftest 90% 게이트 (신규!)**
+- ✅ **D1 스키마**: ms_sessions, ms_summaries, ms_selftest_attempts
+- ✅ **저장 API**: /api/session/save (원문 + allSummaries 영구 보관)
+- ✅ **불러오기 API**: /api/session/load (세션 복원)
+- ✅ **Selftest 90% 게이트**: 서버 강제 (passed >=90점만 통과)
+- ✅ **문제 생성 원칙**: 스펙 고정 (brief 5문항, standard 7문항, detail 10문항)
+- ✅ **가독성 개선**: 서술형(단락/인용), 구조화(계층 bullet)
+- ✅ **페이지 아티팩트 제거**: "- 8 -" 같은 페이지 표기 자동 제거
 
 ### 🆕 **v4.3.0 주요 개선사항 (2026-02-01)**
 
