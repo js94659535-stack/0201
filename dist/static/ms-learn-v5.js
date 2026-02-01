@@ -1,0 +1,220 @@
+(() => {
+  const $ = (id) => document.getElementById(id);
+
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  // ---------------------------
+  // Render: Narrative (가독성 단락)
+  // ---------------------------
+  function renderNarrative(container, text) {
+    const t = String(text || '').trim();
+    const paras = t.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+    container.innerHTML = `
+      <div class="ms-card">
+        ${paras.map(p => `<p class="ms-p">${escapeHtml(p)}</p>`).join('')}
+      </div>
+    `;
+  }
+
+  // ---------------------------
+  // Render: Structured Reference (참고서형 위계 + 용어사전)
+  // data: { kind:'reference', renderText, ... }
+  // ---------------------------
+  function renderStructured(container, structured) {
+    if (!structured) {
+      container.innerHTML = `<div class="ms-card"><div class="ms-muted">구조화 데이터가 없습니다.</div></div>`;
+      return;
+    }
+    const txt = String(structured.renderText || '').trim();
+    const lines = txt.split('\n');
+    const html = lines.map(line => {
+      const l = escapeHtml(line);
+      if (/^Ⅰ\./.test(line) || /^Ⅱ\./.test(line) || /^Ⅲ\./.test(line) || /^Ⅳ\./.test(line)) {
+        return `<div class="ms-h2">${l}</div>`;
+      }
+      if (/^\s{2}\d+\./.test(line)) return `<div class="ms-h3">${l}</div>`;
+      if (/^\s{5}-\s/.test(line)) return `<div class="ms-li">${l}</div>`;
+      if (/^\s{2}-\s/.test(line)) return `<div class="ms-li">${l}</div>`;
+      if (!line.trim()) return `<div class="ms-gap"></div>`;
+      return `<div class="ms-line">${l}</div>`;
+    }).join('');
+    container.innerHTML = `<div class="ms-card">${html}</div>`;
+  }
+
+  // ---------------------------
+  // Mindmap SVG: 사용자가 올린 MS MindmapSVG V3가 이미 로드되어 있다고 가정
+  // - tree는 API가 동일 구조 유지해서 내려줌: {tree:{title,children...}}
+  // ---------------------------
+  function renderMindmap(container, mindmapData) {
+    const tree = mindmapData?.tree;
+    if (!tree) {
+      container.innerHTML = `<div class="ms-card"><div class="ms-muted">마인드맵 데이터가 없습니다.</div></div>`;
+      return;
+    }
+    container.innerHTML = `<div id="msMindmapBox" style="width:100%;height:560px;"></div>`;
+    const box = $('msMindmapBox');
+    // MS_buildMindmapTreeV3 / MS_renderMindmapSVG 가 있으면 사용
+    if (window.MS_buildMindmapTreeV3 && window.MS_renderMindmapSVG) {
+      const enriched = window.MS_buildMindmapTreeV3(tree, { autoEnrich: true });
+      window.MS_renderMindmapSVG(box, enriched, { debug: false });
+    } else {
+      box.innerHTML = `<div class="ms-muted">ms-mindmap-svg.js가 로드되지 않았습니다.</div>`;
+    }
+  }
+
+  // ---------------------------
+  // Selftest: 90% 통과 게이트
+  // - questions: [{id,question,answer,sourceHint}]
+  // ---------------------------
+  async function renderSelftest(container, questions, onPassed) {
+    const qs = Array.isArray(questions) ? questions : [];
+    if (!qs.length) {
+      container.innerHTML = `<div class="ms-card"><div class="ms-muted">자가테스트 문항이 없습니다.</div></div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="ms-card">
+        <div class="ms-h2">자가테스트</div>
+        <div class="ms-muted">90% 이상 통과해야 다음 단계로 진행할 수 있습니다.</div>
+        <div class="ms-gap"></div>
+        <form id="msSelfForm">
+          ${qs.map((q, i) => `
+            <div class="ms-q">
+              <div class="ms-qtitle">${i+1}. ${escapeHtml(q.question)}</div>
+              <textarea class="ms-ta" name="${escapeHtml(q.id)}" rows="3" placeholder="답을 입력하세요"></textarea>
+              <div class="ms-hint">힌트: ${escapeHtml(String(q.sourceHint || '').slice(0, 80))}</div>
+            </div>
+          `).join('')}
+          <div class="ms-row">
+            <button class="ms-btn" type="submit">채점하기</button>
+            <div id="msSelfRes" class="ms-muted"></div>
+          </div>
+        </form>
+      </div>
+    `;
+
+    $('msSelfForm').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const fd = new FormData(ev.target);
+      const answers = {};
+      for (const [k, v] of fd.entries()) answers[k] = String(v || '');
+      const resp = await fetch('/api/selftest/score', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ questions: qs, answers })
+      }).then(r => r.json()).catch(() => null);
+      const r = resp?.result;
+      if (!r) { $('msSelfRes').textContent = '채점 실패'; return; }
+      $('msSelfRes').textContent = `점수: ${r.pct}% / ${r.passed ? '통과' : '재도전 필요'}`;
+      if (r.passed && typeof onPassed === 'function') onPassed(r);
+    });
+  }
+
+  // ---------------------------
+  // Save/Load (D1)
+  // ---------------------------
+  async function saveToD1(userId, originalText, allSummaries) {
+    const resp = await fetch('/api/saveSummary', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ userId, originalText, allSummaries })
+    }).then(r => r.json()).catch(() => null);
+    return resp;
+  }
+
+  async function loadFromD1(userId, id) {
+    const url = `/api/loadSummary?userId=${encodeURIComponent(userId)}&id=${encodeURIComponent(id)}`
+    return fetch(url).then(r => r.json()).catch(() => null);
+  }
+
+  // ---------------------------
+  // Public: 하나의 엔트리로 렌더
+  // ---------------------------
+  window.MS_V5_renderResult = async function ({
+    containerEl,
+    inputText,
+    userId = 'anon',
+    mode = 'standard',
+    viewType = 'narrative',
+    onSelftestPassed
+  }) {
+    if (!containerEl) throw new Error('containerEl required');
+    const resp = await fetch('/api/engine', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ text: inputText, userId, mode, viewType })
+    }).then(r => r.json()).catch(() => null);
+
+    if (!resp?.ok) {
+      containerEl.innerHTML = `<div class="ms-card"><div class="ms-muted">오류: ${escapeHtml(resp?.message || resp?.error || 'unknown')}</div></div>`;
+      return { ok:false, resp };
+    }
+
+    const data = resp.data;
+    if (viewType === 'narrative') renderNarrative(containerEl, data);
+    if (viewType === 'structured') renderStructured(containerEl, data);
+    if (viewType === 'mindmap') renderMindmap(containerEl, data);
+    if (viewType === 'selftest') {
+      await renderSelftest(containerEl, data, onSelftestPassed);
+    }
+
+    return { ok:true, resp };
+  };
+
+  window.MS_V5_save = saveToD1;
+  window.MS_V5_load = loadFromD1;
+
+  // ---------------------------
+  // Minimal CSS (가독성 향상: 단락/위계)
+  // ---------------------------
+  function injectCss() {
+    if (document.getElementById('ms-v5-css')) return;
+    const style = document.createElement('style');
+    style.id = 'ms-v5-css';
+    style.textContent = `
+      .ms-card{
+        border-radius:16px;
+        padding:16px;
+        background: rgba(18,20,26,0.65);
+        border: 1px solid rgba(255,255,255,0.12);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+        backdrop-filter: blur(10px);
+      }
+      .ms-p{ line-height:1.75; margin: 10px 0; font-size:14.5px; color: rgba(255,255,255,0.92); }
+      .ms-muted{ color: rgba(255,255,255,0.65); font-size: 13px; }
+      .ms-h2{ font-size: 16px; font-weight: 700; margin: 10px 0; color: rgba(255,255,255,0.95); }
+      .ms-h3{ font-size: 14.5px; font-weight: 700; margin: 10px 0 6px; color: rgba(255,255,255,0.92); }
+      .ms-line{ font-size: 14px; line-height: 1.7; margin: 2px 0; color: rgba(255,255,255,0.90); }
+      .ms-li{ font-size: 13.8px; line-height: 1.7; margin: 2px 0 2px 10px; color: rgba(255,255,255,0.88); }
+      .ms-gap{ height: 10px; }
+      .ms-row{ display:flex; gap:10px; align-items:center; margin-top:12px; }
+      .ms-btn{
+        border-radius: 12px;
+        padding: 10px 14px;
+        background: rgba(255,255,255,0.10);
+        border: 1px solid rgba(255,255,255,0.16);
+        color: rgba(255,255,255,0.92);
+        cursor: pointer;
+      }
+      .ms-q{ padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.08); }
+      .ms-qtitle{ font-size: 14px; font-weight: 600; margin-bottom: 6px; color: rgba(255,255,255,0.92); }
+      .ms-ta{
+        width: 100%;
+        border-radius: 12px;
+        padding: 10px;
+        background: rgba(0,0,0,0.25);
+        border: 1px solid rgba(255,255,255,0.12);
+        color: rgba(255,255,255,0.92);
+        outline: none;
+      }
+      .ms-hint{ margin-top:6px; font-size:12.5px; color: rgba(255,255,255,0.55); }
+    `;
+    document.head.appendChild(style);
+  }
+  injectCss();
+
+  console.log('[MS Learn V5] ready (compression+reference structured+mindmap+selftest90+D1)');
+})();
