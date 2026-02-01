@@ -3888,20 +3888,22 @@ const MS_ENGINE_BUNDLE_JS = `/* MindStory Engine Bundle (compat) */
 // ------------------------------
 // Middlewares
 // ------------------------------
-app.use('/api/*', cors())
 
-// ✅ 1) 번들 라우트를 static보다 먼저 (MIME 문제 방지)
-app.get('/static/ms-engine-bundle.js', (c) => {
+// ✅ 1) 번들 라우트를 최우선으로 (MIME 문제 방지)
+app.get('/ms-engine-bundle.js', (c) => {
   return c.text(MS_ENGINE_BUNDLE_JS, 200, {
     'content-type': 'application/javascript; charset=utf-8',
     'cache-control': 'no-store'
   })
 })
 
-// ✅ 2) favicon 204 (500 방지)
+// ✅ 2) CORS for API
+app.use('/api/*', cors())
+
+// ✅ 3) favicon 204 (500 방지)
 app.get('/favicon.ico', (c) => c.body(null, 204))
 
-// ✅ 3) static은 그 다음
+// ✅ 4) static files
 app.use('/static/*', serveStatic({ root: './public' }))
 
 // ------------------------------
@@ -4191,8 +4193,8 @@ app.get('/', (c) => {
        위치: </body> 직전
   ======================================================= -->
 
-  <!-- 0) 번들 (이미 라우트로 제공됨 /static/ms-engine-bundle.js) -->
-  <script src="/static/ms-engine-bundle.js"></script>
+  <!-- 0) 번들 (라우트로 제공됨 /ms-engine-bundle.js) -->
+  <script src="/ms-engine-bundle.js"></script>
 
   <!-- 1) API 호출 래퍼 -->
   <script src="/static/engine-api-client.js"></script>
@@ -4231,6 +4233,284 @@ app.get('/', (c) => {
       }
       health();
       setInterval(health, 8000);
+    })();
+  </script>
+
+  <!-- 5) 입력/버튼 연결 및 실행 로직 -->
+  <script>
+    (function(){
+      const inputText = document.getElementById('inputText');
+      const summarizeBtn = document.getElementById('summarizeBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const copyBtn = document.getElementById('copyBtn');
+      const charCount = document.getElementById('charCount');
+      const modeSeg = document.getElementById('modeSeg');
+      const viewSeg = document.getElementById('viewSeg');
+      const out = document.getElementById('out');
+      const errBox = document.getElementById('errBox');
+      const runBadge = document.getElementById('runBadge');
+      const runText = document.getElementById('runText');
+      const spin = document.getElementById('spin');
+      const resultMeta = document.getElementById('resultMeta');
+
+      let currentMode = 'standard';
+      let currentView = 'narrative';
+
+      // 입력 텍스트 카운트 업데이트
+      if (inputText && charCount) {
+        inputText.addEventListener('input', () => {
+          const len = inputText.value.length;
+          charCount.textContent = len;
+          if (summarizeBtn) {
+            summarizeBtn.disabled = len < 5;
+          }
+        });
+      }
+
+      // 모드 탭 클릭
+      if (modeSeg) {
+        modeSeg.addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-mode]');
+          if (!btn) return;
+          currentMode = btn.dataset.mode;
+          modeSeg.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        });
+      }
+
+      // 뷰 타입 탭 클릭
+      if (viewSeg) {
+        viewSeg.addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-view]');
+          if (!btn) return;
+          currentView = btn.dataset.view;
+          viewSeg.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        });
+      }
+
+      // 요약하기 버튼 클릭
+      if (summarizeBtn) {
+        summarizeBtn.addEventListener('click', async () => {
+          const text = inputText.value.trim();
+          if (text.length < 5) {
+            if (errBox) {
+              errBox.style.display = 'block';
+              errBox.textContent = '입력 텍스트가 너무 짧습니다. (최소 5자)';
+            }
+            return;
+          }
+
+          // 에러 숨기기
+          if (errBox) errBox.style.display = 'none';
+
+          // 로딩 표시
+          if (spin) spin.style.display = 'inline-block';
+          if (runText) runText.textContent = '처리 중...';
+          if (summarizeBtn) summarizeBtn.disabled = true;
+
+          try {
+            // API 호출
+            const response = await window.SummaryPipeline.run({
+              text,
+              mode: currentMode,
+              viewType: currentView,
+              userId: 'web_user'
+            });
+
+            if (!response.ok) {
+              throw new Error(response.error?.message || '요약 실패');
+            }
+
+            // 결과 렌더링
+            renderResult(response.data, response.meta);
+            
+            // 성공 표시
+            if (runText) runText.textContent = '완료';
+            if (resultMeta) {
+              resultMeta.textContent = \`엔진: \${response.meta?.engine || 'unknown'} · 소요: \${response.meta?.elapsedMs || 0}ms\`;
+            }
+
+          } catch (err) {
+            console.error('[main] Request failed:', err);
+            if (errBox) {
+              errBox.style.display = 'block';
+              errBox.textContent = err.message || '요약 중 오류가 발생했습니다.';
+            }
+            if (out) {
+              out.innerHTML = '<div class="meta" style="color: var(--danger);">오류: ' + (err.message || '알 수 없는 오류') + '</div>';
+            }
+            if (runText) runText.textContent = '실패';
+          } finally {
+            if (spin) spin.style.display = 'none';
+            if (summarizeBtn) summarizeBtn.disabled = false;
+          }
+        });
+      }
+
+      // 지우기 버튼
+      if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+          if (inputText) {
+            inputText.value = '';
+            if (charCount) charCount.textContent = '0';
+            if (summarizeBtn) summarizeBtn.disabled = true;
+          }
+          if (out) {
+            out.innerHTML = '<div class="meta">아직 결과가 없습니다. 오른쪽 상단 상태가 \'OK\'인지 확인 후 요약을 실행하세요.</div>';
+          }
+          if (errBox) errBox.style.display = 'none';
+          if (resultMeta) resultMeta.textContent = '—';
+          if (runText) runText.textContent = '대기';
+        });
+      }
+
+      // 복사 버튼
+      if (copyBtn) {
+        copyBtn.addEventListener('click', () => {
+          if (!out) return;
+          const text = out.innerText;
+          navigator.clipboard.writeText(text).then(() => {
+            const original = copyBtn.textContent;
+            copyBtn.textContent = '✅ 복사됨!';
+            setTimeout(() => {
+              copyBtn.textContent = original;
+            }, 2000);
+          }).catch(err => {
+            console.error('복사 실패:', err);
+          });
+        });
+      }
+
+      // 결과 렌더링 함수
+      function renderResult(data, meta) {
+        if (!out) return;
+        out.innerHTML = '';
+
+        if (!data) {
+          out.innerHTML = '<div class="meta">결과가 없습니다.</div>';
+          return;
+        }
+
+        // narrative (서술형)
+        if (currentView === 'narrative' && data.narrative) {
+          const pre = document.createElement('pre');
+          pre.style.whiteSpace = 'pre-wrap';
+          pre.style.lineHeight = '1.6';
+          pre.style.margin = '0';
+          pre.textContent = data.narrative;
+          out.appendChild(pre);
+          return;
+        }
+
+        // structured (구조화)
+        if (currentView === 'structured' && data.structured) {
+          const title = document.createElement('h3');
+          title.style.marginTop = '0';
+          title.textContent = '구조화 요약';
+          out.appendChild(title);
+
+          if (data.structured.anchor) {
+            const anchorDiv = document.createElement('div');
+            anchorDiv.style.cssText = 'background: rgba(139,92,246,.12); border: 1px solid rgba(139,92,246,.25); padding: 10px; border-radius: 8px; margin-bottom: 12px;';
+            anchorDiv.innerHTML = '<strong>🎯 핵심:</strong> ' + data.structured.anchor;
+            out.appendChild(anchorDiv);
+          }
+
+          if (data.structured.sections && data.structured.sections.length > 0) {
+            const sectionsDiv = document.createElement('div');
+            data.structured.sections.forEach(section => {
+              const sectionDiv = document.createElement('div');
+              sectionDiv.style.marginBottom = '10px';
+              sectionDiv.innerHTML = '<strong>' + (section.title || '') + '</strong><br>' + (section.content || '');
+              sectionsDiv.appendChild(sectionDiv);
+            });
+            out.appendChild(sectionsDiv);
+          }
+          return;
+        }
+
+        // mindmap (마인드맵)
+        if (currentView === 'mindmap' && data.mindmap) {
+          const title = document.createElement('h3');
+          title.style.marginTop = '0';
+          title.textContent = '마인드맵';
+          out.appendChild(title);
+
+          if (data.mindmap.center || data.mindmap.anchorNodeId) {
+            const centerDiv = document.createElement('div');
+            centerDiv.className = 'badge';
+            centerDiv.style.marginBottom = '12px';
+            centerDiv.textContent = '🌟 ' + (data.mindmap.center || '핵심');
+            out.appendChild(centerDiv);
+          }
+
+          if (data.mindmap.nodes && data.mindmap.nodes.length > 0) {
+            const ul = document.createElement('ul');
+            ul.style.marginTop = '10px';
+            data.mindmap.nodes
+              .filter(n => n.id !== 'c' && n.id !== data.mindmap.anchorNodeId)
+              .forEach(node => {
+                const li = document.createElement('li');
+                li.textContent = node.label || '';
+                ul.appendChild(li);
+              });
+            out.appendChild(ul);
+          }
+          return;
+        }
+
+        // selftest (자가테스트)
+        if (currentView === 'selftest' && data.selftest) {
+          const title = document.createElement('h3');
+          title.style.marginTop = '0';
+          title.textContent = '자가테스트';
+          out.appendChild(title);
+
+          const questions = data.selftest.questions || [];
+          if (questions.length === 0) {
+            out.innerHTML += '<div class="meta">문제가 없습니다.</div>';
+            return;
+          }
+
+          questions.forEach((q, i) => {
+            const qBox = document.createElement('div');
+            qBox.style.cssText = 'background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 12px; margin-bottom: 12px;';
+
+            const qText = document.createElement('div');
+            qText.style.cssText = 'font-weight:700; margin-bottom:6px;';
+            qText.textContent = \`Q\${i + 1}. \${q.prompt || q.question || ''}\`;
+            qBox.appendChild(qText);
+
+            if (q.choices && q.choices.length > 0) {
+              const choicesDiv = document.createElement('div');
+              choicesDiv.style.marginTop = '8px';
+              q.choices.forEach((choice, idx) => {
+                const choiceDiv = document.createElement('div');
+                choiceDiv.style.margin = '4px 0';
+                choiceDiv.textContent = \`\${idx + 1}) \${choice}\`;
+                choicesDiv.appendChild(choiceDiv);
+              });
+              qBox.appendChild(choicesDiv);
+            }
+
+            if (q.answer || q.answerHint) {
+              const hint = document.createElement('div');
+              hint.className = 'meta';
+              hint.style.marginTop = '8px';
+              hint.textContent = '정답: ' + (q.answer || q.answerHint || '');
+              qBox.appendChild(hint);
+            }
+
+            out.appendChild(qBox);
+          });
+          return;
+        }
+
+        // 폴백
+        out.innerHTML = '<div class="meta">선택한 보기 형식에 해당 결과가 없습니다.</div>';
+      }
+
     })();
   </script>
 </body>
