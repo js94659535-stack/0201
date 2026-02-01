@@ -1,44 +1,90 @@
-# MindStory v4.2.0 - 프로젝트 상태 보고서
+# MindStory v4.3.0 - 프로젝트 상태 보고서
 
 **Date**: 2026-02-01  
-**Version**: v4.2.0 (학습엔진 품질 패치 v4.2 적용)  
+**Version**: v4.3.0 (Tree 기반 구조화 + 마인드맵 V3.2)  
 **Environment**: Sandbox Demo  
-**Engine**: quality-v4.2
+**Engine**: quality-v4.2 (Tree 기반)
 
 ---
 
-## 📊 전체 완성도: 75%
+## 📊 전체 완성도: 80%
 
 ```
-✅ 완성 (75%): UI + 학습엔진 v4.2 + 구조화 + PDF 전처리 + GitHub
-⏳ 대기 (25%): LLM 연결 + D1 연결 + 프로덕션 배포
+✅ 완성 (80%): UI + Tree 구조화 + 마인드맵 V3.2 + 학습엔진 v4.2 + PDF 전처리
+⏳ 대기 (20%): LLM 연결 + D1 연결 + 프로덕션 배포
 ```
 
-## 🎉 v4.2.0 핵심 성과
+## 🎉 v4.3.0 핵심 성과 (2026-02-01)
 
-**"어제 만든 학습엔진"이 진짜 학습엔진이 되었습니다!**
+**"구조화가 진짜 구조화가 되었습니다!"**
 
-### ✅ 해결된 5대 문제
+### 🌳 Tree 기반 구조화 (혁명적 변화)
 
-1. **❌ → ✅ 압축률 문제**
+**Before (v4.2)**:
+```typescript
+// Bullet 배열 나열
+{
+  core: [bullet1, bullet2],
+  perspectives: { ministry: [b1, b2], private: [b1, b2] },
+  reality: [b1, b2, b3],
+  gap: [b1, b2],
+  policy: [b1, b2],
+  takeaway: [b1, b2]
+}
+```
+
+**After (v4.3)**:
+```typescript
+// 계층적 Tree 구조
+{
+  title: "선행학습 구조화",
+  tree: {
+    title: "선행학습 구조화",
+    children: [
+      {
+        title: "정의·쟁점",
+        type: "question",
+        children: [
+          {
+            title: "선행학습 정의",
+            type: "keyword",
+            pack: ["정규과정 이전", "미리 학습", "학습과정"],
+            explain: "교육부 기준 선행학습은..."
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### ✅ 해결된 6대 문제
+
+1. **❌ → ✅ 구조화 문제 (핵심!)**
+   - Before: Bullet 배열 (1)(2)(3) 나열
+   - After: Tree 구조 (정의→대조→근거→사례→결론)
+   - 6개 분기: 정의·쟁점 / 교육부 관점 / 사교육 관점 / 목표 vs 현실 / 방법·현황 / 변천
+
+2. **❌ → ✅ 마인드맵 렌더링**
+   - Before: 데이터만 제공 (렌더링 없음)
+   - After: SVG 직접 렌더링 + Drag/Zoom/Pan
+   - V3.2 번들: 7KB, autoEnrich, pack/explain 자동 확장
+
+3. **❌ → ✅ 압축률 문제**
    - Before: 글자수 자르기 → 중간 절단
    - After: 문장/불릿 선택 → 의미 단위 보존
 
-2. **❌ → ✅ 구조화 문제**
-   - Before: (1)(2)(3) 번호 나열
-   - After: 논지/대립/현황/괴리/변천/시사점 7-섹션
-
-3. **❌ → ✅ 마인드맵 문제**
+4. **❌ → ✅ 마인드맵 축약**
    - Before: "말하…", "듣기와…" 중간 절단
    - After: 노드 단위 축약 (shortenSentence)
 
-4. **❌ → ✅ PDF 아티팩트**
+5. **❌ → ✅ PDF 아티팩트**
    - Before: 페이지 번호, 깨진 따옴표 노출
    - After: 전처리로 완전 제거
 
-5. **❌ → ✅ 계층 불일치**
+6. **❌ → ✅ 계층 불일치**
    - Before: brief/standard/detail 각각 생성
-   - After: detail 1회 생성 → downsample → 포함 관계 강제
+   - After: detail 1회 생성 → downsample → depth 제어
 
 ## 🆕 v2.2.0 새로운 기능 (2026-02-01)
 
