@@ -471,7 +471,7 @@ function downsampleFromDetail(detail: DetailBundle, level: Level): LevelBundle {
 
   return {
     narrative: { text: narrativeText, coreClaim, grounds, comparisons, implications },
-    structured: { text: structuredText, toc, hierarchy, glossary },
+    structured: { renderText: structuredText, toc, hierarchy, glossary },
     mindmap: { tree },
     selftest: { passScorePct: 90, items },
   };
@@ -765,6 +765,30 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           error: { code: 'MATRIX_V4_ERROR', message: e?.message || String(e) },
           meta: { requestId: reqId, elapsedMs: Date.now() - t0, promptVersion: 'matrix-v4' },
         },
+        500
+      );
+    }
+  });
+
+  // Selftest 채점 API
+  app.post('/api/selftest/grade', async (c) => {
+    try {
+      const { gradeSelftestAttempt } = await import('../lib/selftest-solver');
+      const body = await c.req.json();
+      const { sheet, attempt } = body;
+
+      if (!sheet || !attempt) {
+        return c.json(
+          { ok: false, error: 'sheet and attempt required' },
+          400
+        );
+      }
+
+      const result = gradeSelftestAttempt(sheet, attempt);
+      return c.json(result, 200);
+    } catch (e: any) {
+      return c.json(
+        { ok: false, error: e?.message || String(e) },
         500
       );
     }

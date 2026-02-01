@@ -142,10 +142,10 @@
     onSelftestPassed
   }) {
     if (!containerEl) throw new Error('containerEl required');
-    const resp = await fetch('/api/engine', {
+    const resp = await fetch('/api/matrix', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ text: inputText, userId, mode, viewType })
+      body: JSON.stringify({ text: inputText, userId, level: mode, viewType })
     }).then(r => r.json()).catch(() => null);
 
     if (!resp?.ok) {
@@ -154,11 +154,27 @@
     }
 
     const data = resp.data;
-    if (viewType === 'narrative') renderNarrative(containerEl, data);
-    if (viewType === 'structured') renderStructured(containerEl, data);
-    if (viewType === 'mindmap') renderMindmap(containerEl, data);
+    console.log('[MS Learn V5] API 응답:', data);
+    
+    // Matrix V4 응답 구조: { views: { narrative: { brief, standard, detail }, ... } }
+    const views = data?.views || {};
+    const levelData = views[viewType]?.[mode];
+    
+    if (viewType === 'narrative') {
+      const text = levelData?.text || '';
+      renderNarrative(containerEl, text);
+    }
+    if (viewType === 'structured') {
+      const renderText = levelData?.renderText || '';
+      renderStructured(containerEl, { renderText });
+    }
+    if (viewType === 'mindmap') {
+      const tree = levelData?.tree;
+      renderMindmap(containerEl, { tree });
+    }
     if (viewType === 'selftest') {
-      await renderSelftest(containerEl, data, onSelftestPassed);
+      const questions = levelData?.questions || [];
+      await renderSelftest(containerEl, questions, onSelftestPassed);
     }
 
     return { ok:true, resp };
