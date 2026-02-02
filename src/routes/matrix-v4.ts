@@ -853,4 +853,21 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       );
     }
   });
+
+  // FAIL 리포트 API
+  app.get('/api/fail-report', async (c) => {
+    try {
+      const { buildFailReport } = await import('../lib/ms-summary-guard-v1')
+      const sinceHours = Number(c.req.query('hours')) || 168
+      const db = c.env?.DB
+      
+      const report = await buildFailReport(db, { sinceHours })
+      return c.json({ ok: true, report }, 200)
+    } catch (e: any) {
+      return c.json(
+        { ok: false, error: e?.message || String(e) },
+        500
+      )
+    }
+  })
 }
