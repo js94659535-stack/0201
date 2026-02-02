@@ -472,7 +472,7 @@ function downsampleFromDetail(detail: DetailBundle, level: Level): LevelBundle {
 
   return {
     narrative: { text: narrativeText, coreClaim, grounds, comparisons, implications },
-    structured: { renderText: structuredText, toc, hierarchy, glossary },
+    structured: { text: structuredText, toc, hierarchy, glossary },
     mindmap: { tree },
     selftest: { passScorePct: 90, items },
   };
@@ -725,74 +725,33 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         );
       }
 
-      // 5) 레벨별 생성 (local-fallback-generators 사용)
-      let briefNarr = generateNarrativeFallback(rawText, 'brief');
-      let stdNarr = generateNarrativeFallback(rawText, 'standard');
-      let detailNarr = generateNarrativeFallback(rawText, 'detail');
+      // ═══════════════════════════════════════════════════════════════════
+      // ONE-BLOCK FINAL FIX: V4 REAL - detail 1회 + downsample만 사용
+      // ═══════════════════════════════════════════════════════════════════
 
-      const briefStruct = generateUserCentricStructured(rawText, 'brief');
-      const stdStruct = generateUserCentricStructured(rawText, 'standard');
-      const detailStruct = generateUserCentricStructured(rawText, 'detail');
-
-      const briefMind = generateMindmapFallback(rawText, 'brief');
-      const stdMind = generateMindmapFallback(rawText, 'standard');
-      const detailMind = generateMindmapFallback(rawText, 'detail');
-
-      const briefSelf = generateSelftestFallback(rawText, 'brief', 'preview');
-      const stdSelf = generateSelftestFallback(rawText, 'standard', 'preview');
-      const detailSelf = generateSelftestFallback(rawText, 'detail', 'preview');
-
-      // 🔒 QUALITY GATE: 검증 + 재작성 (Phase 1)
-      // Brief 검증
-      if (briefNarr.warnings && briefNarr.warnings.length > 0) {
-        console.log(`[Matrix V4] Brief 검증 실패:`, briefNarr.warnings);
-        // Phase 1에서는 재작성 로직이 이미 적용되어 있으므로 warnings만 로깅
-      }
-      
-      // Standard 검증
-      if (stdNarr.warnings && stdNarr.warnings.length > 0) {
-        console.log(`[Matrix V4] Standard 검증 실패:`, stdNarr.warnings);
-      }
-      
-      // Detail 검증
-      if (detailNarr.warnings && detailNarr.warnings.length > 0) {
-        console.log(`[Matrix V4] Detail 검증 실패:`, detailNarr.warnings);
-      }
-
-      /* =========================================================
-         ONE-BLOCK PATCH: Narrative 품질 강제(가짜요약 차단)
-         - 메타문장 제거
-         - 문장 완결 보정(미완성 제거/최소 보정)
-         - 띄어쓰기/줄바꿈 파편 정규화
-         - 레벨별 필수 축(전제/비교/수치/결론/확장) 강제
-         - enforceSummaryRatio로 요약율 재조정 + qa.ratios 갱신
-         ========================================================= */
-
-      /** ① 텍스트 정규화(파편/이중마침표/특수 공백 정리) */
-      function MS_normalizeText(s: string) {
+      // ─────────────────────────────────────────────
+      // (B-1) Narrative 품질 강제(범용) 유틸
+      // ─────────────────────────────────────────────
+      function MS_norm(s: string) {
         return String(s || '')
           .replace(/[\r\n\t]+/g, ' ')
           .replace(/\s{2,}/g, ' ')
           .replace(/\.\.+/g, '.')
-          // 원문 파편(줄바꿈으로 분절된 단어) 보정 - 과도한 결합은 피하고 대표 케이스만
           .replace(/공교\s*육/g, '공교육')
           .replace(/사\s*교\s*육/g, '사교육')
           .replace(/입\s*시/g, '입시')
           .replace(/결\s*론/g, '결론')
           .replace(/국가에\s*서는/g, '국가에서는')
-          .replace(/아시아권\s*국가에\s*서는/g, '아시아권 국가에서는')
           .trim();
       }
 
-      /** ② 메타문장 제거(요약문이 아니라 '말하는 문장' 제거) */
-      function MS_stripMetaSentences(s: string) {
-        const t = MS_normalizeText(s);
+      function MS_stripMeta(s: string) {
+        const t = MS_norm(s);
         if (!t) return t;
 
-        // 문장 단위 분리(마침표/물음표/느낌표 기준)
-        const parts = t.split(/(?<=[.!?])\s+/).map((x: string) => x.trim()).filter(Boolean);
+        const parts = t.split(/(?<=[.!?])\s+/).map(x => x.trim()).filter(Boolean);
 
-        const bannedPatterns = [
+        const banned = [
           /비교한다/,
           /분석한다/,
           /설명한다/,
@@ -804,199 +763,135 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           /종합하면/,
           /이상의 내용을 종합/,
           /이해가 가능/,
+          /체계적으로 분석/,
+          /결론이다\.\./,
         ];
 
-        const kept = parts.filter((p: string) => !bannedPatterns.some(rx => rx.test(p)));
+        const kept = parts.filter(p => !banned.some(rx => rx.test(p)));
         return kept.join(' ').trim();
       }
 
-      /** ③ 문장 완결 보정/미완성 차단 */
-      function MS_fixSentenceCompleteness(s: string) {
-        let t = MS_normalizeText(s);
+      function MS_fixComplete(s: string) {
+        let t = MS_norm(s);
 
-        // 흔한 미완성 패턴 보정(대표 케이스만 안전하게)
         t = t
           .replace(/필요\.\s*/g, '필요하다는 의미다. ')
           .replace(/필요\s*$/g, '필요하다는 의미다.')
-          .replace(/의미이기도\s*$/g, '의미이기도 하다.')
-          .replace(/의미이기도\s*\.\s*/g, '의미이기도 하다. ');
+          .replace(/이는\s*$/g, '이는 중요한 차이를 보여준다.')
+          .replace(/이는\.\s*/g, '이는 중요한 차이를 보여준다. ');
 
-        // 문장 끝 마침표 보정
         if (t && !/[.!?]$/.test(t)) t += '.';
 
-        // "너무 짧은 파편 문장" 제거(2~3어절 이하)
-        const parts = t.split(/(?<=[.!?])\s+/).map((x: string) => x.trim()).filter(Boolean);
-        const kept = parts.filter((p: string) => p.replace(/[.!?]/g, '').trim().split(/\s+/).length >= 3);
-
-        // 최소 1문장은 유지
+        const parts = t.split(/(?<=[.!?])\s+/).map(x => x.trim()).filter(Boolean);
+        const kept = parts.filter(p => p.replace(/[.!?]/g, '').trim().split(/\s+/).length >= 3);
         return (kept.length ? kept.join(' ') : t).trim();
       }
 
-      /** ④ 레벨별 필수 축(내용문장) 강제 — 메타문장 금지 버전 */
-      function MS_requiredAnchors(level: 'brief'|'standard'|'detail') {
-        // "내용문장"만 사용('비교한다' 같은 메타문장 금지)
-        const A_PREMISE = '스웨덴은 공교육 중심이라 사교육이 거의 없고, 선행학습도 드물다.';
-        const A_NUM_KR = '한국은 GDP 대비 공교육 7.6% 중 민간 부담이 2.8%다.';
-        const A_NUM_SE = '스웨덴은 GDP 대비 공교육 6.5% 중 민간 부담이 0.2%다.';
-        const A_MEANING = '공교육 재정 구조의 차이가 사교육·선행학습의 필요성을 크게 바꾼다.';
-        const A_CONC = '선행학습의 양상은 입시 제도, 공교육 지원, 입시 비중에 따라 달라진다.';
-        const A_EXPAND = '유럽 다수 국가는 선행학습을 금지해 왔고, 일부 아시아 국가는 입시 경쟁 속 선행학습 열풍이 나타난다.';
-
-        if (level === 'brief') {
-          // 간단: 전제 + 수치(최소 1) + 결론
-          return [A_PREMISE, A_NUM_SE, A_CONC];
-        }
-        if (level === 'standard') {
-          // 표준: 전제 + 수치 2 + 의미 + 결론(4~6문장 구성 기반)
-          return [A_PREMISE, A_NUM_KR, A_NUM_SE, A_MEANING, A_CONC];
-        }
-        // 상세: 표준 + 확장(유럽/아시아 비교) 포함
-        return [A_PREMISE, A_NUM_KR, A_NUM_SE, A_MEANING, A_EXPAND, A_CONC];
+      function MS_sentenceCount(s: string) {
+        return MS_norm(s).split(/(?<=[.!?])\s+/).map(x => x.trim()).filter(Boolean).length;
       }
 
-      /** ⑤ 앵커 삽입(누락된 내용문장만 추가) - ratio 고려 */
-      function MS_ensureAnchors(text: string, anchors: string[], originalLen: number, level: 'brief'|'standard'|'detail') {
-        let t = MS_normalizeText(text);
-        if (!t) t = '';
-        
-        // 누락된 앵커만 추출
-        const missingAnchors = anchors.filter(a => !t.includes(a));
-        console.log(`[MS_ensureAnchors] level=${level}, missing=${missingAnchors.length}, current_len=${t.length}`);
-        if (missingAnchors.length === 0) return t;
-        
-        // 앵커 추가 예상 길이
-        const anchorLen = missingAnchors.reduce((sum, a) => sum + a.length + 2, 0);
-        const targetMax = Math.floor(originalLen * SUMMARY_RATIO_TABLE[level].max);
-        
-        // ratio 초과 방지: 기존 문장 일부 제거
-        if ((t.length + anchorLen) > targetMax) {
-          const sentences = t.split(/(?<=[.!?])\s+/).filter(Boolean);
-          if (sentences.length > 1) {
-            // 첫 문장 보존, 나머지 필요한 만큼만 유지
-            const availableLen = targetMax - anchorLen;
-            let kept = [sentences[0]];
-            let currentLen = kept[0].length;
-            
-            for (let i = 1; i < sentences.length; i++) {
-              if (currentLen + sentences[i].length + 1 < availableLen) {
-                kept.push(sentences[i]);
-                currentLen += sentences[i].length + 1;
-              }
-            }
-            t = kept.join(' ');
-          }
-        }
-        
-        // 문장 끝 보정
-        if (t && !/[.!?]$/.test(t)) t += '.';
-        
-        // 앵커 추가
-        for (const a of missingAnchors) {
-          t += ' ' + a;
-        }
-        
-        return MS_normalizeText(t);
-      }
-
-      /** ⑥ 최종 품질 강제(정규화→메타제거→완결→필수축→요약율) */
-      function MS_forceNarrativeQuality(
-        level: 'brief'|'standard'|'detail',
-        rawText: string,
-        text: string
+      function MS_appendFromSlots(
+        base: string,
+        slots: { grounds: string[]; comparisons: string[]; implications: string[] },
+        needMinSentences: number,
+        rawLen: number,
+        level: Level
       ) {
-        // a) 정규화/메타 제거/완결
-        let t = MS_fixSentenceCompleteness(MS_stripMetaSentences(MS_normalizeText(text)));
+        let t = base;
 
-        // b) 레벨별 필수축 강제(내용문장) - ratio 고려
-        t = MS_ensureAnchors(t, MS_requiredAnchors(level), rawText.length, level);
+        const pool = [
+          ...(slots.grounds || []),
+          ...(slots.comparisons || []),
+          ...(slots.implications || []),
+        ]
+          .map(x => MS_fixComplete(MS_stripMeta(MS_norm(x))))
+          .filter(Boolean);
 
-        // c) 요약율 재강제(이미 프로젝트에 존재하는 함수 사용)
-        const out = enforceSummaryRatio(rawText, t, level); // { text, ratio, ok, ... } 형태를 가정
-        return out; // out.text/out.ratio를 사용
+        const targetMax = Math.floor(rawLen * SUMMARY_RATIO_TABLE[level].max);
+
+        let i = 0;
+        while (MS_sentenceCount(t) < needMinSentences && i < pool.length) {
+          const cand = pool[i++];
+          const next = MS_norm(t + ' ' + cand);
+          if (next.length <= targetMax) t = next;
+          else break;
+        }
+        return t;
       }
 
-      /* ---------------------------------------------------------
-         ✅ 여기부터 "실제 적용부"
-         - narrative 생성 직후(briefNarr/stdNarr/detailNarr) 구간에 삽입
-         - qa 계산/응답 조립 전에 실행
-         --------------------------------------------------------- */
+      function MS_forceNarrative(level: Level, rawText: string, text: string, slots: any) {
+        let t = MS_fixComplete(MS_stripMeta(MS_norm(text)));
 
-      // 품질 강제 적용
-      const __b = MS_forceNarrativeQuality('brief', rawText, briefNarr.text);
-      const __s = MS_forceNarrativeQuality('standard', rawText, stdNarr.text);
-      const __d = MS_forceNarrativeQuality('detail', rawText, detailNarr.text);
+        const minSent = level === 'brief' ? 2 : level === 'standard' ? 4 : 6;
+        t = MS_appendFromSlots(t, slots, minSent, rawText.length, level);
 
-      // narrative 텍스트 업데이트
-      briefNarr.text = __b.text;
-      stdNarr.text = __s.text;
-      detailNarr.text = __d.text;
+        const out = enforceSummaryRatio(rawText, t, level);
+        return out;
+      }
 
-      // ratio 정보 저장 (Phase1 QA에서 재사용)
-      briefNarr.ratio = __b.ratio;
-      stdNarr.ratio = __s.ratio;
-      detailNarr.ratio = __d.ratio;
+      // ─────────────────────────────────────────────
+      // (B-2) ✅ V4 핵심: downsampleFromDetail()만 사용
+      // ─────────────────────────────────────────────
+      const briefLv = downsampleFromDetail(detail, 'brief');
+      const standardLv = downsampleFromDetail(detail, 'standard');
+      const detailLv = downsampleFromDetail(detail, 'detail');
 
-      console.log('[Matrix V4] 품질 강제 적용:', {
+      // detail 슬롯 기반 보강(허위 금지)
+      const slotsFromDetail = {
+        grounds: detail.narrative.grounds || [],
+        comparisons: detail.narrative.comparisons || [],
+        implications: detail.narrative.implications || [],
+      };
+
+      // Narrative 품질 강제(범용)
+      const __b = MS_forceNarrative('brief', rawText, briefLv.narrative.text, slotsFromDetail);
+      const __s = MS_forceNarrative('standard', rawText, standardLv.narrative.text, slotsFromDetail);
+      const __d = MS_forceNarrative('detail', rawText, detailLv.narrative.text, slotsFromDetail);
+
+      briefLv.narrative.text = __b.text;
+      standardLv.narrative.text = __s.text;
+      detailLv.narrative.text = __d.text;
+
+      (briefLv.narrative as any).ratio = __b.ratio;
+      (standardLv.narrative as any).ratio = __s.ratio;
+      (detailLv.narrative as any).ratio = __d.ratio;
+
+      console.log('[Matrix V4] V4-downsample + narrative-quality:', {
         brief_ratio: __b.ratio,
         standard_ratio: __s.ratio,
         detail_ratio: __d.ratio,
-        brief_length: __b.text.length,
-        standard_length: __s.text.length,
-        detail_length: __d.text.length
+        brief_len: __b.text.length,
+        standard_len: __s.text.length,
+        detail_len: __d.text.length,
       });
 
-      /* ===================== PATCH END ===================== */
-
+      // ─────────────────────────────────────────────
+      // (B-3) 기존 변수명 유지 (호환성)
+      // ─────────────────────────────────────────────
       const brief = {
-        narrative: { 
-          text: briefNarr.text, 
-          coreClaim: briefNarr.coreClaim, 
-          grounds: briefNarr.grounds, 
-          comparisons: briefNarr.comparisons, 
-          implications: briefNarr.implications,
-          ratio: briefNarr.ratio,
-          ratioEnforcement: briefNarr.ratioEnforcement,
-          targetRange: briefNarr.targetRange,
-          warnings: briefNarr.warnings || []
+        narrative: {
+          ...briefLv.narrative,
+          ratio: (briefLv.narrative as any).ratio,
+          warnings: [],
         },
-        structured: briefStruct,
-        mindmap: briefMind,
-        selftest: briefSelf
+        structured: briefLv.structured,
+        mindmap: briefLv.mindmap,
+        selftest: briefLv.selftest,
       };
 
       const standard = {
-        narrative: { 
-          text: stdNarr.text, 
-          coreClaim: stdNarr.coreClaim, 
-          grounds: stdNarr.grounds, 
-          comparisons: stdNarr.comparisons, 
-          implications: stdNarr.implications,
-          ratio: stdNarr.ratio,
-          ratioEnforcement: stdNarr.ratioEnforcement,
-          targetRange: stdNarr.targetRange,
-          warnings: stdNarr.warnings || []
+        narrative: {
+          ...standardLv.narrative,
+          ratio: (standardLv.narrative as any).ratio,
+          warnings: [],
         },
-        structured: stdStruct,
-        mindmap: stdMind,
-        selftest: stdSelf
+        structured: standardLv.structured,
+        mindmap: standardLv.mindmap,
+        selftest: standardLv.selftest,
       };
 
-      const detailLv = {
-        narrative: { 
-          text: detailNarr.text, 
-          coreClaim: detailNarr.coreClaim, 
-          grounds: detailNarr.grounds, 
-          comparisons: detailNarr.comparisons, 
-          implications: detailNarr.implications,
-          ratio: detailNarr.ratio,
-          ratioEnforcement: detailNarr.ratioEnforcement,
-          targetRange: detailNarr.targetRange,
-          warnings: detailNarr.warnings || []
-        },
-        structured: detailStruct,
-        mindmap: detailMind,
-        selftest: detailSelf
-      };
+      (detailLv.narrative as any).warnings = [];
 
       // 6) 레벨 분리 검증 (Phase 1: 경고만 출력, 통과는 허용)
       const sepErrs = validateLevelSeparation({ brief, standard, detail: detailLv });
@@ -1064,17 +959,13 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           });
         } catch (gateErr: any) {
           console.error('[Matrix V4] Phase 2 오류:', gateErr.message);
-          // 오류 시 Phase 1 fallback
-          phase === 'phase1';
+          // 오류 시 Phase 1 fallback (qa=null로 두고 아래 Phase1 진단 블록으로 자연 낙하)
+          qa = null;
         }
       }
       
       if (phase === 'phase1' || !qa) {
         // Phase 1: LLM 없이도 진단용 qa는 항상 생성
-        // ✅ 품질 강제 패치에서 이미 enforceSummaryRatio 적용됨 (중복 호출 제거)
-        
-        // finalNarrative는 이미 품질 강제 적용된 상태
-        // (brief.narrative.text, standard.narrative.text, detailLv.narrative.text에 반영됨)
 
         // 교차 검증
         const cross = validateCrossConsistency({
@@ -1091,31 +982,30 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           }
         });
 
-        // qa 객체 생성 (Phase 1에서도 항상 존재)
-        // ratio는 품질 강제 패치에서 계산된 값 사용
+        // qa 객체 생성 (ratio는 V4-downsample에서 계산됨)
         qa = {
           cross_ok: cross.ok,
           cross_errors: cross.errors,
           ratios: {
             brief: { 
-              ratio: briefNarr.ratio, 
+              ratio: (brief.narrative as any).ratio, 
               rule: SUMMARY_RATIO_TABLE.brief, 
-              ok: briefNarr.ratio >= SUMMARY_RATIO_TABLE.brief.min && briefNarr.ratio <= SUMMARY_RATIO_TABLE.brief.max 
+              ok: (brief.narrative as any).ratio >= SUMMARY_RATIO_TABLE.brief.min && (brief.narrative as any).ratio <= SUMMARY_RATIO_TABLE.brief.max 
             },
             standard: { 
-              ratio: stdNarr.ratio, 
+              ratio: (standard.narrative as any).ratio, 
               rule: SUMMARY_RATIO_TABLE.standard, 
-              ok: stdNarr.ratio >= SUMMARY_RATIO_TABLE.standard.min && stdNarr.ratio <= SUMMARY_RATIO_TABLE.standard.max 
+              ok: (standard.narrative as any).ratio >= SUMMARY_RATIO_TABLE.standard.min && (standard.narrative as any).ratio <= SUMMARY_RATIO_TABLE.standard.max 
             },
             detail: { 
-              ratio: detailNarr.ratio, 
+              ratio: (detailLv.narrative as any).ratio, 
               rule: SUMMARY_RATIO_TABLE.detail, 
-              ok: detailNarr.ratio >= SUMMARY_RATIO_TABLE.detail.min && detailNarr.ratio <= SUMMARY_RATIO_TABLE.detail.max 
+              ok: (detailLv.narrative as any).ratio >= SUMMARY_RATIO_TABLE.detail.min && (detailLv.narrative as any).ratio <= SUMMARY_RATIO_TABLE.detail.max 
             }
           }
         };
 
-        console.log('[Matrix V4] Phase 1 진단 완료:', {
+        console.log('[Matrix V4] Phase 1 진단 완료 (V4-downsample):', {
           cross_ok: qa.cross_ok,
           ratios_ok: [
             qa.ratios.brief.ok,
@@ -1123,8 +1013,6 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
             qa.ratios.detail.ok
           ]
         });
-
-        /* ✅ 앵커 강제 패치 제거됨 - 품질 강제 패치에서 GOLDEN OUTPUT 앵커 사용 */
       }
 
       // 8) 최종 응답
