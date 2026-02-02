@@ -15,7 +15,7 @@
 
 import { Hono } from 'hono';
 import { generateNarrativeFallback, generateUserCentricStructured, generateMindmapFallback, generateSelftestFallback } from '../lib/local-fallback-generators';
-import { qualityGateAll } from '../summary/summary-guard';
+import { qualityGateAll, enforceSummaryRatio, validateCrossConsistency, SUMMARY_RATIO_TABLE } from '../summary/summary-guard';
 
 type Bindings = {
   GEMINI_API_KEY?: string;
@@ -801,9 +801,14 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         );
       }
 
-      // 7) 🔒 SERVER QUALITY GATE (ONE-BLOCK WRAPPER)
-      // Phase 1: 로컬 Fallback은 warnings만 반환
-      // Phase 2: Gemini API 연동 시 자동 REWRITE 적용
+      // 7) 🔒 SERVER QUALITY GATE (ALWAYS-ON DIAGNOSTIC)
+      // Phase 1: 검증+진단(qa 항상 생성) - LLM rewrite 없음
+      // Phase 2: 검증+진단+자동 REWRITE
+      
+      // Phase 판정
+      const hasKey = !!(c.env?.GEMINI_API_KEY && String(c.env.GEMINI_API_KEY).trim().length > 10);
+      const phase = (hasKey && !useMock) ? 'phase2' : 'phase1';
+      
       let finalNarrative = {
         brief: brief.narrative.text,
         standard: standard.narrative.text,
@@ -812,11 +817,10 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       
       let qa: any = null;
 
-      // Phase 2 준비: Gemini API가 있을 때만 qualityGateAll 활성화
-      if (c.env.GEMINI_API_KEY && !useMock) {
+      if (phase === 'phase2') {
+        // Phase 2: qualityGateAll 전체 실행 (검증 + REWRITE)
         try {
           const callLLM = async (prompt: string) => {
-            // Gemini API 호출 (Phase 2)
             return await callGeminiText(c, prompt);
           };
 
@@ -847,14 +851,63 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           standard.narrative.text = finalNarrative.standard;
           detailLv.narrative.text = finalNarrative.detail;
 
-          console.log('[Matrix V4] Quality Gate 적용 완료:', {
+          console.log('[Matrix V4] Phase 2 Quality Gate 완료:', {
             cross_ok: qa.cross_ok,
             ratios: qa.ratios
           });
         } catch (gateErr: any) {
-          console.error('[Matrix V4] Quality Gate 오류:', gateErr.message);
-          // 오류 발생 시 원본 유지
+          console.error('[Matrix V4] Phase 2 오류:', gateErr.message);
+          // 오류 시 Phase 1 fallback
+          phase === 'phase1';
         }
+      }
+      
+      if (phase === 'phase1' || !qa) {
+        // Phase 1: LLM 없이도 진단용 qa는 항상 생성
+        // 요약율 강제 보정 (의미 단위)
+        const b = enforceSummaryRatio(rawText, finalNarrative.brief, 'brief');
+        const s = enforceSummaryRatio(rawText, finalNarrative.standard, 'standard');
+        const d = enforceSummaryRatio(rawText, finalNarrative.detail, 'detail');
+
+        // 보정된 텍스트로 업데이트
+        finalNarrative.brief = b.text;
+        finalNarrative.standard = s.text;
+        finalNarrative.detail = d.text;
+
+        brief.narrative.text = b.text;
+        standard.narrative.text = s.text;
+        detailLv.narrative.text = d.text;
+
+        // 교차 검증
+        const cross = validateCrossConsistency({
+          narrative: finalNarrative,
+          structured: { 
+            brief: brief.structured, 
+            standard: standard.structured, 
+            detail: detailLv.structured 
+          },
+          mindmap: { 
+            brief: brief.mindmap, 
+            standard: standard.mindmap, 
+            detail: detailLv.mindmap 
+          }
+        });
+
+        // qa 객체 생성 (Phase 1에서도 항상 존재)
+        qa = {
+          cross_ok: cross.ok,
+          cross_errors: cross.errors,
+          ratios: {
+            brief: { ratio: b.ratio, rule: SUMMARY_RATIO_TABLE.brief, ok: b.ok },
+            standard: { ratio: s.ratio, rule: SUMMARY_RATIO_TABLE.standard, ok: s.ok },
+            detail: { ratio: d.ratio, rule: SUMMARY_RATIO_TABLE.detail, ok: d.ok }
+          }
+        };
+
+        console.log('[Matrix V4] Phase 1 진단 완료:', {
+          cross_ok: qa.cross_ok,
+          ratios_ok: [b.ok, s.ok, d.ok]
+        });
       }
 
       // 8) 최종 응답
@@ -887,12 +940,14 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           },
         },
         meta: {
-          requestId: reqId,
+          reqId,
           elapsedMs: Date.now() - t0,
-          promptVersion: 'matrix-v4-detail+downsample',
-          checksum,
-          qa: qa || undefined // Phase 2: qualityGateAll 결과 포함
+          phase, // 'phase1' | 'phase2'
+          qa // 항상 객체 (null 금지)
         },
+        result: {
+          qa // 프론트엔드 디버깅용
+        }
       };
 
       return c.json(out, 200);
