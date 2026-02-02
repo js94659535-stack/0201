@@ -15,6 +15,7 @@
 
 import { Hono } from 'hono';
 import { generateNarrativeFallback, generateUserCentricStructured, generateMindmapFallback, generateSelftestFallback } from '../lib/local-fallback-generators';
+import { qualityGateAll } from '../summary/summary-guard';
 
 type Bindings = {
   GEMINI_API_KEY?: string;
@@ -800,7 +801,63 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         );
       }
 
-      // 7) 최종 응답
+      // 7) 🔒 SERVER QUALITY GATE (ONE-BLOCK WRAPPER)
+      // Phase 1: 로컬 Fallback은 warnings만 반환
+      // Phase 2: Gemini API 연동 시 자동 REWRITE 적용
+      let finalNarrative = {
+        brief: brief.narrative.text,
+        standard: standard.narrative.text,
+        detail: detailLv.narrative.text
+      };
+      
+      let qa: any = null;
+
+      // Phase 2 준비: Gemini API가 있을 때만 qualityGateAll 활성화
+      if (c.env.GEMINI_API_KEY && !useMock) {
+        try {
+          const callLLM = async (prompt: string) => {
+            // Gemini API 호출 (Phase 2)
+            return await callGeminiText(c, prompt);
+          };
+
+          const gateResult = await qualityGateAll({
+            originalText: rawText,
+            model: c.env.GEMINI_MODEL || 'gemini',
+            callLLM,
+            db: c.env.DB,
+            narrative: finalNarrative,
+            structured: { 
+              brief: brief.structured, 
+              standard: standard.structured, 
+              detail: detailLv.structured 
+            },
+            mindmap: { 
+              brief: brief.mindmap, 
+              standard: standard.mindmap, 
+              detail: detailLv.mindmap 
+            }
+          });
+
+          // qualityGateAll 결과로 업데이트
+          finalNarrative = gateResult.narrative;
+          qa = gateResult.qa;
+
+          // narrative 텍스트를 업데이트
+          brief.narrative.text = finalNarrative.brief;
+          standard.narrative.text = finalNarrative.standard;
+          detailLv.narrative.text = finalNarrative.detail;
+
+          console.log('[Matrix V4] Quality Gate 적용 완료:', {
+            cross_ok: qa.cross_ok,
+            ratios: qa.ratios
+          });
+        } catch (gateErr: any) {
+          console.error('[Matrix V4] Quality Gate 오류:', gateErr.message);
+          // 오류 발생 시 원본 유지
+        }
+      }
+
+      // 8) 최종 응답
       const out = {
         ok: true,
         data: {
@@ -834,6 +891,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           elapsedMs: Date.now() - t0,
           promptVersion: 'matrix-v4-detail+downsample',
           checksum,
+          qa: qa || undefined // Phase 2: qualityGateAll 결과 포함
         },
       };
 
