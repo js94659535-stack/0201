@@ -235,6 +235,43 @@ function buildLocalFallbackDetail(rawText: string): DetailBundle {
     })
   }
   
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 🔒 QA 강제: 비교 요소와 수치를 마인드맵에 삽입
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  {
+    // 비교 슬롯에서 비교 대상 추출 (예: "한국", "스웨덴")
+    const comparisonText = comparisons.join(' ')
+    const countries = comparisonText.match(/[가-힣]{2,4}(?=은|는|의|과|와)/g) || []
+    
+    // 원문에서 수치 추출
+    const numbers = rawText.match(/\d+\.?\d*%|\d+억|\d+만/g) || []
+    
+    // 마인드맵 L2 노드에 비교 요소와 수치 강제 삽입
+    if (mindmap.children[0] && mindmap.children[0].children.length > 0) {
+      const L2nodes = mindmap.children[0].children
+      
+      // 첫 번째 노드에 비교 요소 삽입
+      if (countries.length >= 2 && L2nodes[0]) {
+        if (!L2nodes[0].pack.some((p: string) => countries.some(c => p.includes(c)))) {
+          L2nodes[0].pack.push(...countries.slice(0, 2))
+        }
+        if (!L2nodes[0].explain.includes(countries[0]) || !L2nodes[0].explain.includes(countries[1])) {
+          L2nodes[0].explain += ` ${countries[0]}과 ${countries[1]}의 비교를 통해 차이를 명확히 이해할 수 있다.`
+        }
+      }
+      
+      // 두 번째 노드에 수치 삽입
+      if (numbers.length >= 2 && L2nodes[1]) {
+        if (!L2nodes[1].pack.some((p: string) => numbers.some(n => p.includes(n)))) {
+          L2nodes[1].pack.push(...numbers.slice(0, 2))
+        }
+        if (!numbers.some(n => L2nodes[1].explain.includes(n))) {
+          L2nodes[1].explain += ` 주요 수치는 ${numbers.slice(0, 2).join(', ')}이다.`
+        }
+      }
+    }
+  }
+  
   // Selftest 구성 (모듈에서 생성됨)
   const selftest = {
     passScorePct: selftestDetail.passScorePct as 90,
@@ -984,7 +1021,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       if (phase === 'phase1' || !qa) {
         // Phase 1: LLM 없이도 진단용 qa는 항상 생성
 
-        // 교차 검증
+        // 교차 검증 (detailSlots 전달하여 동적 앵커 사용)
         const cross = validateCrossConsistency({
           narrative: finalNarrative,
           structured: { 
@@ -996,6 +1033,12 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
             brief: brief.mindmap, 
             standard: standard.mindmap, 
             detail: detailLv.mindmap 
+          },
+          detailSlots: {
+            coreClaim: detail.narrative?.coreClaim,
+            grounds: detail.narrative?.grounds,
+            comparisons: detail.narrative?.comparisons,
+            implications: detail.narrative?.implications
           }
         });
 

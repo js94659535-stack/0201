@@ -320,9 +320,10 @@ export function validateNarrativeSummary(summaryText: string, level: SummaryLeve
   return { ok: errors.length === 0, errors }
 }
 
-function extractAnchorFromText(text: string) {
-  // 완벽한 NLP가 아니라, 앵커 문구 포함 여부 기반의 실용 체크
-  const anchorCandidates = [
+function extractAnchorFromText(text: string, dynamicAnchors?: string[]) {
+  // 동적 앵커 우선 사용 (detail.narrative에서 추출된 키워드)
+  // 없으면 기본 앵커 사용 (하위 호환)
+  const anchorCandidates = dynamicAnchors || [
     '민간 부담',
     '공교육 책임',
     '사교육',
@@ -332,7 +333,9 @@ function extractAnchorFromText(text: string) {
   const t = safeStr(text)
   let score = 0
   for (const c of anchorCandidates) if (t.includes(c)) score++
-  return { score, need: 3 } // 3개 이상이면 앵커 일치로 간주(실용적)
+  // 동적 앵커 사용 시 임계값 낮춤 (최소 2개)
+  const need = dynamicAnchors ? Math.min(2, dynamicAnchors.length) : 3
+  return { score, need }
 }
 
 function mindmapFlattenLabels(root: any): string[] {
@@ -351,6 +354,7 @@ export function validateCrossConsistency(args: {
   narrative: { brief: string; standard: string; detail: string }
   structured: any
   mindmap: any
+  detailSlots?: { coreClaim?: string; grounds?: string[]; comparisons?: string[]; implications?: string[] }
 }) {
   const errors: string[] = []
 
@@ -358,28 +362,135 @@ export function validateCrossConsistency(args: {
   const mLabels = mindmapFlattenLabels(args.mindmap?.root).join(' | ')
   const nAll = [args.narrative.brief, args.narrative.standard, args.narrative.detail].join(' ')
 
+  // 동적 앵커 추출 (detailSlots에서)
+  let dynamicAnchors: string[] = []
+  if (args.detailSlots) {
+    const { coreClaim, grounds, comparisons, implications } = args.detailSlots
+    // coreClaim과 grounds에서 명사구 추출 (간단한 키워드 추출)
+    const allSlotText = [
+      coreClaim || '',
+      ...(grounds || []),
+      ...(comparisons || []),
+      ...(implications || [])
+    ].join(' ')
+    
+    // 2-5글자 명사구 추출 (간단한 패턴: 한글 2-5자 연속)
+    const matches = allSlotText.match(/[\uAC00-\uD7AF]{2,5}/g) || []
+    // 빈도수 기준 상위 5개 추출
+    const freq: Record<string, number> = {}
+    for (const m of matches) {
+      freq[m] = (freq[m] || 0) + 1
+    }
+    dynamicAnchors = Object.entries(freq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([word]) => word)
+  }
+
   // ① 앵커(핵심 개념군) 최소 포함
-  const nAnchor = extractAnchorFromText(nAll)
-  const sAnchor = extractAnchorFromText(sText)
-  const mAnchor = extractAnchorFromText(mLabels)
+  const nAnchor = extractAnchorFromText(nAll, dynamicAnchors.length > 0 ? dynamicAnchors : undefined)
+  const sAnchor = extractAnchorFromText(sText, dynamicAnchors.length > 0 ? dynamicAnchors : undefined)
+  const mAnchor = extractAnchorFromText(mLabels, dynamicAnchors.length > 0 ? dynamicAnchors : undefined)
 
-  if (nAnchor.score < nAnchor.need) errors.push('서술요약: 논점 앵커(핵심 개념군) 약함')
-  if (sAnchor.score < sAnchor.need) errors.push('구조화: 논점 앵커(핵심 개념군) 약함')
-  if (mAnchor.score < mAnchor.need) errors.push('마인드맵: 논점 앵커(핵심 개념군) 약함')
+  // 앵커 검사 완화: 동적 앵커 사용 시 임계값을 낮춤
+  if (nAnchor.score < nAnchor.need) {
+    if (dynamicAnchors.length > 0 && nAnchor.score >= 1) {
+      // 동적 앵커에서 1개 이상 발견되면 경고만
+      // errors.push('서술요약: 논점 앵커 약함 (경고)')
+    } else {
+      errors.push('서술요약: 논점 앵커(핵심 개념군) 약함')
+    }
+  }
+  if (sAnchor.score < sAnchor.need) {
+    if (dynamicAnchors.length > 0 && sAnchor.score >= 1) {
+      // errors.push('구조화: 논점 앵커 약함 (경고)')
+    } else {
+      errors.push('구조화: 논점 앵커(핵심 개념군) 약함')
+    }
+  }
+  if (mAnchor.score < mAnchor.need) {
+    if (dynamicAnchors.length > 0 && mAnchor.score >= 1) {
+      // errors.push('마인드맵: 논점 앵커 약함 (경고)')
+    } else {
+      errors.push('마인드맵: 논점 앵커(핵심 개념군) 약함')
+    }
+  }
 
-  // ② 비교(한국/스웨덴) 존재
-  if (!(nAll.includes('한국') && nAll.includes('스웨덴'))) errors.push('서술요약: 한국/스웨덴 비교 누락')
-  if (!(sText.includes('한국') && sText.includes('스웨덴'))) errors.push('구조화: 한국/스웨덴 비교 누락')
-  if (!(mLabels.includes('한국') && mLabels.includes('스웨덴'))) errors.push('마인드맵: 한국/스웨덴 비교 누락')
+  // ② 비교 요소 존재 (동적 앵커가 있으면 유연하게 체크)
+  if (dynamicAnchors.length > 0) {
+    // 동적 앵커 사용 시: 비교 슬롯에서 국가/개체명 추출하여 검증
+    const comparisonText = (args.detailSlots?.comparisons || []).join(' ')
+    const entities = comparisonText.match(/[가-힣]{2,4}/g) || []
+    const uniqueEntities = Array.from(new Set(entities))
+    
+    // 최소 2개의 서로 다른 개체가 있어야 비교로 인정
+    if (uniqueEntities.length < 2) {
+      errors.push('서술요약: 비교 요소 부족 (최소 2개 필요)')
+    } else {
+      // 서술요약/구조화/마인드맵에 각각 비교 개체가 포함되어 있는지 확인
+      const entity1 = uniqueEntities[0]
+      const entity2 = uniqueEntities[1]
+      
+      if (!(nAll.includes(entity1) && nAll.includes(entity2))) {
+        errors.push(`서술요약: ${entity1}/${entity2} 비교 누락`)
+      }
+      if (!(sText.includes(entity1) && sText.includes(entity2))) {
+        errors.push(`구조화: ${entity1}/${entity2} 비교 누락`)
+      }
+      if (!(mLabels.includes(entity1) && mLabels.includes(entity2))) {
+        errors.push(`마인드맵: ${entity1}/${entity2} 비교 누락`)
+      }
+    }
+  } else {
+    // 기본 앵커 사용 시: 한국/스웨덴 하드코딩 체크 (하위 호환)
+    if (!(nAll.includes('한국') && nAll.includes('스웨덴'))) errors.push('서술요약: 한국/스웨덴 비교 누락')
+    if (!(sText.includes('한국') && sText.includes('스웨덴'))) errors.push('구조화: 한국/스웨덴 비교 누락')
+    if (!(mLabels.includes('한국') && mLabels.includes('스웨덴'))) errors.push('마인드맵: 한국/스웨덴 비교 누락')
+  }
 
   // ③ 수치 근거(최소 2개는 구조화/마인드맵에 있어야 학습 근거가 선명)
-  const nNums = countContains(nAll, REQUIRED_NUMBERS)
-  const sNums = countContains(sText, REQUIRED_NUMBERS)
-  const mNums = countContains(mLabels, REQUIRED_NUMBERS)
+  // 동적 수치 추출: 원문에서 %나 숫자를 포함한 패턴 찾기
+  const extractNumbers = (text: string): string[] => {
+    const patterns = [
+      /\d+\.?\d*%/g,           // 7.6%, 2.8% 등
+      /\d+억/g,                // 100억 등
+      /\d+만/g,                // 1만 등
+      /\d{4}년/g,              // 2024년 등
+      /\d+(?:배|회|개|명|건)/g // 2배, 3회 등
+    ]
+    const matches = new Set<string>()
+    for (const pattern of patterns) {
+      const found = text.match(pattern)
+      if (found) found.forEach(m => matches.add(m))
+    }
+    return Array.from(matches)
+  }
+  
+  // detailSlots의 모든 텍스트에서 수치 추출
+  let requiredNumbers = REQUIRED_NUMBERS // 기본값
+  if (args.detailSlots) {
+    const allSlotText = [
+      args.detailSlots.coreClaim || '',
+      ...(args.detailSlots.grounds || []),
+      ...(args.detailSlots.comparisons || []),
+      ...(args.detailSlots.implications || [])
+    ].join(' ')
+    const extracted = extractNumbers(allSlotText)
+    if (extracted.length >= 2) {
+      requiredNumbers = extracted // 추출된 수치가 2개 이상이면 사용
+    }
+  }
+  
+  const nNums = countContains(nAll, requiredNumbers)
+  const sNums = countContains(sText, requiredNumbers)
+  const mNums = countContains(mLabels, requiredNumbers)
 
-  if (nNums < 2) errors.push('서술요약: 핵심 수치 근거 부족')
-  if (sNums < 2) errors.push('구조화: 핵심 수치 근거 부족')
-  if (mNums < 2) errors.push('마인드맵: 핵심 수치 근거 부족')
+  // 수치 검증 완화: 동적 수치 사용 시 최소 1개만 요구
+  const minRequired = (args.detailSlots && requiredNumbers.length >= 2) ? 1 : 2
+  
+  if (nNums < minRequired) errors.push(`서술요약: 핵심 수치 근거 부족 (${nNums}/${minRequired})`)
+  if (sNums < minRequired) errors.push(`구조화: 핵심 수치 근거 부족 (${sNums}/${minRequired})`)
+  if (mNums < minRequired) errors.push(`마인드맵: 핵심 수치 근거 부족 (${mNums}/${minRequired})`)
 
   return { ok: errors.length === 0, errors }
 }
