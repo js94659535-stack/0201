@@ -106,6 +106,8 @@
 
   // 아코디언 렌더링 (접기/펼치기)
   function renderAccordion(container, node, depth = 0) {
+    if (!container || !node) return '';
+    
     const hasChildren = node.children && node.children.length > 0;
     const caret = hasChildren ? (node.collapsed ? '▶' : '▼') : '•';
     const indent = '&nbsp;'.repeat(depth * 3);
@@ -122,25 +124,67 @@
       html += `<div class="acc-detail" style="margin-left:${depth * 12 + 20}px;font-size:12px;color:rgba(255,255,255,0.7);padding:4px 0;">${escapeHtml(node.explain)}</div>`;
     }
     
-    // 자식 노드 재귀
+    // 자식 노드 재귀 - 전체 HTML 먼저 생성
     if (hasChildren && !node.collapsed) {
       node.children.forEach(child => {
-        html += renderAccordion({ innerHTML: '' }, child, depth + 1);
+        html += renderAccordionHTML(child, depth + 1);
       });
     }
     
-    container.innerHTML += html;
+    // 첫 호출에서만 container에 innerHTML 설정
+    if (depth === 0) {
+      container.innerHTML = html;
+      
+      // 클릭 이벤트 바인딩
+      bindAccordionEvents(container, node);
+    }
     
-    // 클릭 이벤트 (토글)
-    const nodeEl = container.querySelector(`[data-id="${node.id || 'root'}"]`);
-    if (nodeEl && hasChildren) {
-      nodeEl.addEventListener('click', () => {
-        node.collapsed = !node.collapsed;
-        renderAccordion(container.parentElement, node, depth);  // 재렌더링
+    return html;
+  }
+
+  // HTML 생성만 담당 (재귀용)
+  function renderAccordionHTML(node, depth = 0) {
+    const hasChildren = node.children && node.children.length > 0;
+    const caret = hasChildren ? (node.collapsed ? '▶' : '▼') : '•';
+    const indent = '&nbsp;'.repeat(depth * 3);
+    
+    let html = `
+      <div class="acc-node" data-id="${node.id || 'root'}" style="cursor:pointer;padding:4px 0;">
+        <span class="acc-caret">${caret}</span>
+        <span class="acc-label">${indent}${escapeHtml(node.title || '')}</span>
+      </div>
+    `;
+    
+    if (node.explain && !node.collapsed) {
+      html += `<div class="acc-detail" style="margin-left:${depth * 12 + 20}px;font-size:12px;color:rgba(255,255,255,0.7);padding:4px 0;">${escapeHtml(node.explain)}</div>`;
+    }
+    
+    if (hasChildren && !node.collapsed) {
+      node.children.forEach(child => {
+        html += renderAccordionHTML(child, depth + 1);
       });
     }
     
     return html;
+  }
+
+  // 클릭 이벤트 바인딩 (재귀)
+  function bindAccordionEvents(container, node) {
+    const nodeEl = container.querySelector(`[data-id="${node.id || 'root'}"]`);
+    if (nodeEl && node.children && node.children.length > 0) {
+      nodeEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        node.collapsed = !node.collapsed;
+        renderAccordion(container, node, 0);  // 전체 재렌더링
+      });
+    }
+    
+    // 자식 노드들도 재귀적으로 바인딩
+    if (node.children && !node.collapsed) {
+      node.children.forEach(child => {
+        bindAccordionEvents(container, child);
+      });
+    }
   }
 
   // ---------------------------
