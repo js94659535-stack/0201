@@ -635,6 +635,12 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
   app.post('/api/matrix', async (c) => {
     const t0 = Date.now();
     const reqId = `matrix-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    
+    // 🔒 Phase 판정 (함수 최상단에서 선언 - 에러 응답에서도 접근 가능)
+    const hasKey = !!(c.env?.GEMINI_API_KEY && String(c.env.GEMINI_API_KEY).trim().length > 10);
+    const useMock = String(c.env?.USE_MOCK || '').toLowerCase() === 'true';
+    const phase = (hasKey && !useMock) ? 'phase2' : 'phase1';
+    let qa: any = null; // 에러 시에도 최소 qa 포함 가능
 
     try {
       const body = (await c.req.json()) as Partial<MatrixReq>;
@@ -644,7 +650,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           {
             ok: false,
             error: { code: 'INVALID_TEXT', message: 'text가 필요합니다' },
-            meta: { reqId, elapsedMs: Date.now() - t0 },
+            meta: { reqId, elapsedMs: Date.now() - t0, phase, qa },
           },
           400
         );
@@ -652,16 +658,15 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
 
       // 1) DETAIL 1회 생성 (Phase 1: 로컬 Fallback만 사용)
       const checksum = checksumSimple(rawText);
-      const useMock = c.env.USE_MOCK === 'true' || !c.env.GEMINI_API_KEY;
       
       let detail: DetailBundle | null = null;
       
-      if (useMock) {
+      if (phase === 'phase1') {
         // Phase 1: 로컬 Fallback 모드
         console.log('[Matrix V4] Phase 1: 로컬 Fallback 모드 사용');
         detail = buildLocalFallbackDetail(rawText);
       } else {
-        // Phase 2: Gemini API 호출 (현재 비활성화)
+        // Phase 2: Gemini API 호출
         const detailPrompt = buildDetailPrompt(rawText);
         let detailText = await callGeminiText(c, detailPrompt);
         detail = safeJsonParse(detailText) as DetailBundle | null;
@@ -682,7 +687,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
             {
               ok: false,
               error: { code: 'DETAIL_JSON_PARSE_FAIL', message: 'detail JSON 파싱 실패' },
-              meta: { reqId, elapsedMs: Date.now() - t0 },
+              meta: { reqId, elapsedMs: Date.now() - t0, phase, qa },
             },
             502
           );
@@ -696,7 +701,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           {
             ok: false,
             error: { code: 'DETAIL_VALIDATION_FAIL', message: detailErrs.join(' | ') },
-            meta: { reqId, elapsedMs: Date.now() - t0 },
+            meta: { reqId, elapsedMs: Date.now() - t0, phase, qa },
           },
           422
         );
@@ -789,13 +794,13 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
 
       // 6) 레벨 분리 검증 (Phase 1: 경고만 출력, 통과는 허용)
       const sepErrs = validateLevelSeparation({ brief, standard, detail: detailLv });
-      if (sepErrs.length && useMock === false) {
-        // Phase 2 이상에서만 실패 처리
+      if (sepErrs.length && phase === 'phase2') {
+        // Phase 2에서만 실패 처리
         return c.json(
           {
             ok: false,
             error: { code: 'LEVEL_SEPARATION_FAIL', message: sepErrs.join(' | ') },
-            meta: { reqId, elapsedMs: Date.now() - t0 },
+            meta: { reqId, elapsedMs: Date.now() - t0, phase, qa },
           },
           422
         );
@@ -804,10 +809,6 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       // 7) 🔒 SERVER QUALITY GATE (ALWAYS-ON DIAGNOSTIC)
       // Phase 1: 검증+진단(qa 항상 생성) - LLM rewrite 없음
       // Phase 2: 검증+진단+자동 REWRITE
-      
-      // Phase 판정
-      const hasKey = !!(c.env?.GEMINI_API_KEY && String(c.env.GEMINI_API_KEY).trim().length > 10);
-      const phase = (hasKey && !useMock) ? 'phase2' : 'phase1';
       
       let finalNarrative = {
         brief: brief.narrative.text,
@@ -956,7 +957,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         {
           ok: false,
           error: { code: 'MATRIX_V4_ERROR', message: e?.message || String(e) },
-          meta: { requestId: reqId, elapsedMs: Date.now() - t0, promptVersion: 'matrix-v4' },
+          meta: { reqId, elapsedMs: Date.now() - t0, phase, qa },
         },
         500
       );
