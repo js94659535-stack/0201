@@ -14,7 +14,7 @@
 ===================================================================== */
 
 import { Hono } from 'hono';
-import { generateNarrativeFallback, generateStructuredFallback, generateMindmapFallback, generateSelftestFallback } from '../lib/local-fallback-generators';
+import { generateNarrativeFallback, generateUserCentricStructured, generateMindmapFallback, generateSelftestFallback } from '../lib/local-fallback-generators';
 
 type Bindings = {
   GEMINI_API_KEY?: string;
@@ -175,7 +175,7 @@ function safeJsonParse(text: string) {
 function buildLocalFallbackDetail(rawText: string): DetailBundle {
   // 🔒 새 로컬 fallback 모듈 사용 (Phase 1 확정)
   const narrativeDetail = generateNarrativeFallback(rawText, 'detail')
-  const structuredDetail = generateStructuredFallback(rawText, 'detail')
+  const structuredDetail = generateUserCentricStructured(rawText, 'detail')
   const mindmapDetail = generateMindmapFallback(rawText, 'detail')
   const selftestDetail = generateSelftestFallback(narrativeDetail.text, 'detail', 'exam')
   
@@ -706,9 +706,9 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       const stdNarr = generateNarrativeFallback(rawText, 'standard');
       const detailNarr = generateNarrativeFallback(rawText, 'detail');
 
-      const briefStruct = generateStructuredFallback(rawText, 'brief');
-      const stdStruct = generateStructuredFallback(rawText, 'standard');
-      const detailStruct = generateStructuredFallback(rawText, 'detail');
+      const briefStruct = generateUserCentricStructured(rawText, 'brief');
+      const stdStruct = generateUserCentricStructured(rawText, 'standard');
+      const detailStruct = generateUserCentricStructured(rawText, 'detail');
 
       const briefMind = generateMindmapFallback(rawText, 'brief');
       const stdMind = generateMindmapFallback(rawText, 'standard');

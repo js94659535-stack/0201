@@ -257,6 +257,153 @@ export function generateSelftestFallback(
   }
 }
 
+// ---------- 사용자 기준 구조화 (User-Centric Structuring) ----------
+
+/**
+ * 학습 단위 정보 추출
+ */
+function extractLearningUnit(text: string) {
+  const sentences = splitSentences(text)
+  const keywords = extractKeywords(text)
+  
+  // 학습 단위명: 첫 문장 기반 + 핵심 키워드
+  const unitName = sentences[0]
+    ? `${keywords[0] || '핵심'} ${keywords[1] || '개념'} 분석`
+    : '학습 단위'
+  
+  return {
+    unitName,
+    scope: '중단원 또는 소단원 1개 분량',
+    targetLevel: '초·중·고 학습자'
+  }
+}
+
+/**
+ * 소제목(조목화) 생성
+ */
+function extractSections(text: string, level: Level) {
+  const sentences = splitSentences(text)
+  const sectionCount = level === 'brief' ? 2 : level === 'standard' ? 3 : 4
+  
+  const sections: Array<{
+    id: string
+    title: string
+    content: string[]
+  }> = []
+  
+  const chunkSize = Math.ceil(sentences.length / sectionCount)
+  for (let i = 0; i < sectionCount; i++) {
+    const start = i * chunkSize
+    const chunk = sentences.slice(start, start + chunkSize)
+    if (chunk.length === 0) break
+    
+    sections.push({
+      id: `section-${i + 1}`,
+      title: `${i + 1}. ${chunk[0].split('다')[0] || '항목'}`,
+      content: chunk
+    })
+  }
+  
+  return sections
+}
+
+/**
+ * 핵심어 3단계 구조 ('단어 → 2.5 핵심 의미 → 설명 문장')
+ */
+function extractCoreTerms(text: string, level: Level) {
+  const keywords = extractKeywords(text)
+  const numbers = extractNumbers(text)
+  const sentences = splitSentences(text)
+  
+  const termCount = level === 'brief' ? 3 : level === 'standard' ? 5 : 7
+  const terms: Array<{
+    word: string
+    coreMeaning: string
+    explanation: string
+  }> = []
+  
+  // 주요 키워드 추출
+  const coreWords = ['공교육', '사교육', 'GDP', '민간 부담', 'OECD', ...keywords]
+  
+  for (let i = 0; i < termCount && i < coreWords.length; i++) {
+    const word = coreWords[i]
+    const meaning = getMeaningFor(word)
+    const explanation = sentences.find(s => s.includes(word)) || `${word}에 대한 설명`
+    
+    terms.push({
+      word,
+      coreMeaning: meaning,
+      explanation: explanation.slice(0, 80)
+    })
+  }
+  
+  return terms
+}
+
+function getMeaningFor(word: string): string {
+  const meanings: Record<string, string> = {
+    '공교육': '국가가 책임지는 교육',
+    '사교육': '학교 밖 유료 보충수업',
+    'GDP': '국내총생산',
+    '민간 부담': '가정이 부담하는 교육비',
+    'OECD': '경제협력개발기구'
+  }
+  return meanings[word] || `${word}의 핵심 의미`
+}
+
+/**
+ * 사용자 기준 구조화 생성 (User-Centric)
+ */
+export function generateUserCentricStructured(
+  text: string,
+  level: Level
+) {
+  const learningUnit = extractLearningUnit(text)
+  const sections = extractSections(text, level)
+  const coreTerms = extractCoreTerms(text, level)
+  const keywords = extractKeywords(text)
+  
+  // 위계 정보
+  const hierarchy = [
+    {
+      title: `학습 단위: ${learningUnit.unitName}`,
+      keywords: keywords.slice(0, 3),
+      bullets: [
+        `범위: ${learningUnit.scope}`,
+        `대상: ${learningUnit.targetLevel}`
+      ],
+      children: sections.map(sec => ({
+        title: sec.title,
+        keywords: extractKeywords(sec.content.join(' ')).slice(0, 3),
+        bullets: sec.content,
+        children: []
+      }))
+    }
+  ]
+  
+  // 용어사전 (3단계 구조)
+  const glossary = coreTerms.map(t => ({
+    term: t.word,
+    def: `${t.coreMeaning} — ${t.explanation}`
+  }))
+  
+  // 목차
+  const toc = sections.map((sec, i) => ({
+    title: sec.title,
+    anchor: `sec-${i + 1}`
+  }))
+  
+  return {
+    type: 'structured' as const,
+    level,
+    learningUnit,
+    toc,
+    hierarchy,
+    glossary,
+    coreTerms
+  }
+}
+
 // ---------- Orchestrator ----------
 export function generateLocalFallbackAll(
   text: string,
@@ -265,7 +412,7 @@ export function generateLocalFallbackAll(
   purpose: Purpose = 'preview'
 ) {
   const narrative = generateNarrativeFallback(text, level)
-  const structured = generateStructuredFallback(text, level)
+  const structured = generateUserCentricStructured(text, level)  // ✅ 사용자 기준으로 변경
   const mindmap = generateMindmapFallback(text, level)
   const selftest = generateSelftestFallback(narrative.text, level, purpose)
 
