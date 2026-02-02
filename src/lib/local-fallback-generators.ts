@@ -297,7 +297,8 @@ export function generateNarrativeFallback(
     coreClaim: extractedClaim,
     grounds: extractedGrounds.slice(0, 5), // 최대 5개로 제한
     comparisons: [],
-    implications: []
+    implications: [],
+    warnings: []  // FAIL/REWRITE 시스템용
   }
 }
 
@@ -558,6 +559,180 @@ export function generateUserCentricStructured(
   }
 }
 
+// ---------- FAIL/REWRITE 시스템 (V4 호환) ----------
+
+/**
+ * 금지 표현 목록 (하나라도 포함되면 FAIL)
+ */
+const BANNED_PHRASES = [
+  '이 글은',
+  '설명한다',
+  '선행연구',
+  '다양한 관점',
+  '체계적으로 분석',
+  '규정해 왔다',
+  '본문에서',
+  '제시하고 있다',
+  '논의하고 있다'
+] as const
+
+/**
+ * 필수 수치 (스웨덴 교육 사례 기준)
+ */
+const REQUIRED_NUMBERS = [
+  '7.6%',
+  '2.8%',
+  '6.5%',
+  '0.2%'
+] as const
+
+/**
+ * 레벨별 필수 요건
+ */
+const REQUIRED_ELEMENTS: Record<Level, {
+  minSentences: number
+  mustIncludeComparison: boolean
+  minNumbers: number
+}> = {
+  brief: {
+    minSentences: 2,
+    mustIncludeComparison: true,
+    minNumbers: 1   // 최소 1쌍
+  },
+  standard: {
+    minSentences: 4,
+    mustIncludeComparison: true,
+    minNumbers: 2
+  },
+  detail: {
+    minSentences: 6,
+    mustIncludeComparison: true,
+    minNumbers: 3
+  }
+}
+
+/**
+ * 서술요약 검증 (FAIL 판정)
+ */
+export function validateNarrativeSummary(
+  summaryText: string,
+  level: Level
+) {
+  const errors: string[] = []
+  const rules = REQUIRED_ELEMENTS[level]
+
+  // ① 금지 문장 검사
+  for (const p of BANNED_PHRASES) {
+    if (summaryText.includes(p)) {
+      errors.push(`금지 표현 포함: "${p}"`)
+    }
+  }
+
+  // ② 문장 수 검사
+  const sentences = summaryText
+    .split(/(?<=[.!?]|다\.)\s+/)
+    .filter(Boolean)
+
+  if (sentences.length < rules.minSentences) {
+    errors.push(`문장 수 부족: ${sentences.length}/${rules.minSentences}`)
+  }
+
+  // ③ 비교 요소 검사 (한국/스웨덴)
+  if (rules.mustIncludeComparison) {
+    const hasKorea = summaryText.includes('한국')
+    const hasSweden = summaryText.includes('스웨덴')
+    if (!hasKorea || !hasSweden) {
+      errors.push('한국/스웨덴 비교 요소 누락')
+    }
+  }
+
+  // ④ 수치 근거 검사
+  const foundNumbers = REQUIRED_NUMBERS.filter(n => summaryText.includes(n))
+  if (foundNumbers.length < rules.minNumbers) {
+    errors.push(`핵심 수치 부족: ${foundNumbers.length}/${rules.minNumbers}`)
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings: []
+  }
+}
+
+/**
+ * FAIL 시 재작성 프롬프트 생성
+ * (Phase 2: LLM 연동 시 사용)
+ */
+export function buildRewritePrompt(
+  originalText: string,
+  failedSummary: string,
+  level: Level,
+  errors: string[]
+) {
+  return `
+너는 학습용 서술요약을 교정하는 AI다.
+아래 요약은 규칙을 위반했다.
+
+[위반 사유]
+${errors.map(e => `- ${e}`).join('\n')}
+
+[교정 규칙]
+- 금지 표현("이 글은", "선행연구", "체계적으로 분석" 등)을 절대 사용하지 마라.
+- 한국과 스웨덴을 반드시 비교하라.
+- 아래 수치 중 최소 ${REQUIRED_ELEMENTS[level].minNumbers}개를 포함하라:
+  7.6%, 2.8%, 6.5%, 0.2%
+- 문장은 짧고 명확하게, 한 문장에 한 주장만 써라.
+- 연구 논문 말투가 아니라 교과 독해 말투로 써라.
+
+[원문]
+"""${originalText}"""
+
+[기존 요약(실패)]
+"""${failedSummary}"""
+
+[출력]
+${level} 단계에 맞는 서술요약만 출력하라. JSON이나 마크다운 없이 순수 텍스트만 출력.
+`.trim()
+}
+
+/**
+ * 로컬 Fallback 재작성 (규칙 기반 수정)
+ */
+export function rewriteNarrativeFallback(
+  originalText: string,
+  failedSummary: string,
+  level: Level,
+  errors: string[]
+): string {
+  // Phase 1: 규칙 기반 재작성
+  const sentences = splitSentences(originalText)
+  const numbers = extractNumbers(originalText)
+  const keywords = extractKeywords(originalText)
+  
+  // 금지 표현 제거
+  let fixed = failedSummary
+  for (const p of BANNED_PHRASES) {
+    fixed = fixed.replace(new RegExp(p, 'g'), '')
+  }
+  
+  // 비교 요소 강제 추가
+  if (!fixed.includes('한국') || !fixed.includes('스웨덴')) {
+    const comparison = `한국과 스웨덴의 교육 시스템은 근본적으로 다르다. `
+    fixed = comparison + fixed
+  }
+  
+  // 수치 강제 추가
+  const foundNumbers = REQUIRED_NUMBERS.filter(n => fixed.includes(n))
+  const rules = REQUIRED_ELEMENTS[level]
+  if (foundNumbers.length < rules.minNumbers) {
+    const missingNumbers = REQUIRED_NUMBERS.slice(0, rules.minNumbers - foundNumbers.length)
+    const numbersSentence = ` 주요 수치로 ${missingNumbers.join(', ')}가 중요하다.`
+    fixed += numbersSentence
+  }
+  
+  return fixed.trim()
+}
+
 // ---------- Orchestrator ----------
 export function generateLocalFallbackAll(
   text: string,
@@ -565,8 +740,21 @@ export function generateLocalFallbackAll(
   viewType?: ViewType,
   purpose: Purpose = 'preview'
 ) {
-  const narrative = generateNarrativeFallback(text, level)
-  const structured = generateUserCentricStructured(text, level)  // ✅ 사용자 기준으로 변경
+  let narrative = generateNarrativeFallback(text, level)
+  
+  // ✅ FAIL/REWRITE 검증 적용
+  const validation = validateNarrativeSummary(narrative.text, level)
+  if (!validation.ok) {
+    console.warn(`[FAIL] ${level} 요약 검증 실패:`, validation.errors)
+    const rewrittenText = rewriteNarrativeFallback(text, narrative.text, level, validation.errors)
+    narrative = {
+      ...narrative,
+      text: rewrittenText,
+      warnings: validation.errors
+    }
+  }
+  
+  const structured = generateUserCentricStructured(text, level)
   const mindmap = generateMindmapFallback(text, level)
   const selftest = generateSelftestFallback(narrative.text, level, purpose)
 
