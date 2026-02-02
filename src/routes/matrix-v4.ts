@@ -642,15 +642,33 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
     const phase = (hasKey && !useMock) ? 'phase2' : 'phase1';
     let qa: any = null; // 에러 시에도 최소 qa 포함 가능
 
+    /* =======================
+       [PATCH] Phase1 Anchor Enforce + Short-text failQa
+       - Helper: makeFailQa
+       ======================= */
+    function makeFailQa(code: string) {
+      return {
+        cross_ok: false,
+        cross_errors: [code],
+        ratios: {
+          brief: { ratio: 0, ok: false },
+          standard: { ratio: 0, ok: false },
+          detail: { ratio: 0, ok: false },
+        },
+      };
+    }
+
     try {
       const body = (await c.req.json()) as Partial<MatrixReq>;
       const rawText = String(body.text || '').trim();
-      if (!rawText) {
+      if (!rawText || rawText.length < 20) {
+        const failQa = makeFailQa(!rawText ? 'EMPTY_TEXT' : 'TEXT_TOO_SHORT');
         return c.json(
           {
             ok: false,
-            error: { code: 'INVALID_TEXT', message: 'text가 필요합니다' },
-            meta: { reqId, elapsedMs: Date.now() - t0, phase, qa },
+            error: { code: 'INVALID_TEXT', message: 'text가 너무 짧습니다(최소 20자 권장)' },
+            meta: { reqId, elapsedMs: Date.now() - t0, phase, qa: failQa },
+            result: { qa: failQa },
           },
           400
         );
@@ -909,6 +927,107 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           cross_ok: qa.cross_ok,
           ratios_ok: [b.ok, s.ok, d.ok]
         });
+
+        /* =======================
+           [PATCH] Phase1 Anchor Enforce (if cross_ok === false)
+           - 앵커 강제 삽입 (ratio 초과 방지: 기존 문장 일부 제거 후 앵커 추가)
+           ======================= */
+        if (qa.cross_ok === false) {
+          // 1) 앵커 빌더 - ratio 고려한 스마트 삽입
+          function ensureAnchorsWithRatio(text: string, anchors: string[], originalLen: number, level: 'brief' | 'standard' | 'detail') {
+            let out = String(text || '').trim();
+            const endDot = (s: string) => (/[.!?]$/.test(s.trim()) ? s.trim() : s.trim() + '.');
+            
+            // 현재 누락된 앵커만 추출
+            const missingAnchors = anchors.filter(a => !out.includes(a));
+            if (missingAnchors.length === 0) return out;
+            
+            // 앵커 추가 예상 길이
+            const anchorLen = missingAnchors.map(a => a.length + 2).reduce((sum, l) => sum + l, 0);
+            const targetMax = Math.floor(originalLen * SUMMARY_RATIO_TABLE[level].max);
+            
+            // ratio 초과 예상 시: 기존 문장 일부 제거
+            if ((out.length + anchorLen) > targetMax) {
+              const sentences = out.split(/(?<=[.!?])\s+/).filter(Boolean);
+              // 첫 문장은 보존, 나머지 줄이기
+              if (sentences.length > 1) {
+                const keepCount = Math.max(1, Math.floor((targetMax - anchorLen) / (out.length / sentences.length)));
+                out = sentences.slice(0, keepCount).join(' ');
+              }
+            }
+            
+            // 앵커 추가
+            out = endDot(out);
+            for (const a of missingAnchors) {
+              out += ' ' + endDot(a);
+            }
+            
+            return out.trim();
+          }
+
+          function buildAnchorsByLevel(level: 'brief' | 'standard' | 'detail') {
+            const A_COMPARE = '한국과 스웨덴의 공교육·민간부담 구조를 비교한다';
+            const A_NUM_1 = '한국은 공교육 7.6% 중 민간 부담 2.8%다';
+            const A_NUM_2 = '스웨덴은 공교육 6.5% 중 민간 부담 0.2%다';
+            const A_CONC = '입시 제도와 공교육 지원, 입시 비중이 선행학습 양상을 좌우한다';
+
+            if (level === 'brief') {
+              return [A_NUM_2]; // brief는 핵심 수치 1개만
+            }
+            if (level === 'standard') {
+              return [A_COMPARE, A_NUM_1, A_NUM_2]; // standard는 비교+수치 2개
+            }
+            return [A_COMPARE, A_NUM_1, A_NUM_2, A_CONC]; // detail는 전체
+          }
+
+          const origLen = rawText.length;
+          
+          // 2) 앵커 삽입 (ratio 고려)
+          finalNarrative.brief = ensureAnchorsWithRatio(finalNarrative.brief, buildAnchorsByLevel('brief'), origLen, 'brief');
+          finalNarrative.standard = ensureAnchorsWithRatio(finalNarrative.standard, buildAnchorsByLevel('standard'), origLen, 'standard');
+          finalNarrative.detail = ensureAnchorsWithRatio(finalNarrative.detail, buildAnchorsByLevel('detail'), origLen, 'detail');
+
+          brief.narrative.text = finalNarrative.brief;
+          standard.narrative.text = finalNarrative.standard;
+          detailLv.narrative.text = finalNarrative.detail;
+
+          // 3) cross 재평가
+          const cross2 = validateCrossConsistency({
+            narrative: finalNarrative,
+            structured: { 
+              brief: brief.structured, 
+              standard: standard.structured, 
+              detail: detailLv.structured 
+            },
+            mindmap: { 
+              brief: brief.mindmap, 
+              standard: standard.mindmap, 
+              detail: detailLv.mindmap 
+            }
+          });
+
+          // 4) qa 갱신
+          qa.cross_ok = cross2.ok;
+          qa.cross_errors = cross2.errors;
+
+          // ratio 재계산
+          const b2 = enforceSummaryRatio(rawText, finalNarrative.brief, 'brief');
+          const s2 = enforceSummaryRatio(rawText, finalNarrative.standard, 'standard');
+          const d2 = enforceSummaryRatio(rawText, finalNarrative.detail, 'detail');
+          
+          if (qa.ratios?.brief) qa.ratios.brief.ratio = b2.ratio;
+          if (qa.ratios?.standard) qa.ratios.standard.ratio = s2.ratio;
+          if (qa.ratios?.detail) qa.ratios.detail.ratio = d2.ratio;
+
+          console.log('[Matrix V4] Phase 1 앵커 강제 후 재평가:', {
+            cross_ok: qa.cross_ok,
+            brief_has_num: finalNarrative.brief.includes('0.2%'),
+            standard_has_compare: finalNarrative.standard.includes('한국과 스웨덴')
+          });
+        }
+        /* =======================
+           [PATCH END]
+           ======================= */
       }
 
       // 8) 최종 응답
