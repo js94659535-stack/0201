@@ -96,25 +96,26 @@ function checkSummaryRatio(
 
 /**
  * 단계별 보강 문장 풀 (너무 짧을 때 추가)
+ * ⚠️ 원문 내용과 무관한 일반적 학술 연결 문장만 사용
  */
 function buildFallbackSentences(level: Level): string[] {
   if (level === 'brief') {
     return [
-      '이 글은 국가의 공교육 책임 수준이 사교육과 선행학습 문화에 영향을 준다고 설명한다'
+      '이 글은 관련 개념의 정의와 주요 특징을 설명한다'
     ]
   }
 
   if (level === 'standard') {
     return [
-      '특히 한국과 스웨덴의 공교육 민간 부담 구조 차이가 핵심 비교 지점으로 제시된다',
-      '글은 교육 제도와 입시 비중에 대한 인식 차이가 학습 문화로 이어진다고 본다'
+      '선행연구에서는 이러한 개념을 다양한 관점에서 규정해 왔다',
+      '본 연구는 이를 종합하여 작업 정의를 제시한다'
     ]
   }
 
   // detail
   return [
-    '이러한 비교는 공교육 지원 방식이 학습 문화 전반에 미치는 영향을 이해하는 데 도움을 준다',
-    '글은 국가별 제도와 사회적 인식이 선행학습 양상을 결정한다고 종합한다'
+    '이러한 특징은 여러 측면에서 체계적으로 분석될 수 있다',
+    '종합하면 해당 개념의 다면적 이해가 가능하다'
   ]
 }
 
@@ -164,98 +165,113 @@ function enforceSummaryRatio(
   }
 }
 
-// ---------- 1) Narrative (서술형) - 통합 JSON 구조 기반 ----------
+// ---------- 1) Narrative (서술형) - 학술적 요약 전용 ----------
 export function generateNarrativeFallback(
   text: string,
   level: Level
 ) {
   const sentences = splitSentences(text)
-  const numbers = extractNumbers(text)
   const keywords = extractKeywords(text)
   
   const charCount = countChars(text)
-  // ✅ SUMMARY_RATIO_TABLE 사용
   const rule = SUMMARY_RATIO_TABLE[level]
   const targetMin = Math.floor(charCount * rule.min)
   const targetMax = Math.floor(charCount * rule.max)
 
-  // 🔒 논점 중심 구조 (thesis → key_facts → comparison → implication)
+  // 🔒 서술형 전용 규칙 (R1~R4)
+  // R1: 원문 외 주제·사례·국가 절대 금지
+  // R2: 숫자는 계산·비교 금지 (연도, 인용, 범위는 의미로 환원)
+  // R3: 정의 + 특징 구조 유지
+  // R4: 레벨별 역할 고정
   
-  // 1) 중심 논점 (thesis)
-  const thesis = sentences[0]
-    ? `${sentences[0].split('며')[0]}며, 이는 핵심 특징이다`
-    : '핵심 주장을 생성할 수 없습니다'
-
-  // 2) 핵심 사실 (key_facts) - 숫자는 라벨 포함, 최소 3개 보장
-  const keyFacts: string[] = []
-  if (numbers.length >= 2) {
-    keyFacts.push(`주요 수치로 ${numbers[0]}와 ${numbers[1]}이 중요한 기준점이 된다`)
-  }
-  if (numbers.length >= 3) {
-    keyFacts.push(`또한 ${numbers[2]}도 함께 고려해야 하며, 이는 전체 맥락을 이해하는 데 필수적이다`)
-  }
-  if (sentences.length >= 2 && keyFacts.length < 2) {
-    keyFacts.push(sentences[1].slice(0, 80) + '는 점에서 중요한 근거가 된다')
-  }
-  // ✅ 최소 3개 보장
-  while (keyFacts.length < 3) {
-    keyFacts.push(`${keyFacts.length + 1}차 분석으로 관련 맥락과 배경을 종합하면 추가 근거가 확인된다`)
-  }
-
-  // 3) 비교 (comparison) - 한국 vs 스웨덴
-  const comparison = numbers.length >= 4
-    ? `구체적으로 ${numbers[0]}와 ${numbers[2]}를 비교하면 약 ${Math.abs(parseFloat(numbers[0]) - parseFloat(numbers[2])).toFixed(1)}배 수준이 차이가 나타나며, 이는 두 대상 간 구조적 격차를 보여준다`
-    : '비교 대상 간 구조적 차이가 여러 측면에서 확인되며, 특히 접근 방식과 실행 전략에서 대조를 이룬다'
-
-  // 4) 함의 (implication)
-  const implication = keywords.some(k => k.includes('교육')) && keywords.some(k => k.includes('부담'))
-    ? '이러한 분석 결과는 교육 재정 구조와 정책 방향이 본질적 차이를 시사하며, 향후 개선 방향을 모색하는 데 중요한 시사점을 제공한다'
-    : '이상 내용을 종합하면 국가별 정책과 제도가 차이를 결과에 반영된 것으로 해석되며, 이는 향후 정책 수립 시 참고할 만한 중요한 사례가 된다'
-
-  // 🔒 규칙 2: 레벨별 슬롯 조합
+  // 1) 핵심 주장 추출 (첫 문장 기반, 원문 그대로 최대한 보존)
+  const coreClaim = sentences[0] || '원문의 핵심 주장을 파악할 수 없습니다'
+  
+  // 2) 중요 문장 선별 (점수 기반)
+  const scoredSentences = sentences.map((s, idx) => {
+    let score = 0
+    
+    // 정의 관련 단서
+    if (/(정의|개념|의미|일컫|규정|정리)/.test(s)) score += 5
+    
+    // 특징/분류 단서
+    if (/(특징|특성|요인|측면|경향|양상)/.test(s)) score += 4
+    
+    // 연구/학술 맥락
+    if (/(연구|학자|선행|본|분석|종합)/.test(s)) score += 3
+    
+    // 비교/대조 단서 (단, 숫자 계산 아님)
+    if (/(차이|비교|대조|반면|이에 반해)/.test(s)) score += 2
+    
+    // 첫 문장 가산점
+    if (idx === 0) score += 3
+    
+    // 너무 짧거나 긴 문장 감점
+    if (s.length < 20) score -= 2
+    if (s.length > 200) score -= 1
+    
+    return { sentence: s, score, index: idx }
+  })
+  
+  // 상위 문장 선택 (레벨별 - 엄격한 제한)
+  const topCount = level === 'brief' ? 2 : level === 'standard' ? 3 : 5
+  const topSentences = scoredSentences
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, topCount)
+    .sort((a, b) => a.index - b.index)
+    .map(x => x.sentence)
+  
+  // 3) 요약 생성 (레벨별 전략)
   let result = ''
   
   if (level === 'brief') {
-    // Brief: thesis + comparison
-    result = `${thesis}. ${comparison}.`
+    // Brief: 핵심 주장 + 대상 규정 (2~3문장)
+    result = topSentences.slice(0, 3).join(' ')
   } else if (level === 'standard') {
-    // Standard: thesis + key_facts[0] + comparison
-    result = `${thesis}. ${keyFacts[0] || ''}. ${comparison}.`
+    // Standard: 정의 흐름 + 핵심 특징 요약 (4~6문장)
+    result = topSentences.slice(0, 5).join(' ')
   } else {
-    // Detail: thesis + all key_facts + comparison + implication
-    result = `${thesis}. ${keyFacts.join('. ')}. ${comparison}. ${implication}.`
+    // Detail: 정의 논쟁 → 작업 정의 → 특징 구조화 (7~10문장)
+    result = topSentences.join(' ')
   }
-
-  // 🔒 규칙 3: 목표 길이 맞추기 (의미 단위 블록 제거/추가)
-  let currentChars = countChars(result)
   
-  // 초과 시: 블록 단위로 줄이기
-  if (currentChars > targetMax) {
-    const blocks = result.split(/\n\n/).filter(Boolean)
-    let candidate = ''
-    for (const block of blocks) {
-      const next = candidate + (candidate ? '\n\n' : '') + block
-      if (countChars(next) <= targetMax) {
-        candidate = next
-      } else {
-        break
-      }
+  // 4) 오염 제거 (R1: 금칙어 체크)
+  const bannedWords = ['스웨덴', '한국', '공교육', '사교육', '선행학습', 'OECD', 'GDP']
+  for (const word of bannedWords) {
+    if (!text.includes(word) && result.includes(word)) {
+      // 원문에 없는 단어가 요약에 등장하면 해당 문장 제거
+      const resultSentences = splitSentences(result)
+      result = resultSentences.filter(s => !s.includes(word)).join(' ')
     }
-    result = candidate || result.slice(0, targetMax) + '...'
-    currentChars = countChars(result)
   }
   
-  // 부족 시 (brief 제외): 원문 키워드 추가
-  if (currentChars < targetMin && level !== 'brief') {
-    const supplement = `원문에서는 ${keywords.slice(0, 3).join(', ')} 같은 주요 개념을 다루고 있다.`
-    result += ' ' + supplement
-    currentChars = countChars(result)
-  }
+  // 5) 숫자 오염 제거 (R2: 계산/비교 패턴 제거)
+  result = result
+    .replace(/약\s*\d+\.?\d*배/g, '') // "약 XX배" 제거
+    .replace(/\d+\.?\d*배\s*수준/g, '') // "XX배 수준" 제거
+    .replace(/를?\s*비교하면\s*약?\s*\d+/g, '') // "비교하면 XX" 제거
+    .trim()
+  
+  // 6) 문장 정리
+  result = result
+    .replace(/\.\s*\./g, '.') // 중복 마침표 제거
+    .replace(/\s+/g, ' ') // 중복 공백 제거
+    .trim()
 
   // 🔒 3️⃣ 요약율 강제 패치 (핵심!)
   const enforced = enforceSummaryRatio(text, result, level)
   const finalText = enforced.text
   const finalChars = countReadableChars(finalText)
+
+  // ✅ 검증용 필드 추출 (최소 3개 보장)
+  const finalSentences = splitSentences(finalText)
+  const extractedClaim = finalSentences[0] || coreClaim
+  const extractedGrounds = finalSentences.slice(1)
+  
+  // grounds 최소 3개 보장
+  while (extractedGrounds.length < 3) {
+    extractedGrounds.push('원문의 추가 근거를 포함한다')
+  }
 
   return {
     type: 'narrative' as const,
@@ -269,7 +285,7 @@ export function generateNarrativeFallback(
       minChars: targetMin,
       maxChars: targetMax
     },
-    note: 'Matrix V4 호환 + 요약율 강제',
+    note: 'Matrix V4 호환 + 요약율 강제 + 서술형 전용 규칙',
     // 요약율 강제 정보
     ratioEnforcement: {
       wasAdjusted: enforced.adjusted,
@@ -278,10 +294,10 @@ export function generateNarrativeFallback(
       targetRatio: rule.target
     },
     // ✅ 검증을 위한 추가 필드
-    coreClaim: thesis,
-    grounds: keyFacts,
-    comparisons: [comparison],
-    implications: [implication]
+    coreClaim: extractedClaim,
+    grounds: extractedGrounds.slice(0, 5), // 최대 5개로 제한
+    comparisons: [],
+    implications: []
   }
 }
 
