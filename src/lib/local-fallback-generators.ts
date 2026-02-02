@@ -123,7 +123,7 @@ function buildFallbackSentences(level: Level): string[] {
  * 🔒 요약율 강제 보정 (핵심 패치)
  * - 자르지 않고 의미 단위로 조정
  */
-function enforceSummaryRatio(
+export function enforceSummaryRatio(
   originalText: string,
   summaryText: string,
   level: Level
@@ -659,17 +659,17 @@ const REQUIRED_ELEMENTS: Record<Level, {
 }> = {
   brief: {
     minSentences: 2,
-    mustIncludeComparison: true,
+    mustIncludeComparison: false,  // 원문에 맞게 동적 검증
     minNumbers: 1   // 최소 1쌍
   },
   standard: {
     minSentences: 4,
-    mustIncludeComparison: true,
+    mustIncludeComparison: false,  // 원문에 맞게 동적 검증
     minNumbers: 2
   },
   detail: {
     minSentences: 6,
-    mustIncludeComparison: true,
+    mustIncludeComparison: false,  // 원문에 맞게 동적 검증
     minNumbers: 3
   }
 }

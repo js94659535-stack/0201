@@ -14,8 +14,8 @@
 ===================================================================== */
 
 import { Hono } from 'hono';
-import { generateNarrativeFallback, generateUserCentricStructured, generateMindmapFallback, generateSelftestFallback } from '../lib/local-fallback-generators';
-import { qualityGateAll, enforceSummaryRatio, validateCrossConsistency, SUMMARY_RATIO_TABLE } from '../summary/summary-guard';
+import { generateNarrativeFallback, generateUserCentricStructured, generateMindmapFallback, generateSelftestFallback, enforceSummaryRatio } from '../lib/local-fallback-generators';
+import { qualityGateAll, validateCrossConsistency, SUMMARY_RATIO_TABLE } from '../lib/ms-summary-guard-v1';
 
 type Bindings = {
   GEMINI_API_KEY?: string;
