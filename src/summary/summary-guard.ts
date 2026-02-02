@@ -19,7 +19,14 @@ export const SUMMARY_RATIO_TABLE = {
 } as const
 
 const BANNED_PHRASES = [
-  '이 글은', '설명한다', '선행연구', '다양한 관점', '체계적으로 분석', '규정해 왔다'
+  '이 글은', '설명한다', '선행연구', '다양한 관점', '체계적으로 분석', '규정해 왔다',
+  '제시된다', '보인다', '결론이다', '종합하면', '이상의 내용을'
+]
+
+// 논리 모순 검출 패턴 (선행학습 없다 + 필요하다 같은 반대 의미)
+const CONTRADICTION_PATTERNS = [
+  { pattern1: /선행학습이?\s*없/, pattern2: /필요하다/, desc: '선행학습 없음 vs 필요함' },
+  { pattern1: /사교육이?\s*(거의\s*)?없/, pattern2: /의존/, desc: '사교육 없음 vs 의존' },
 ]
 
 // 도메인 케이스(교육 비교 지문)에서 자주 빠지는 핵심 수치(라벨+값 포함 유도)
@@ -67,15 +74,33 @@ export function validateNarrativeSummary(summaryText: string, level: SummaryLeve
   const rules = REQUIRED_ELEMENTS[level]
   const t = safeStr(summaryText)
 
+  // 1. 금지 표현 검출
   for (const p of BANNED_PHRASES) if (t.includes(p)) errors.push(`금지 표현 포함: "${p}"`)
 
+  // 2. 논리 모순 검출 (치명적 오류)
+  for (const { pattern1, pattern2, desc } of CONTRADICTION_PATTERNS) {
+    if (pattern1.test(t) && pattern2.test(t)) {
+      errors.push(`논리 모순: ${desc}`)
+    }
+  }
+
+  // 3. 문장 중복 검출
   const sentences = splitSentences(t)
+  const uniqueSentences = new Set(sentences.map(s => s.trim()))
+  if (uniqueSentences.size < sentences.length) {
+    const duplicateCount = sentences.length - uniqueSentences.size
+    errors.push(`문장 중복: ${duplicateCount}회 반복`)
+  }
+
+  // 4. 문장 수 검증
   if (sentences.length < rules.minSentences) errors.push(`문장 수 부족: ${sentences.length}/${rules.minSentences}`)
 
+  // 5. 비교 요소 검증
   if (rules.mustIncludeComparison) {
     if (!(t.includes('한국') && t.includes('스웨덴'))) errors.push('한국/스웨덴 비교 요소 누락')
   }
 
+  // 6. 핵심 수치 검증
   const foundNums = countContains(t, REQUIRED_NUMBERS)
   if (foundNums < rules.minNumbers) errors.push(`핵심 수치 부족: ${foundNums}/${rules.minNumbers}`)
 

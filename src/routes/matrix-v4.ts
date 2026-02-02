@@ -567,14 +567,31 @@ function validateLevelSeparation(levels: {
   const s = (levels.standard.narrative.text || '').replace(/\s+/g, '');
   const d = (levels.detail.narrative.text || '').replace(/\s+/g, '');
 
+  // 길이 검증
   if (b.length < 40) errors.push('brief narrative too short');
   if (s.length < b.length + 20)
     errors.push('standard narrative not meaningfully longer than brief');
   if (d.length < s.length + 40)
     errors.push('detail narrative not meaningfully longer than standard');
 
+  // 동일성 검증
   if (b === s) errors.push('brief narrative equals standard narrative');
   if (s === d) errors.push('standard narrative equals detail narrative');
+
+  // 문장 수 검증 (레벨 분리 강화)
+  const countSentences = (text: string) => {
+    return text.split(/(?<=[.!?])\s+/).filter(Boolean).length;
+  };
+  const bSent = countSentences(levels.brief.narrative.text);
+  const sSent = countSentences(levels.standard.narrative.text);
+  const dSent = countSentences(levels.detail.narrative.text);
+
+  if (sSent < bSent + 2) {
+    errors.push(`standard/brief 문장 수 차이 부족: ${sSent} vs ${bSent} (최소 +2 필요)`);
+  }
+  if (dSent < sSent + 2) {
+    errors.push(`detail/standard 문장 수 차이 부족: ${dSent} vs ${sSent} (최소 +2 필요)`);
+  }
 
   if (
     (levels.standard.structured.glossary?.length || 0) <
