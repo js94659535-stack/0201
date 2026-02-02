@@ -51,7 +51,7 @@ function countChars(s: string) {
 function splitSentences(text: string): string[] {
   return text
     .replace(/\n+/g, ' ')
-    .split(/(?<=[다요음임함됨])\./)
+    .split(/(?<=[다요음임함됨])\.\s+|(?<=[다요음임함됨])\s+(?=[가-힣])/)
     .map(s => s.trim())
     .filter(Boolean)
 }
@@ -273,6 +273,46 @@ export function generateNarrativeFallback(
     extractedGrounds.push('원문의 추가 근거를 포함한다')
   }
 
+  // 🔒 VALIDATION: 검증 규칙 적용
+  const warnings: string[] = []
+  
+  // 1) 금지 표현 검증
+  const BANNED_PHRASES = ['이 글은', '설명한다', '선행연구', '다양한 관점', '체계적으로 분석', '규정해 왔다']
+  for (const phrase of BANNED_PHRASES) {
+    if (finalText.includes(phrase)) {
+      warnings.push(`금지 표현 포함: "${phrase}"`)
+    }
+  }
+  
+  // 2) 문장 수 검증
+  const MIN_SENTENCES: Record<Level, number> = {
+    brief: 2,
+    standard: 4,
+    detail: 6
+  }
+  if (finalSentences.length < MIN_SENTENCES[level]) {
+    warnings.push(`문장 수 부족: ${finalSentences.length}문장 (최소 ${MIN_SENTENCES[level]}문장)`)
+  }
+  
+  // 3) 한국/스웨덴 비교 검증
+  const hasKorea = finalText.includes('한국')
+  const hasSweden = finalText.includes('스웨덴')
+  if (!(hasKorea && hasSweden)) {
+    warnings.push('한국/스웨덴 비교 누락')
+  }
+  
+  // 4) 핵심 수치 검증
+  const REQUIRED_NUMBERS = ['7.6%', '2.8%', '6.5%', '0.2%']
+  const MIN_NUMBERS: Record<Level, number> = {
+    brief: 1,
+    standard: 2,
+    detail: 3
+  }
+  const foundNumbers = REQUIRED_NUMBERS.filter(num => finalText.includes(num))
+  if (foundNumbers.length < MIN_NUMBERS[level]) {
+    warnings.push(`핵심 수치 부족: ${foundNumbers.length}개 (최소 ${MIN_NUMBERS[level]}개)`)
+  }
+
   return {
     type: 'narrative' as const,
     level,
@@ -298,7 +338,7 @@ export function generateNarrativeFallback(
     grounds: extractedGrounds.slice(0, 5), // 최대 5개로 제한
     comparisons: [],
     implications: [],
-    warnings: []  // FAIL/REWRITE 시스템용
+    warnings  // FAIL/REWRITE 시스템용
   }
 }
 

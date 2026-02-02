@@ -702,9 +702,9 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       }
 
       // 5) 레벨별 생성 (local-fallback-generators 사용)
-      const briefNarr = generateNarrativeFallback(rawText, 'brief');
-      const stdNarr = generateNarrativeFallback(rawText, 'standard');
-      const detailNarr = generateNarrativeFallback(rawText, 'detail');
+      let briefNarr = generateNarrativeFallback(rawText, 'brief');
+      let stdNarr = generateNarrativeFallback(rawText, 'standard');
+      let detailNarr = generateNarrativeFallback(rawText, 'detail');
 
       const briefStruct = generateUserCentricStructured(rawText, 'brief');
       const stdStruct = generateUserCentricStructured(rawText, 'standard');
@@ -718,6 +718,23 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       const stdSelf = generateSelftestFallback(rawText, 'standard', 'preview');
       const detailSelf = generateSelftestFallback(rawText, 'detail', 'preview');
 
+      // 🔒 QUALITY GATE: 검증 + 재작성 (Phase 1)
+      // Brief 검증
+      if (briefNarr.warnings && briefNarr.warnings.length > 0) {
+        console.log(`[Matrix V4] Brief 검증 실패:`, briefNarr.warnings);
+        // Phase 1에서는 재작성 로직이 이미 적용되어 있으므로 warnings만 로깅
+      }
+      
+      // Standard 검증
+      if (stdNarr.warnings && stdNarr.warnings.length > 0) {
+        console.log(`[Matrix V4] Standard 검증 실패:`, stdNarr.warnings);
+      }
+      
+      // Detail 검증
+      if (detailNarr.warnings && detailNarr.warnings.length > 0) {
+        console.log(`[Matrix V4] Detail 검증 실패:`, detailNarr.warnings);
+      }
+
       const brief = {
         narrative: { 
           text: briefNarr.text, 
@@ -727,7 +744,8 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           implications: briefNarr.implications,
           ratio: briefNarr.ratio,
           ratioEnforcement: briefNarr.ratioEnforcement,
-          targetRange: briefNarr.targetRange
+          targetRange: briefNarr.targetRange,
+          warnings: briefNarr.warnings || []
         },
         structured: briefStruct,
         mindmap: briefMind,
@@ -743,7 +761,8 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           implications: stdNarr.implications,
           ratio: stdNarr.ratio,
           ratioEnforcement: stdNarr.ratioEnforcement,
-          targetRange: stdNarr.targetRange
+          targetRange: stdNarr.targetRange,
+          warnings: stdNarr.warnings || []
         },
         structured: stdStruct,
         mindmap: stdMind,
@@ -759,7 +778,8 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           implications: detailNarr.implications,
           ratio: detailNarr.ratio,
           ratioEnforcement: detailNarr.ratioEnforcement,
-          targetRange: detailNarr.targetRange
+          targetRange: detailNarr.targetRange,
+          warnings: detailNarr.warnings || []
         },
         structured: detailStruct,
         mindmap: detailMind,

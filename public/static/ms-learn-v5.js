@@ -285,7 +285,25 @@
     switch (viewType) {
       case 'narrative':
         const text = levelData?.text || '';
+        const warnings = levelData?.warnings || [];
+        
+        // ⚠️ WARNINGS 표시
+        let warningHtml = '';
+        if (warnings.length > 0) {
+          warningHtml = `
+            <div class="ms-card" style="background: rgba(255, 87, 51, 0.1); border-color: rgba(255, 87, 51, 0.3);">
+              <div class="ms-h3">⚠️ 품질 경고</div>
+              <ul class="ms-li" style="margin-left: 20px;">
+                ${warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}
+              </ul>
+            </div>
+          `;
+        }
+        
         renderNarrative(containerEl, text);
+        if (warningHtml) {
+          containerEl.insertAdjacentHTML('afterbegin', warningHtml);
+        }
         break;
       case 'structured':
         // local-fallback-generators 구조: { toc, hierarchy, glossary }
