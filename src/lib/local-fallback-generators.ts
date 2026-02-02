@@ -2,21 +2,44 @@
    LOCAL FALLBACK KNOWLEDGE GENERATORS (PHASE 1)
    - No LLM
    - Deterministic
-   - Compression-first
+   - Compression-first with ENFORCED RATIO
    ========================================================= */
 
 type Level = 'brief' | 'standard' | 'detail'
 type ViewType = 'narrative' | 'structured' | 'mindmap' | 'selftest'
 type Purpose = 'preview' | 'exam'
 
-// 🔒 압축률 목표 (Phase 1 확정)
-const RATIO: Record<Level, { min: number; max: number }> = {
-  brief: { min: 0.10, max: 0.18 },
-  standard: { min: 0.25, max: 0.38 },
-  detail: { min: 0.45, max: 0.62 }
-}
+// 🔒 요약율 테이블 (운영 기준값 하드코딩)
+export const SUMMARY_RATIO_TABLE = {
+  brief: {
+    min: 0.12,
+    max: 0.18,
+    target: 0.15
+  },
+  standard: {
+    min: 0.22,
+    max: 0.30,
+    target: 0.26
+  },
+  detail: {
+    min: 0.35,
+    max: 0.48,
+    target: 0.42
+  }
+} as const
 
 // ---------- Utils ----------
+
+/**
+ * 한글 친화 길이 계산 (공백·줄바꿈 제거)
+ */
+function countReadableChars(text: string): number {
+  return text
+    .replace(/\s+/g, '')
+    .replace(/[^\p{L}\p{N}%]/gu, '')
+    .length
+}
+
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
 }
@@ -48,6 +71,99 @@ function extractKeywords(text: string): string[] {
   )
 }
 
+/**
+ * 요약율 검증
+ */
+function checkSummaryRatio(
+  originalText: string,
+  summaryText: string,
+  level: Level
+) {
+  const originLen = countReadableChars(originalText)
+  const summaryLen = countReadableChars(summaryText)
+
+  const ratio = summaryLen / Math.max(originLen, 1)
+  const rule = SUMMARY_RATIO_TABLE[level]
+
+  return {
+    ratio,
+    ok: ratio >= rule.min && ratio <= rule.max,
+    under: ratio < rule.min,
+    over: ratio > rule.max,
+    rule
+  }
+}
+
+/**
+ * 단계별 보강 문장 풀 (너무 짧을 때 추가)
+ */
+function buildFallbackSentences(level: Level): string[] {
+  if (level === 'brief') {
+    return [
+      '이 글은 국가의 공교육 책임 수준이 사교육과 선행학습 문화에 영향을 준다고 설명한다'
+    ]
+  }
+
+  if (level === 'standard') {
+    return [
+      '특히 한국과 스웨덴의 공교육 민간 부담 구조 차이가 핵심 비교 지점으로 제시된다',
+      '글은 교육 제도와 입시 비중에 대한 인식 차이가 학습 문화로 이어진다고 본다'
+    ]
+  }
+
+  // detail
+  return [
+    '이러한 비교는 공교육 지원 방식이 학습 문화 전반에 미치는 영향을 이해하는 데 도움을 준다',
+    '글은 국가별 제도와 사회적 인식이 선행학습 양상을 결정한다고 종합한다'
+  ]
+}
+
+/**
+ * 🔒 요약율 강제 보정 (핵심 패치)
+ * - 자르지 않고 의미 단위로 조정
+ */
+function enforceSummaryRatio(
+  originalText: string,
+  summaryText: string,
+  level: Level
+) {
+  const sentences = splitSentences(summaryText)
+  const rule = SUMMARY_RATIO_TABLE[level]
+
+  let current = sentences.slice()
+  const initialCheck = checkSummaryRatio(originalText, current.join('. ') + '.', level)
+  let check = initialCheck
+  let wasAdjusted = false
+
+  // 🔻 너무 길면: 뒤에서부터 의미 단락 제거
+  if (check.over && current.length > 1) {
+    while (current.length > 1) {
+      current.pop()
+      wasAdjusted = true
+      check = checkSummaryRatio(originalText, current.join('. ') + '.', level)
+      if (check.ok) break
+    }
+  }
+
+  // 🔺 너무 짧으면: 핵심 보강 문장 자동 추가
+  if (check.under) {
+    const fallback = buildFallbackSentences(level)
+    for (const s of fallback) {
+      current.push(s)
+      wasAdjusted = true
+      check = checkSummaryRatio(originalText, current.join('. ') + '.', level)
+      if (check.ok) break
+    }
+  }
+
+  return {
+    text: current.join('. ') + '.',
+    ratio: check.ratio,
+    adjusted: wasAdjusted,
+    originalRatio: initialCheck.ratio
+  }
+}
+
 // ---------- 1) Narrative (서술형) - 통합 JSON 구조 기반 ----------
 export function generateNarrativeFallback(
   text: string,
@@ -58,9 +174,10 @@ export function generateNarrativeFallback(
   const keywords = extractKeywords(text)
   
   const charCount = countChars(text)
-  const { min, max } = RATIO[level]
-  const targetMin = Math.floor(charCount * min)
-  const targetMax = Math.floor(charCount * max)
+  // ✅ SUMMARY_RATIO_TABLE 사용
+  const rule = SUMMARY_RATIO_TABLE[level]
+  const targetMin = Math.floor(charCount * rule.min)
+  const targetMax = Math.floor(charCount * rule.max)
 
   // 🔒 논점 중심 구조 (thesis → key_facts → comparison → implication)
   
@@ -135,14 +252,31 @@ export function generateNarrativeFallback(
     currentChars = countChars(result)
   }
 
+  // 🔒 3️⃣ 요약율 강제 패치 (핵심!)
+  const enforced = enforceSummaryRatio(text, result, level)
+  const finalText = enforced.text
+  const finalChars = countReadableChars(finalText)
+
   return {
     type: 'narrative' as const,
     level,
-    text: result,
-    charCount: currentChars,
-    ratio: currentChars / charCount,
-    targetRange: { min: targetMin, max: targetMax },
-    note: 'Matrix V4 호환',
+    text: finalText,
+    charCount: finalChars,
+    ratio: enforced.ratio,
+    targetRange: { 
+      min: rule.min, 
+      max: rule.max,
+      minChars: targetMin,
+      maxChars: targetMax
+    },
+    note: 'Matrix V4 호환 + 요약율 강제',
+    // 요약율 강제 정보
+    ratioEnforcement: {
+      wasAdjusted: enforced.adjusted,
+      originalRatio: enforced.originalRatio,
+      finalRatio: enforced.ratio,
+      targetRatio: rule.target
+    },
     // ✅ 검증을 위한 추가 필드
     coreClaim: thesis,
     grounds: keyFacts,

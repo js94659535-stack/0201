@@ -724,7 +724,10 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           coreClaim: briefNarr.coreClaim, 
           grounds: briefNarr.grounds, 
           comparisons: briefNarr.comparisons, 
-          implications: briefNarr.implications 
+          implications: briefNarr.implications,
+          ratio: briefNarr.ratio,
+          ratioEnforcement: briefNarr.ratioEnforcement,
+          targetRange: briefNarr.targetRange
         },
         structured: briefStruct,
         mindmap: briefMind,
@@ -737,7 +740,10 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           coreClaim: stdNarr.coreClaim, 
           grounds: stdNarr.grounds, 
           comparisons: stdNarr.comparisons, 
-          implications: stdNarr.implications 
+          implications: stdNarr.implications,
+          ratio: stdNarr.ratio,
+          ratioEnforcement: stdNarr.ratioEnforcement,
+          targetRange: stdNarr.targetRange
         },
         structured: stdStruct,
         mindmap: stdMind,
@@ -750,7 +756,10 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           coreClaim: detailNarr.coreClaim, 
           grounds: detailNarr.grounds, 
           comparisons: detailNarr.comparisons, 
-          implications: detailNarr.implications 
+          implications: detailNarr.implications,
+          ratio: detailNarr.ratio,
+          ratioEnforcement: detailNarr.ratioEnforcement,
+          targetRange: detailNarr.targetRange
         },
         structured: detailStruct,
         mindmap: detailMind,
