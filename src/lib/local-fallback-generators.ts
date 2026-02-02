@@ -165,6 +165,24 @@ function enforceSummaryRatio(
   }
 }
 
+// ========== 헬퍼 함수들 (Narrative 생성 전에 선언) ==========
+
+// 비교 문장 추출 (원문 기반)
+function extractComparisons(originalText: string, summarySentences: string[]): string[] {
+  const comparisonKeywords = ['차이', '비교', '대조', '반면', '이에 반해', '한편', '달리']
+  return summarySentences.filter(s => 
+    comparisonKeywords.some(kw => s.includes(kw))
+  ).slice(0, 2) // 최대 2개
+}
+
+// 의미/결론 문장 추출 (원문 기반)
+function extractImplications(originalText: string, summarySentences: string[]): string[] {
+  const implicationKeywords = ['따라서', '그러므로', '결론', '의미', '시사', '중요', '효과']
+  return summarySentences.filter(s => 
+    implicationKeywords.some(kw => s.includes(kw))
+  ).slice(0, 2) // 최대 2개
+}
+
 // ---------- 1) Narrative (서술형) - 학술적 요약 전용 ----------
 export function generateNarrativeFallback(
   text: string,
@@ -235,15 +253,22 @@ export function generateNarrativeFallback(
     result = topSentences.join(' ')
   }
   
-  // 4) 오염 제거 (R1: 금칙어 체크)
-  const bannedWords = ['스웨덴', '한국', '공교육', '사교육', '선행학습', 'OECD', 'GDP']
-  for (const word of bannedWords) {
-    if (!text.includes(word) && result.includes(word)) {
-      // 원문에 없는 단어가 요약에 등장하면 해당 문장 제거
-      const resultSentences = splitSentences(result)
-      result = resultSentences.filter(s => !s.includes(word)).join(' ')
+  // 4) 환각 방지: 원문에 없는 고유명사 제거
+  // 동적 검증: 원문에 없는 2글자 이상 고유명사가 요약에 나타나면 제거
+  const resultSentences = splitSentences(result)
+  const cleanedSentences = resultSentences.filter(sentence => {
+    // 고유명사 후보 추출 (대문자 시작 또는 한자어)
+    const properNouns = sentence.match(/[A-Z][a-z]+|(?:[一-龥]+)|(?:[가-힣]{2,}(?:국|시|도|군|구))/g) || []
+    
+    // 원문에 없는 고유명사가 있으면 해당 문장 제거
+    for (const noun of properNouns) {
+      if (noun.length >= 2 && !text.includes(noun)) {
+        return false // 문장 제거
+      }
     }
-  }
+    return true // 문장 유지
+  })
+  result = cleanedSentences.join(' ')
   
   // 5) 숫자 오염 제거 (R2: 계산/비교 패턴 제거)
   result = result
@@ -263,15 +288,10 @@ export function generateNarrativeFallback(
   const finalText = enforced.text
   const finalChars = countReadableChars(finalText)
 
-  // ✅ 검증용 필드 추출 (최소 3개 보장)
+  // ✅ 검증용 필드 추출 (원문 기반만 사용)
   const finalSentences = splitSentences(finalText)
   const extractedClaim = finalSentences[0] || coreClaim
-  const extractedGrounds = finalSentences.slice(1)
-  
-  // grounds 최소 3개 보장
-  while (extractedGrounds.length < 3) {
-    extractedGrounds.push('원문의 추가 근거를 포함한다')
-  }
+  const extractedGrounds = finalSentences.slice(1, 4) // 최대 3개만 추출 (더미 추가 금지)
 
   // 🔒 VALIDATION: 검증 규칙 적용
   const warnings: string[] = []
@@ -294,23 +314,26 @@ export function generateNarrativeFallback(
     warnings.push(`문장 수 부족: ${finalSentences.length}문장 (최소 ${MIN_SENTENCES[level]}문장)`)
   }
   
-  // 3) 한국/스웨덴 비교 검증
-  const hasKorea = finalText.includes('한국')
-  const hasSweden = finalText.includes('스웨덴')
-  if (!(hasKorea && hasSweden)) {
-    warnings.push('한국/스웨덴 비교 누락')
+  // 3) 비교 요소 검증 (동적: 원문에서 추출)
+  const comparisonPatterns = [
+    /([가-힣]{2,4})(은|는|와|과)\s*([가-힣]{2,4})(의|을|를)/,  // "A와 B의" 패턴
+    /(차이|비교|대조|반면)/  // 비교 단서어
+  ]
+  const hasComparison = comparisonPatterns.some(p => p.test(finalText))
+  if (!hasComparison && text.match(/(비교|대조|차이)/)) {
+    warnings.push('비교 요소 누락')
   }
   
-  // 4) 핵심 수치 검증
-  const REQUIRED_NUMBERS = ['7.6%', '2.8%', '6.5%', '0.2%']
+  // 4) 수치 근거 검증 (동적: 원문에서 추출)
+  const originalNumbers = text.match(/\d+\.?\d*%|\d+억|\d+만|\d+세/g) || []
+  const summaryNumbers = finalText.match(/\d+\.?\d*%|\d+억|\d+만|\d+세/g) || []
   const MIN_NUMBERS: Record<Level, number> = {
-    brief: 1,
-    standard: 2,
-    detail: 3
+    brief: Math.min(1, originalNumbers.length),
+    standard: Math.min(2, originalNumbers.length),
+    detail: Math.min(3, originalNumbers.length)
   }
-  const foundNumbers = REQUIRED_NUMBERS.filter(num => finalText.includes(num))
-  if (foundNumbers.length < MIN_NUMBERS[level]) {
-    warnings.push(`핵심 수치 부족: ${foundNumbers.length}개 (최소 ${MIN_NUMBERS[level]}개)`)
+  if (summaryNumbers.length < MIN_NUMBERS[level] && originalNumbers.length > 0) {
+    warnings.push(`핵심 수치 부족: ${summaryNumbers.length}개 (최소 ${MIN_NUMBERS[level]}개)`)
   }
 
   return {
@@ -336,8 +359,8 @@ export function generateNarrativeFallback(
     // ✅ 검증을 위한 추가 필드
     coreClaim: extractedClaim,
     grounds: extractedGrounds.slice(0, 5), // 최대 5개로 제한
-    comparisons: [],
-    implications: [],
+    comparisons: extractComparisons(text, finalSentences), // 동적 추출
+    implications: extractImplications(text, finalSentences), // 동적 추출
     warnings  // FAIL/REWRITE 시스템용
   }
 }
@@ -353,8 +376,8 @@ export function generateStructuredFallback(
   const glossaryCount = level === 'brief' ? 3 : level === 'standard' ? 5 : 7
   const glossary: Array<{ term: string; def: string }> = []
   
-  // 최소 3개 보장 (검증 규칙)
-  const terms = ['공교육', '사교육', 'GDP', '민간 부담', 'OECD', ...keywords]
+  // 원문 기반 용어 추출 (하드코딩 제거)
+  const terms = [...keywords].filter(k => text.includes(k)) // 원문에 있는 키워드만
   for (let i = 0; i < glossaryCount && i < terms.length; i++) {
     glossary.push({
       term: terms[i],
