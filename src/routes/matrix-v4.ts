@@ -388,48 +388,63 @@ function downsampleFromDetail(detail: DetailBundle, level: Level): LevelBundle {
     
   } else if (level === 'brief') {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Brief: claim + comparison (목표: 10-18%)
+    // Brief: 핵심 주장 + 비교 결론 ONLY (목표: 10-18%)
+    // 원칙: "무엇을 비교하고, 결론이 무엇인가?"만 답함
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const targetMin = Math.floor(origLen * 0.10);
     const targetMax = Math.floor(origLen * 0.18);
     
     // 슬롯 선택
     coreClaim = smartTrim(claim, 60);
+    
+    // Brief는 비교 결론만 (구체적 근거 생략)
     const comp = comparisonSlots[0] ? smartTrim(comparisonSlots[0], 80) : '';
+    const impl = implicationSlots[0] ? smartTrim(implicationSlots[0], 60) : '';
     
-    grounds = []; // Brief는 grounds 생략
+    grounds = []; // Brief는 grounds 완전 생략
     comparisons = comp ? [comp] : [];
-    implications = [];
+    implications = impl ? [impl] : [];
     
-    // 문장 생성 (압축률 제약 내에서)
+    // 문장 생성: claim + comparison (+ implication 선택적)
+    const parts = [coreClaim];
     if (comp) {
-      narrativeText = `${coreClaim}. ${comp}.`;
-    } else {
-      // comparison 없으면 ground 1개 사용
-      const g = groundSlots[0] ? smartTrim(groundSlots[0], 60) : '';
-      narrativeText = g ? `${coreClaim}. ${g}.` : `${coreClaim}.`;
+      parts.push(comp);
     }
+    if (impl && (coreClaim.length + comp.length + impl.length) <= targetMax) {
+      parts.push(impl);
+    }
+    
+    narrativeText = parts.join('. ') + '.';
     
     // 길이 강제 (목표 범위 내로)
     if (narrativeText.length > targetMax) {
-      narrativeText = narrativeText.slice(0, targetMax - 3) + '...';
+      // 문장 단위로 제거 (마지막부터)
+      const sentences = narrativeText.split('. ').filter(Boolean);
+      while (sentences.length > 1 && sentences.join('. ').length > targetMax) {
+        sentences.pop();
+      }
+      narrativeText = sentences.join('. ') + '.';
     }
     
   } else {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Standard: claim + grounds(1-2) + comparison (목표: 25-38%)
+    // Standard: 핵심 주장 + 근거 1-2개 + 비교 결론 (목표: 22-30%)
+    // 원칙: "왜 그런가?"에 답하는 핵심 근거 추가
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const targetMin = Math.floor(origLen * 0.25);
-    const targetMax = Math.floor(origLen * 0.38);
+    const targetMin = Math.floor(origLen * 0.22);
+    const targetMax = Math.floor(origLen * 0.30);
     
-    // 슬롯 선택
+    // 슬롯 선택: 핵심 근거만 (최대 2개)
     coreClaim = smartTrim(claim, 80);
     grounds = groundSlots.slice(0, 2).map(g => smartTrim(g, 70));
     const comp = comparisonSlots[0] ? smartTrim(comparisonSlots[0], 90) : '';
     comparisons = comp ? [comp] : [];
-    implications = [];
     
-    // 문장 생성
+    // Standard는 implication도 포함 가능 (선택적)
+    const impl = implicationSlots[0] ? smartTrim(implicationSlots[0], 70) : '';
+    implications = impl ? [impl] : [];
+    
+    // 문장 생성: claim + grounds + comparison (+ implication)
     const parts: string[] = [coreClaim];
     if (grounds.length > 0) {
       parts.push(grounds.join('. '));
@@ -1021,7 +1036,25 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       if (phase === 'phase1' || !qa) {
         // Phase 1: LLM 없이도 진단용 qa는 항상 생성
 
-        // 교차 검증 (detailSlots 전달하여 동적 앵커 사용)
+        // ① Narrative 품질 검증 (의미 모순, 중복, 메타 표현)
+        const { validateNarrativeSummary: validateGuard } = await import('../lib/ms-summary-guard-v1');
+        const briefValidation = validateGuard(finalNarrative.brief, 'brief');
+        const stdValidation = validateGuard(finalNarrative.standard, 'standard');
+        const detailValidation = validateGuard(finalNarrative.detail, 'detail');
+
+        // Narrative 검증 에러를 cross_errors에 추가
+        const narrativeErrors: string[] = [];
+        if (!briefValidation.ok) {
+          narrativeErrors.push(...briefValidation.errors.map(e => `Brief: ${e}`));
+        }
+        if (!stdValidation.ok) {
+          narrativeErrors.push(...stdValidation.errors.map(e => `Standard: ${e}`));
+        }
+        if (!detailValidation.ok) {
+          narrativeErrors.push(...detailValidation.errors.map(e => `Detail: ${e}`));
+        }
+
+        // ② 교차 검증 (detailSlots 전달하여 동적 앵커 사용)
         const cross = validateCrossConsistency({
           narrative: finalNarrative,
           structured: { 
@@ -1043,9 +1076,12 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         });
 
         // qa 객체 생성 (ratio는 V4-downsample에서 계산됨)
+        // narrative 검증 에러와 cross 검증 에러 합침
+        const allErrors = [...narrativeErrors, ...cross.errors];
+        
         qa = {
-          cross_ok: cross.ok,
-          cross_errors: cross.errors,
+          cross_ok: cross.ok && narrativeErrors.length === 0,
+          cross_errors: allErrors,
           ratios: {
             brief: { 
               ratio: (brief.narrative as any).ratio, 

@@ -2,9 +2,9 @@
 var define_ROUTES_default = { version: 1, include: ["/*"], exclude: ["/app.html", "/favicon.ico", "/index.html", "/static/*", "/v5.html"] };
 
 // node_modules/wrangler/templates/pages-dev-pipeline.ts
-import worker from "/home/user/webapp/.wrangler/tmp/pages-kfrdKi/bundledWorker-0.9416372787123086.mjs";
+import worker from "/home/user/webapp/.wrangler/tmp/pages-Kk27LA/bundledWorker-0.35695758887925666.mjs";
 import { isRoutingRuleMatch } from "/home/user/webapp/node_modules/wrangler/templates/pages-dev-util.ts";
-export * from "/home/user/webapp/.wrangler/tmp/pages-kfrdKi/bundledWorker-0.9416372787123086.mjs";
+export * from "/home/user/webapp/.wrangler/tmp/pages-Kk27LA/bundledWorker-0.35695758887925666.mjs";
 var routes = define_ROUTES_default;
 var pages_dev_pipeline_default = {
   fetch(request, env, context) {
@@ -29,4 +29,4 @@ var pages_dev_pipeline_default = {
 export {
   pages_dev_pipeline_default as default
 };
-//# sourceMappingURL=yzt5miw7v5i.js.map
+//# sourceMappingURL=jf67bfoeg5o.js.map

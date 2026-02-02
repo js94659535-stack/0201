@@ -19,7 +19,17 @@ export const SUMMARY_RATIO_TABLE = {
 } as const
 
 const BANNED_PHRASES = [
-  '이 글은', '설명한다', '선행연구', '다양한 관점', '체계적으로 분석', '규정해 왔다'
+  '이 글은', '설명한다', '선행연구', '다양한 관점', '체계적으로 분석', '규정해 왔다',
+  '제시된다', '제시하고 있다', '보인다', '나타낸다', '드러낸다', '살펴본다',
+  '논의한다', '분석한다', '검토한다', '고찰한다'
+]
+
+// 의미 모순 패턴: [A 없다] + [A 필요하다/중요하다] 같은 반대 의미 쌍
+const CONTRADICTION_PATTERNS = [
+  { pattern: /([가-힣]{2,10})(이|가|은|는|을|를)?\s*없다.{1,50}\1(이|가|은|는|을|를)?\s*(필요|중요)/, desc: '없다 + 필요/중요 모순' },
+  { pattern: /([가-힣]{2,10})(이|가|은|는|을|를)?\s*부족.{1,50}\1(이|가|은|는|을|를)?\s*풍부/, desc: '부족 + 풍부 모순' },
+  { pattern: /([가-힣]{2,10})(이|가|은|는|을|를)?\s*낮다.{1,50}\1(이|가|은|는|을|를)?\s*높다/, desc: '낮다 + 높다 모순' },
+  { pattern: /([가-힣]{2,10})(이|가|은|는|을|를)?\s*높다.{1,50}\1(이|가|은|는|을|를)?\s*낮다/, desc: '높다 + 낮다 모순' }
 ]
 
 // 이 글(교육 비교) 같은 유형에서 핵심 근거(수치/라벨) 유실을 막기 위한 기본 장치
@@ -305,15 +315,32 @@ export function validateNarrativeSummary(summaryText: string, level: SummaryLeve
   const rules = REQUIRED_ELEMENTS[level]
   const t = safeStr(summaryText)
 
+  // ① 금지 표현 검사
   for (const p of BANNED_PHRASES) if (t.includes(p)) errors.push(`금지 표현 포함: "${p}"`)
 
+  // ② 의미 모순 검사 (치명적 오류)
+  for (const { pattern, desc } of CONTRADICTION_PATTERNS) {
+    if (pattern.test(t)) {
+      errors.push(`치명적 의미 모순: ${desc}`)
+    }
+  }
+
+  // ③ 문장 중복 검사
   const sentences = splitSentences(t)
+  const uniqueSentences = new Set(sentences.map(s => s.trim().toLowerCase()))
+  if (uniqueSentences.size < sentences.length) {
+    errors.push(`문장 중복 발견: ${sentences.length}개 중 ${uniqueSentences.size}개만 고유`)
+  }
+
+  // ④ 최소 문장 수 검사
   if (sentences.length < rules.minSentences) errors.push(`문장 수 부족: ${sentences.length}/${rules.minSentences}`)
 
+  // ⑤ 비교 요소 검사
   if (rules.mustIncludeComparison) {
     if (!(t.includes('한국') && t.includes('스웨덴'))) errors.push('한국/스웨덴 비교 요소 누락')
   }
 
+  // ⑥ 수치 근거 검사
   const foundNums = countContains(t, REQUIRED_NUMBERS)
   if (foundNums < rules.minNumbers) errors.push(`핵심 수치 부족: ${foundNums}/${rules.minNumbers}`)
 
