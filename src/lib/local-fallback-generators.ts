@@ -191,7 +191,7 @@ export function generateStructuredFallback(
   }
 }
 
-// ---------- 3) Mindmap ----------
+// ---------- 3) Mindmap (with Accordion Support) ----------
 export function generateMindmapFallback(
   text: string,
   level: Level
@@ -204,14 +204,20 @@ export function generateMindmapFallback(
   return {
     type: 'mindmap' as const,
     level,
+    id: 'root',
     title: '핵심 구조',
+    collapsed: false,  // ✅ 아코디언 지원
     children: [
       {
+        id: 'main-1',
         title: '1. 주요 개념',
+        collapsed: false,
         children: sentences.slice(0, nodeCount).map((s, i) => ({
+          id: `node-${i + 1}`,
           title: keywords[i] || `개념 ${i + 1}`,
           pack: s.split(' ').slice(0, 3),
           explain: s,
+          collapsed: false,
           children: []
         }))
       }

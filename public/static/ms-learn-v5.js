@@ -69,8 +69,7 @@
   }
 
   // ---------------------------
-  // Mindmap SVG: 사용자가 올린 MS MindmapSVG V3가 이미 로드되어 있다고 가정
-  // - tree는 API가 동일 구조 유지해서 내려줌: {tree:{title,children...}} 또는 {title,children...}
+  // Mindmap SVG + Accordion: 시각화 + 목차형 접기/펼치기
   // ---------------------------
   function renderMindmap(container, mindmapData) {
     // tree 속성이 있으면 사용, 없으면 mindmapData 자체가 tree
@@ -79,17 +78,69 @@
       container.innerHTML = `<div class="ms-card"><div class="ms-muted">마인드맵 데이터가 없습니다.</div></div>`;
       return;
     }
+    
     // ① 고유 ID 생성 (중복 방지)
     const uniqueId = 'msMindmapBox_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    container.innerHTML = `<div id="${uniqueId}" style="width:100%;height:560px;"></div>`;
+    const accordionId = 'accordion_' + uniqueId;
+    
+    container.innerHTML = `
+      <div class="ms-mindmap-wrapper">
+        <div class="ms-mindmap-svg" id="${uniqueId}" style="width:65%;height:560px;float:left;"></div>
+        <div class="ms-mindmap-accordion" id="${accordionId}" style="width:33%;height:560px;float:right;overflow-y:auto;padding:10px;"></div>
+        <div style="clear:both;"></div>
+      </div>
+    `;
+    
+    // SVG 렌더링
     const box = $(uniqueId);
-    // MS_buildMindmapTreeV3 / MS_renderMindmapSVG 가 있으면 사용
     if (window.MS_buildMindmapTreeV3 && window.MS_renderMindmapSVG) {
       const enriched = window.MS_buildMindmapTreeV3(tree, { autoEnrich: true });
       window.MS_renderMindmapSVG(box, enriched, { debug: false });
     } else {
       box.innerHTML = `<div class="ms-muted">ms-mindmap-svg.js가 로드되지 않았습니다.</div>`;
     }
+    
+    // ② 아코디언 렌더링
+    renderAccordion($(accordionId), tree);
+  }
+
+  // 아코디언 렌더링 (접기/펼치기)
+  function renderAccordion(container, node, depth = 0) {
+    const hasChildren = node.children && node.children.length > 0;
+    const caret = hasChildren ? (node.collapsed ? '▶' : '▼') : '•';
+    const indent = '&nbsp;'.repeat(depth * 3);
+    
+    let html = `
+      <div class="acc-node" data-id="${node.id || 'root'}" style="cursor:pointer;padding:4px 0;">
+        <span class="acc-caret">${caret}</span>
+        <span class="acc-label">${indent}${escapeHtml(node.title || '')}</span>
+      </div>
+    `;
+    
+    // explain 표시 (detail 패널)
+    if (node.explain && !node.collapsed) {
+      html += `<div class="acc-detail" style="margin-left:${depth * 12 + 20}px;font-size:12px;color:rgba(255,255,255,0.7);padding:4px 0;">${escapeHtml(node.explain)}</div>`;
+    }
+    
+    // 자식 노드 재귀
+    if (hasChildren && !node.collapsed) {
+      node.children.forEach(child => {
+        html += renderAccordion({ innerHTML: '' }, child, depth + 1);
+      });
+    }
+    
+    container.innerHTML += html;
+    
+    // 클릭 이벤트 (토글)
+    const nodeEl = container.querySelector(`[data-id="${node.id || 'root'}"]`);
+    if (nodeEl && hasChildren) {
+      nodeEl.addEventListener('click', () => {
+        node.collapsed = !node.collapsed;
+        renderAccordion(container.parentElement, node, depth);  // 재렌더링
+      });
+    }
+    
+    return html;
   }
 
   // ---------------------------
@@ -259,6 +310,14 @@
         outline: none;
       }
       .ms-hint{ margin-top:6px; font-size:12.5px; color: rgba(255,255,255,0.55); }
+      
+      /* Mindmap Accordion */
+      .ms-mindmap-wrapper{ border-radius:16px; overflow:hidden; background: rgba(18,20,26,0.65); padding:10px; }
+      .ms-mindmap-accordion{ background: rgba(0,0,0,0.3); border-left: 1px solid rgba(255,255,255,0.12); }
+      .acc-node:hover{ background: rgba(255,255,255,0.08); }
+      .acc-caret{ display:inline-block; width:16px; font-size:12px; }
+      .acc-label{ font-size:13.5px; font-weight:600; color:rgba(255,255,255,0.92); }
+      .acc-detail{ line-height:1.5; }
     `;
     document.head.appendChild(style);
   }
