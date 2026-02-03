@@ -549,13 +549,16 @@ function extractCoreTerms(text: string, level: Level) {
     explanation: string
   }> = []
   
-  // 주요 키워드 추출
-  const coreWords = ['공교육', '사교육', 'GDP', '민간 부담', 'OECD', ...keywords]
+  // 주요 키워드 추출 (원문에서만 추출, 하드코딩 제거)
+  const coreWords = keywords.filter(kw => text.includes(kw))
   
   for (let i = 0; i < termCount && i < coreWords.length; i++) {
     const word = coreWords[i]
     const meaning = getMeaningFor(word)
     const explanation = sentences.find(s => s.includes(word)) || `${word}에 대한 설명`
+    
+    // 원문에 없는 단어는 건너뛰기
+    if (!text.includes(word)) continue
     
     terms.push({
       word,

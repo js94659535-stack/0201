@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// .wrangler/tmp/bundle-6MiTcj/checked-fetch.js
+// .wrangler/tmp/bundle-3ARQpj/checked-fetch.js
 var urls = /* @__PURE__ */ new Set();
 function checkURL(request, init) {
   const url = request instanceof URL ? request : new URL(
@@ -27,7 +27,7 @@ globalThis.fetch = new Proxy(globalThis.fetch, {
   }
 });
 
-// .wrangler/tmp/bundle-6MiTcj/strip-cf-connecting-ip-header.js
+// .wrangler/tmp/bundle-3ARQpj/strip-cf-connecting-ip-header.js
 function stripCfConnectingIPHeader(input, init) {
   const request = new Request(input, init);
   request.headers.delete("CF-Connecting-IP");
@@ -42,7 +42,7 @@ globalThis.fetch = new Proxy(globalThis.fetch, {
   }
 });
 
-// .wrangler/tmp/pages-x3IpyE/bundledWorker-0.1417503391167374.mjs
+// .wrangler/tmp/pages-BzoTZh/bundledWorker-0.3080746625576323.mjs
 var __defProp2 = Object.defineProperty;
 var __name2 = /* @__PURE__ */ __name((target, value) => __defProp2(target, "name", { value, configurable: true }), "__name");
 var urls2 = /* @__PURE__ */ new Set();
@@ -103,23 +103,23 @@ var Tt = /* @__PURE__ */ __name2((e, t, r, n) => ({ set _(s) {
 var kt = /* @__PURE__ */ __name2((e, t, r) => (n, s) => {
   let i = -1;
   return a(0);
-  async function a(c) {
-    if (c <= i)
+  async function a(o) {
+    if (o <= i)
       throw new Error("next() called multiple times");
-    i = c;
-    let l, o = false, u;
-    if (e[c] ? (u = e[c][0][0], n.req.routeIndex = c) : u = c === e.length && s || void 0, u)
+    i = o;
+    let l, c = false, u;
+    if (e[o] ? (u = e[o][0][0], n.req.routeIndex = o) : u = o === e.length && s || void 0, u)
       try {
-        l = await u(n, () => a(c + 1));
+        l = await u(n, () => a(o + 1));
       } catch (d) {
         if (d instanceof Error && t)
-          n.error = d, l = await t(d, n), o = true;
+          n.error = d, l = await t(d, n), c = true;
         else
           throw d;
       }
     else
       n.finalized === false && r && (l = await r(n));
-    return l && (n.finalized === false || o) && (n.res = l), n;
+    return l && (n.finalized === false || c) && (n.res = l), n;
   }
   __name(a, "a");
   __name2(a, "a");
@@ -249,11 +249,11 @@ var Vt = /* @__PURE__ */ __name2((e, t, r) => {
     if (a === -1)
       return;
     for (e.startsWith(t, a + 1) || (a = e.indexOf(`&${t}`, a + 1)); a !== -1; ) {
-      const c = e.charCodeAt(a + t.length + 1);
-      if (c === 61) {
-        const l = a + t.length + 2, o = e.indexOf("&", l);
-        return ct(e.slice(l, o === -1 ? void 0 : o));
-      } else if (c == 38 || isNaN(c))
+      const o = e.charCodeAt(a + t.length + 1);
+      if (o === 61) {
+        const l = a + t.length + 2, c = e.indexOf("&", l);
+        return ct(e.slice(l, c === -1 ? void 0 : c));
+      } else if (o == 38 || isNaN(o))
         return "";
       a = e.indexOf(`&${t}`, a + 1);
     }
@@ -265,13 +265,13 @@ var Vt = /* @__PURE__ */ __name2((e, t, r) => {
   let i = e.indexOf("?", 8);
   for (; i !== -1; ) {
     const a = e.indexOf("&", i + 1);
-    let c = e.indexOf("=", i);
-    c > a && a !== -1 && (c = -1);
-    let l = e.slice(i + 1, c === -1 ? a === -1 ? void 0 : a : c);
+    let o = e.indexOf("=", i);
+    o > a && a !== -1 && (o = -1);
+    let l = e.slice(i + 1, o === -1 ? a === -1 ? void 0 : a : o);
     if (n && (l = ct(l)), i = a, l === "")
       continue;
-    let o;
-    c === -1 ? o = "" : (o = e.slice(c + 1, a === -1 ? void 0 : a), n && (o = ct(o))), r ? (s[l] && Array.isArray(s[l]) || (s[l] = []), s[l].push(o)) : s[l] ?? (s[l] = o);
+    let c;
+    o === -1 ? c = "" : (c = e.slice(o + 1, a === -1 ? void 0 : a), n && (c = ct(c))), r ? (s[l] && Array.isArray(s[l]) || (s[l] = []), s[l].push(c)) : s[l] ?? (s[l] = c);
   }
   return t ? s[t] : s;
 }, "Vt");
@@ -379,7 +379,7 @@ var _r = { Stringify: 1 };
 var Wt = /* @__PURE__ */ __name2(async (e, t, r, n, s) => {
   typeof e == "object" && !(e instanceof String) && (e instanceof Promise || (e = e.toString()), e instanceof Promise && (e = await e));
   const i = e.callbacks;
-  return i != null && i.length ? (s ? s[0] += e : s = [e], Promise.all(i.map((c) => c({ phase: t, buffer: s, context: n }))).then((c) => Promise.all(c.filter(Boolean).map((l) => Wt(l, t, false, n, s))).then(() => s[0]))) : Promise.resolve(e);
+  return i != null && i.length ? (s ? s[0] += e : s = [e], Promise.all(i.map((o) => o({ phase: t, buffer: s, context: n }))).then((o) => Promise.all(o.filter(Boolean).map((l) => Wt(l, t, false, n, s))).then(() => s[0]))) : Promise.resolve(e);
 }, "Wt");
 var Mr = "text/plain; charset=UTF-8";
 var lt = /* @__PURE__ */ __name2((e, t) => ({ "Content-Type": e, ...t }), "lt");
@@ -487,8 +487,8 @@ var Nr = (Lt = /* @__PURE__ */ __name2(class {
   const n = h(this, H) ? new Headers(h(this, H).headers) : h(this, fe) ?? new Headers();
   if (typeof t == "object" && "headers" in t) {
     const i = t.headers instanceof Headers ? t.headers : new Headers(t.headers);
-    for (const [a, c] of i)
-      a.toLowerCase() === "set-cookie" ? n.append(a, c) : n.set(a, c);
+    for (const [a, o] of i)
+      a.toLowerCase() === "set-cookie" ? n.append(a, o) : n.set(a, o);
   }
   if (r)
     for (const [i, a] of Object.entries(r))
@@ -496,8 +496,8 @@ var Nr = (Lt = /* @__PURE__ */ __name2(class {
         n.set(i, a);
       else {
         n.delete(i);
-        for (const c of a)
-          n.append(i, c);
+        for (const o of a)
+          n.append(i, o);
       }
   const s = typeof t == "number" ? t : (t == null ? void 0 : t.status) ?? h(this, Oe);
   return new Response(e, { status: s, headers: n });
@@ -554,20 +554,20 @@ var Lr = (Re = /* @__PURE__ */ __name2(class {
       });
     });
     [...Ir, Cr].forEach((i) => {
-      this[i] = (a, ...c) => (typeof a == "string" ? w(this, G, a) : $(this, P, le).call(this, i, h(this, G), a), c.forEach((l) => {
+      this[i] = (a, ...o) => (typeof a == "string" ? w(this, G, a) : $(this, P, le).call(this, i, h(this, G), a), o.forEach((l) => {
         $(this, P, le).call(this, i, h(this, G), l);
       }), this);
-    }), this.on = (i, a, ...c) => {
+    }), this.on = (i, a, ...o) => {
       for (const l of [a].flat()) {
         w(this, G, l);
-        for (const o of [i].flat())
-          c.map((u) => {
-            $(this, P, le).call(this, o.toUpperCase(), h(this, G), u);
+        for (const c of [i].flat())
+          o.map((u) => {
+            $(this, P, le).call(this, c.toUpperCase(), h(this, G), u);
           });
       }
       return this;
-    }, this.use = (i, ...a) => (typeof i == "string" ? w(this, G, i) : (w(this, G, "*"), a.unshift(i)), a.forEach((c) => {
-      $(this, P, le).call(this, I, h(this, G), c);
+    }, this.use = (i, ...a) => (typeof i == "string" ? w(this, G, i) : (w(this, G, "*"), a.unshift(i)), a.forEach((o) => {
+      $(this, P, le).call(this, I, h(this, G), o);
     }), this);
     const { strict: n, ...s } = t;
     Object.assign(this, s), this.getPath = n ?? true ? t.getPath ?? Kt : $r;
@@ -577,7 +577,7 @@ var Lr = (Re = /* @__PURE__ */ __name2(class {
     return r.routes.map((s) => {
       var a;
       let i;
-      r.errorHandler === Ot ? i = s.handler : (i = /* @__PURE__ */ __name2(async (c, l) => (await kt([], r.errorHandler)(c, () => s.handler(c, l))).res, "i"), i[Pr] = s.handler), $(a = n, P, le).call(a, s.method, s.path, i);
+      r.errorHandler === Ot ? i = s.handler : (i = /* @__PURE__ */ __name2(async (o, l) => (await kt([], r.errorHandler)(o, () => s.handler(o, l))).res, "i"), i[Pr] = s.handler), $(a = n, P, le).call(a, s.method, s.path, i);
     }), this;
   }
   basePath(t) {
@@ -588,30 +588,30 @@ var Lr = (Re = /* @__PURE__ */ __name2(class {
     let s, i;
     n && (typeof n == "function" ? i = n : (i = n.optionHandler, n.replaceRequest === false ? s = /* @__PURE__ */ __name2((l) => l, "s") : s = n.replaceRequest));
     const a = i ? (l) => {
-      const o = i(l);
-      return Array.isArray(o) ? o : [o];
+      const c = i(l);
+      return Array.isArray(c) ? c : [c];
     } : (l) => {
-      let o;
+      let c;
       try {
-        o = l.executionCtx;
+        c = l.executionCtx;
       } catch {
       }
-      return [l.env, o];
+      return [l.env, c];
     };
     s || (s = (() => {
-      const l = we(this._basePath, t), o = l === "/" ? 0 : l.length;
+      const l = we(this._basePath, t), c = l === "/" ? 0 : l.length;
       return (u) => {
         const d = new URL(u.url);
-        return d.pathname = d.pathname.slice(o) || "/", new Request(d, u);
+        return d.pathname = d.pathname.slice(c) || "/", new Request(d, u);
       };
     })());
-    const c = /* @__PURE__ */ __name2(async (l, o) => {
+    const o = /* @__PURE__ */ __name2(async (l, c) => {
       const u = await r(s(l.req.raw), ...a(l));
       if (u)
         return u;
-      await o();
-    }, "c");
-    return $(this, P, le).call(this, I, we(t, "*"), c), this;
+      await c();
+    }, "o");
+    return $(this, P, le).call(this, I, we(t, "*"), o), this;
   }
 }, "Re"), G = /* @__PURE__ */ new WeakMap(), P = /* @__PURE__ */ new WeakSet(), er = /* @__PURE__ */ __name2(function() {
   const t = new Re({ router: this.router, getPath: this.getPath });
@@ -627,41 +627,41 @@ var Lr = (Re = /* @__PURE__ */ __name2(class {
 }, "Xe"), Ye = /* @__PURE__ */ __name2(function(t, r, n, s) {
   if (s === "HEAD")
     return (async () => new Response(null, await $(this, P, Ye).call(this, t, r, n, "GET")))();
-  const i = this.getPath(t, { env: n }), a = this.router.match(s, i), c = new Nr(t, { path: i, matchResult: a, env: n, executionCtx: r, notFoundHandler: h(this, V) });
+  const i = this.getPath(t, { env: n }), a = this.router.match(s, i), o = new Nr(t, { path: i, matchResult: a, env: n, executionCtx: r, notFoundHandler: h(this, V) });
   if (a[0].length === 1) {
-    let o;
+    let c;
     try {
-      o = a[0][0][0][0](c, async () => {
-        c.res = await h(this, V).call(this, c);
+      c = a[0][0][0][0](o, async () => {
+        o.res = await h(this, V).call(this, o);
       });
     } catch (u) {
-      return $(this, P, Xe).call(this, u, c);
+      return $(this, P, Xe).call(this, u, o);
     }
-    return o instanceof Promise ? o.then((u) => u || (c.finalized ? c.res : h(this, V).call(this, c))).catch((u) => $(this, P, Xe).call(this, u, c)) : o ?? h(this, V).call(this, c);
+    return c instanceof Promise ? c.then((u) => u || (o.finalized ? o.res : h(this, V).call(this, o))).catch((u) => $(this, P, Xe).call(this, u, o)) : c ?? h(this, V).call(this, o);
   }
   const l = kt(a[0], this.errorHandler, h(this, V));
   return (async () => {
     try {
-      const o = await l(c);
-      if (!o.finalized)
+      const c = await l(o);
+      if (!c.finalized)
         throw new Error("Context is not finalized. Did you forget to return a Response object or `await next()`?");
-      return o.res;
-    } catch (o) {
-      return $(this, P, Xe).call(this, o, c);
+      return c.res;
+    } catch (c) {
+      return $(this, P, Xe).call(this, c, o);
     }
   })();
 }, "Ye"), Re);
 var tr = [];
 function Hr(e, t) {
   const r = this.buildAllMatchers(), n = /* @__PURE__ */ __name2((s, i) => {
-    const a = r[s] || r[I], c = a[2][i];
-    if (c)
-      return c;
+    const a = r[s] || r[I], o = a[2][i];
+    if (o)
+      return o;
     const l = i.match(a[0]);
     if (!l)
       return [[], tr];
-    const o = l.indexOf("", 1);
-    return [a[1][o], l];
+    const c = l.indexOf("", 1);
+    return [a[1][c], l];
   }, "n");
   return this.match = n, n(e, t);
 }
@@ -696,29 +696,29 @@ var Br = (ve = /* @__PURE__ */ __name2(class {
       w(this, pe, r);
       return;
     }
-    const [a, ...c] = t, l = a === "*" ? c.length === 0 ? ["", "", Pe] : ["", "", Ze] : a === "/*" ? ["", "", De] : a.match(/^\:([^\{\}]+)(?:\{(.+)\})?$/);
-    let o;
+    const [a, ...o] = t, l = a === "*" ? o.length === 0 ? ["", "", Pe] : ["", "", Ze] : a === "/*" ? ["", "", De] : a.match(/^\:([^\{\}]+)(?:\{(.+)\})?$/);
+    let c;
     if (l) {
       const u = l[1];
       let d = l[2] || Ze;
       if (u && l[2] && (d === ".*" || (d = d.replace(/^\((?!\?:)(?=[^)]+\)$)/, "(?:"), /\((?!\?:)/.test(d))))
         throw Ee;
-      if (o = h(this, J)[d], !o) {
+      if (c = h(this, J)[d], !c) {
         if (Object.keys(h(this, J)).some((f) => f !== Pe && f !== De))
           throw Ee;
         if (i)
           return;
-        o = h(this, J)[d] = new ve(), u !== "" && w(o, me, s.varIndex++);
+        c = h(this, J)[d] = new ve(), u !== "" && w(c, me, s.varIndex++);
       }
-      !i && u !== "" && n.push([u, h(o, me)]);
-    } else if (o = h(this, J)[a], !o) {
+      !i && u !== "" && n.push([u, h(c, me)]);
+    } else if (c = h(this, J)[a], !c) {
       if (Object.keys(h(this, J)).some((u) => u.length > 1 && u !== Pe && u !== De))
         throw Ee;
       if (i)
         return;
-      o = h(this, J)[a] = new ve();
+      c = h(this, J)[a] = new ve();
     }
-    o.insert(c, r, n, s, i);
+    c.insert(o, r, n, s, i);
   }
   buildRegExpStr() {
     const r = Object.keys(h(this, J)).sort(qr).map((n) => {
@@ -739,19 +739,19 @@ var Ur = (Ht = /* @__PURE__ */ __name2(class {
   insert(e, t, r) {
     const n = [], s = [];
     for (let a = 0; ; ) {
-      let c = false;
+      let o = false;
       if (e = e.replace(/\{[^}]+\}/g, (l) => {
-        const o = `@\\${a}`;
-        return s[a] = [o, l], a++, c = true, o;
-      }), !c)
+        const c = `@\\${a}`;
+        return s[a] = [c, l], a++, o = true, c;
+      }), !o)
         break;
     }
     const i = e.match(/(?::[^\/]+)|(?:\/\*$)|./g) || [];
     for (let a = s.length - 1; a >= 0; a--) {
-      const [c] = s[a];
+      const [o] = s[a];
       for (let l = i.length - 1; l >= 0; l--)
-        if (i[l].indexOf(c) !== -1) {
-          i[l] = i[l].replace(c, s[a][1]);
+        if (i[l].indexOf(o) !== -1) {
+          i[l] = i[l].replace(o, s[a][1]);
           break;
         }
     }
@@ -779,7 +779,7 @@ function Gr() {
 __name(Gr, "Gr");
 __name2(Gr, "Gr");
 function Vr(e) {
-  var o;
+  var c;
   const t = new Ur(), r = [];
   if (e.length === 0)
     return Kr;
@@ -802,15 +802,15 @@ function Vr(e) {
       return [y, E];
     }));
   }
-  const [i, a, c] = t.buildRegExp();
+  const [i, a, o] = t.buildRegExp();
   for (let u = 0, d = r.length; u < d; u++)
     for (let f = 0, m = r[u].length; f < m; f++) {
-      const p = (o = r[u][f]) == null ? void 0 : o[1];
+      const p = (c = r[u][f]) == null ? void 0 : c[1];
       if (!p)
         continue;
       const g = Object.keys(p);
       for (let v = 0, y = g.length; v < y; v++)
-        p[g[v]] = c[p[g[v]]];
+        p[g[v]] = o[p[g[v]]];
     }
   const l = [];
   for (const u in a)
@@ -843,36 +843,36 @@ var Jr = (Ft = /* @__PURE__ */ __name2(class {
     w(this, ne, { [I]: /* @__PURE__ */ Object.create(null) }), w(this, se, { [I]: /* @__PURE__ */ Object.create(null) });
   }
   add(e, t, r) {
-    var c;
+    var o;
     const n = h(this, ne), s = h(this, se);
     if (!n || !s)
       throw new Error(Qt);
     n[e] || [n, s].forEach((l) => {
-      l[e] = /* @__PURE__ */ Object.create(null), Object.keys(l[I]).forEach((o) => {
-        l[e][o] = [...l[I][o]];
+      l[e] = /* @__PURE__ */ Object.create(null), Object.keys(l[I]).forEach((c) => {
+        l[e][c] = [...l[I][c]];
       });
     }), t === "/*" && (t = "*");
     const i = (t.match(/\/:/g) || []).length;
     if (/\*$/.test(t)) {
       const l = rr(t);
-      e === I ? Object.keys(n).forEach((o) => {
+      e === I ? Object.keys(n).forEach((c) => {
         var u;
-        (u = n[o])[t] || (u[t] = Se(n[o], t) || Se(n[I], t) || []);
-      }) : (c = n[e])[t] || (c[t] = Se(n[e], t) || Se(n[I], t) || []), Object.keys(n).forEach((o) => {
-        (e === I || e === o) && Object.keys(n[o]).forEach((u) => {
-          l.test(u) && n[o][u].push([r, i]);
+        (u = n[c])[t] || (u[t] = Se(n[c], t) || Se(n[I], t) || []);
+      }) : (o = n[e])[t] || (o[t] = Se(n[e], t) || Se(n[I], t) || []), Object.keys(n).forEach((c) => {
+        (e === I || e === c) && Object.keys(n[c]).forEach((u) => {
+          l.test(u) && n[c][u].push([r, i]);
         });
-      }), Object.keys(s).forEach((o) => {
-        (e === I || e === o) && Object.keys(s[o]).forEach((u) => l.test(u) && s[o][u].push([r, i]));
+      }), Object.keys(s).forEach((c) => {
+        (e === I || e === c) && Object.keys(s[c]).forEach((u) => l.test(u) && s[c][u].push([r, i]));
       });
       return;
     }
     const a = Gt(t) || [t];
-    for (let l = 0, o = a.length; l < o; l++) {
+    for (let l = 0, c = a.length; l < c; l++) {
       const u = a[l];
       Object.keys(s).forEach((d) => {
         var f;
-        (e === I || e === d) && ((f = s[d])[u] || (f[u] = [...Se(n[d], u) || Se(n[I], u) || []]), s[d][u].push([r, i - o + l + 1]));
+        (e === I || e === d) && ((f = s[d])[u] || (f[u] = [...Se(n[d], u) || Se(n[I], u) || []]), s[d][u].push([r, i - c + l + 1]));
       });
     }
   }
@@ -911,17 +911,17 @@ var zr = (qt = /* @__PURE__ */ __name2(class {
     const r = h(this, ie), n = h(this, Q), s = r.length;
     let i = 0, a;
     for (; i < s; i++) {
-      const c = r[i];
+      const o = r[i];
       try {
-        for (let l = 0, o = n.length; l < o; l++)
-          c.add(...n[l]);
-        a = c.match(e, t);
+        for (let l = 0, c = n.length; l < c; l++)
+          o.add(...n[l]);
+        a = o.match(e, t);
       } catch (l) {
         if (l instanceof Zt)
           continue;
         throw l;
       }
-      this.match = c.match.bind(c), w(this, ie, [c]), w(this, Q, void 0);
+      this.match = o.match.bind(o), w(this, ie, [o]), w(this, Q, void 0);
       break;
     }
     if (i === s)
@@ -961,24 +961,24 @@ var Xr = (Me = /* @__PURE__ */ __name2(class {
     w(this, _e, ++Tt(this, _e)._);
     let s = this;
     const i = Er(r), a = [];
-    for (let c = 0, l = i.length; c < l; c++) {
-      const o = i[c], u = i[c + 1], d = Ar(o, u), f = Array.isArray(d) ? d[0] : o;
+    for (let o = 0, l = i.length; o < l; o++) {
+      const c = i[o], u = i[o + 1], d = Ar(c, u), f = Array.isArray(d) ? d[0] : c;
       if (f in h(s, L)) {
         s = h(s, L)[f], d && a.push(d[1]);
         continue;
       }
       h(s, L)[f] = new Me(), d && (h(s, ge).push(d), a.push(d[1])), s = h(s, L)[f];
     }
-    return h(s, ae).push({ [t]: { handler: n, possibleKeys: a.filter((c, l, o) => o.indexOf(c) === l), score: h(this, _e) } }), s;
+    return h(s, ae).push({ [t]: { handler: n, possibleKeys: a.filter((o, l, c) => c.indexOf(o) === l), score: h(this, _e) } }), s;
   }
   search(t, r) {
     var l;
     const n = [];
     w(this, D, Ce);
     let i = [this];
-    const a = Ut(r), c = [];
-    for (let o = 0, u = a.length; o < u; o++) {
-      const d = a[o], f = o === u - 1, m = [];
+    const a = Ut(r), o = [];
+    for (let c = 0, u = a.length; c < u; c++) {
+      const d = a[c], f = c === u - 1, m = [];
       for (let p = 0, g = i.length; p < g; p++) {
         const v = i[p], y = h(v, L)[d];
         y && (w(y, D, h(v, D)), f ? (h(y, L)["*"] && n.push(...$(this, Z, ue).call(this, h(y, L)["*"], t, h(v, D))), n.push(...$(this, Z, ue).call(this, y, t, h(v, D)))) : m.push(y));
@@ -992,14 +992,14 @@ var Xr = (Me = /* @__PURE__ */ __name2(class {
           const [K, F, C] = N;
           if (!d && !(C instanceof RegExp))
             continue;
-          const A = h(v, L)[K], j = a.slice(o).join("/");
+          const A = h(v, L)[K], j = a.slice(c).join("/");
           if (C instanceof RegExp) {
             const T = C.exec(j);
             if (T) {
               if (_[F] = T[0], n.push(...$(this, Z, ue).call(this, A, t, h(v, D), _)), Object.keys(h(A, L)).length) {
                 w(A, D, _);
                 const x = ((l = T[0].match(/\//)) == null ? void 0 : l.length) ?? 0;
-                (c[x] || (c[x] = [])).push(A);
+                (o[x] || (o[x] = [])).push(A);
               }
               continue;
             }
@@ -1007,18 +1007,18 @@ var Xr = (Me = /* @__PURE__ */ __name2(class {
           (C === true || C.test(d)) && (_[F] = d, f ? (n.push(...$(this, Z, ue).call(this, A, t, _, h(v, D))), h(A, L)["*"] && n.push(...$(this, Z, ue).call(this, h(A, L)["*"], t, _, h(v, D)))) : (w(A, D, _), m.push(A)));
         }
       }
-      i = m.concat(c.shift() ?? []);
+      i = m.concat(o.shift() ?? []);
     }
-    return n.length > 1 && n.sort((o, u) => o.score - u.score), [n.map(({ handler: o, params: u }) => [o, u])];
+    return n.length > 1 && n.sort((c, u) => c.score - u.score), [n.map(({ handler: c, params: u }) => [c, u])];
   }
 }, "Me"), ae = /* @__PURE__ */ new WeakMap(), L = /* @__PURE__ */ new WeakMap(), ge = /* @__PURE__ */ new WeakMap(), _e = /* @__PURE__ */ new WeakMap(), D = /* @__PURE__ */ new WeakMap(), Z = /* @__PURE__ */ new WeakSet(), ue = /* @__PURE__ */ __name2(function(t, r, n, s) {
   const i = [];
-  for (let a = 0, c = h(t, ae).length; a < c; a++) {
-    const l = h(t, ae)[a], o = l[r] || l[I], u = {};
-    if (o !== void 0 && (o.params = /* @__PURE__ */ Object.create(null), i.push(o), n !== Ce || s && s !== Ce))
-      for (let d = 0, f = o.possibleKeys.length; d < f; d++) {
-        const m = o.possibleKeys[d], p = u[o.score];
-        o.params[m] = s != null && s[m] && !p ? s[m] : n[m] ?? (s == null ? void 0 : s[m]), u[o.score] = true;
+  for (let a = 0, o = h(t, ae).length; a < o; a++) {
+    const l = h(t, ae)[a], c = l[r] || l[I], u = {};
+    if (c !== void 0 && (c.params = /* @__PURE__ */ Object.create(null), i.push(c), n !== Ce || s && s !== Ce))
+      for (let d = 0, f = c.possibleKeys.length; d < f; d++) {
+        const m = c.possibleKeys[d], p = u[c.score];
+        c.params[m] = s != null && s[m] && !p ? s[m] : n[m] ?? (s == null ? void 0 : s[m]), u[c.score] = true;
       }
   }
   return i;
@@ -1051,15 +1051,15 @@ var sr = /* @__PURE__ */ __name2(class extends Lr {
 }, "sr");
 var Wr = /* @__PURE__ */ __name2((e) => {
   const r = { ...{ origin: "*", allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"], allowHeaders: [], exposeHeaders: [] }, ...e }, n = ((i) => typeof i == "string" ? i === "*" ? () => i : (a) => i === a ? a : null : typeof i == "function" ? i : (a) => i.includes(a) ? a : null)(r.origin), s = ((i) => typeof i == "function" ? i : Array.isArray(i) ? () => i : () => [])(r.allowMethods);
-  return async function(a, c) {
+  return async function(a, o) {
     var u;
     function l(d, f) {
       a.res.headers.set(d, f);
     }
     __name(l, "l");
     __name2(l, "l");
-    const o = await n(a.req.header("origin") || "", a);
-    if (o && l("Access-Control-Allow-Origin", o), r.credentials && l("Access-Control-Allow-Credentials", "true"), (u = r.exposeHeaders) != null && u.length && l("Access-Control-Expose-Headers", r.exposeHeaders.join(",")), a.req.method === "OPTIONS") {
+    const c = await n(a.req.header("origin") || "", a);
+    if (c && l("Access-Control-Allow-Origin", c), r.credentials && l("Access-Control-Allow-Credentials", "true"), (u = r.exposeHeaders) != null && u.length && l("Access-Control-Expose-Headers", r.exposeHeaders.join(",")), a.req.method === "OPTIONS") {
       r.origin !== "*" && l("Vary", "Origin"), r.maxAge != null && l("Access-Control-Max-Age", r.maxAge.toString());
       const d = await s(a.req.header("origin") || "", a);
       d.length && l("Access-Control-Allow-Methods", d.join(","));
@@ -1070,7 +1070,7 @@ var Wr = /* @__PURE__ */ __name2((e) => {
       }
       return f != null && f.length && (l("Access-Control-Allow-Headers", f.join(",")), a.res.headers.append("Vary", "Access-Control-Request-Headers")), a.res.headers.delete("Content-Length"), a.res.headers.delete("Content-Type"), new Response(null, { headers: a.res.headers, status: 204, statusText: "No Content" });
     }
-    await c(), r.origin !== "*" && a.header("Vary", "Origin", { append: true });
+    await o(), r.origin !== "*" && a.header("Vary", "Origin", { append: true });
   };
 }, "Wr");
 var Qr = /^\s*(?:text\/(?!event-stream(?:[;\s]|$))[^;\s]+|application\/(?:javascript|json|xml|xml-dtd|ecmascript|dart|postscript|rtf|tar|toml|vnd\.dart|vnd\.ms-fontobject|vnd\.ms-opentype|wasm|x-httpd-php|x-javascript|x-ns-proxy-autoconfig|x-sh|x-tar|x-virtualbox-hdd|x-virtualbox-ova|x-virtualbox-ovf|x-virtualbox-vbox|x-virtualbox-vdi|x-virtualbox-vhd|x-virtualbox-vmdk|x-www-form-urlencoded)|font\/(?:otf|ttf)|image\/(?:bmp|vnd\.adobe\.photoshop|vnd\.microsoft\.icon|vnd\.ms-dds|x-icon|x-ms-bmp)|message\/rfc822|model\/gltf-binary|x-shader\/x-fragment|x-shader\/x-vertex|[^;\s]+?\+(?:json|text|xml|yaml))(?:[;\s]|$)/i;
@@ -1110,29 +1110,29 @@ var sn = /* @__PURE__ */ __name2((e) => {
       } catch {
         return await ((u = e.onNotFound) == null ? void 0 : u.call(e, s.req.path, s)), i();
       }
-    let c = n(t, !r && e.rewriteRequestPath ? e.rewriteRequestPath(a) : a);
-    e.isDir && await e.isDir(c) && (c = n(c, nn));
+    let o = n(t, !r && e.rewriteRequestPath ? e.rewriteRequestPath(a) : a);
+    e.isDir && await e.isDir(o) && (o = n(o, nn));
     const l = e.getContent;
-    let o = await l(c, s);
-    if (o instanceof Response)
-      return s.newResponse(o.body, o);
-    if (o) {
-      const p = e.mimes && $t(c, e.mimes) || $t(c);
+    let c = await l(o, s);
+    if (c instanceof Response)
+      return s.newResponse(c.body, c);
+    if (c) {
+      const p = e.mimes && $t(o, e.mimes) || $t(o);
       if (s.header("Content-Type", p || "application/octet-stream"), e.precompressed && (!p || Qr.test(p))) {
         const g = new Set((d = s.req.header("Accept-Encoding")) == null ? void 0 : d.split(",").map((v) => v.trim()));
         for (const v of rn) {
           if (!g.has(v))
             continue;
-          const y = await l(c + ir[v], s);
+          const y = await l(o + ir[v], s);
           if (y) {
-            o = y, s.header("Content-Encoding", v), s.header("Vary", "Accept-Encoding", { append: true });
+            c = y, s.header("Content-Encoding", v), s.header("Vary", "Accept-Encoding", { append: true });
             break;
           }
         }
       }
-      return await ((f = e.onFound) == null ? void 0 : f.call(e, c, s)), s.body(o);
+      return await ((f = e.onFound) == null ? void 0 : f.call(e, o, s)), s.body(c);
     }
-    await ((m = e.onNotFound) == null ? void 0 : m.call(e, c, s)), await i();
+    await ((m = e.onNotFound) == null ? void 0 : m.call(e, o, s)), await i();
   };
 }, "sn");
 var an = /* @__PURE__ */ __name2(async (e, t) => {
@@ -1190,17 +1190,17 @@ __name2(dn, "dn");
 function hn(e, t, r) {
   let s = oe(t).slice();
   const i = ut(e, s.join(". ") + ".", r);
-  let a = i, c = false;
+  let a = i, o = false;
   if (a.over && s.length > 1)
-    for (; s.length > 1 && (s.pop(), c = true, a = ut(e, s.join(". ") + ".", r), !a.ok); )
+    for (; s.length > 1 && (s.pop(), o = true, a = ut(e, s.join(". ") + ".", r), !a.ok); )
       ;
   if (a.under) {
     const l = dn();
-    for (const o of l)
-      if (s.push(o), c = true, a = ut(e, s.join(". ") + ".", r), a.ok)
+    for (const c of l)
+      if (s.push(c), o = true, a = ut(e, s.join(". ") + ".", r), a.ok)
         break;
   }
-  return { text: s.join(". ") + ".", ratio: a.ratio, adjusted: c, originalRatio: i.ratio };
+  return { text: s.join(". ") + ".", ratio: a.ratio, adjusted: o, originalRatio: i.ratio };
 }
 __name(hn, "hn");
 __name2(hn, "hn");
@@ -1219,7 +1219,7 @@ __name2(pn, "pn");
 function mn(e, t) {
   const r = oe(e);
   Ne(e);
-  const n = ln(e), s = ar[t], i = Math.floor(n * s.min), a = Math.floor(n * s.max), c = r[0] || "\uC6D0\uBB38\uC758 \uD575\uC2EC \uC8FC\uC7A5\uC744 \uD30C\uC545\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4", u = r.map((x, R) => {
+  const n = ln(e), s = ar[t], i = Math.floor(n * s.min), a = Math.floor(n * s.max), o = r[0] || "\uC6D0\uBB38\uC758 \uD575\uC2EC \uC8FC\uC7A5\uC744 \uD30C\uC545\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4", u = r.map((x, R) => {
     let O = 0;
     return /(정의|개념|의미|일컫|규정|정리)/.test(x) && (O += 5), /(특징|특성|요인|측면|경향|양상)/.test(x) && (O += 4), /(연구|학자|선행|본|분석|종합)/.test(x) && (O += 3), /(차이|비교|대조|반면|이에 반해)/.test(x) && (O += 2), R === 0 && (O += 3), x.length < 20 && (O -= 2), x.length > 200 && (O -= 1), { sentence: x, score: O, index: R };
   }).sort((x, R) => R.score - x.score || x.index - R.index).slice(0, 5).sort((x, R) => x.index - R.index).map((x) => x.sentence);
@@ -1231,7 +1231,7 @@ function mn(e, t) {
         return false;
     return true;
   }).join(" "), d = d.replace(/약\s*\d+\.?\d*배/g, "").replace(/\d+\.?\d*배\s*수준/g, "").replace(/를?\s*비교하면\s*약?\s*\d+/g, "").trim(), d = d.replace(/\.\s*\./g, ".").replace(/\s+/g, " ").trim();
-  const p = hn(e, d, t), g = p.text, v = xt(g), y = oe(g), S = y[0] || c;
+  const p = hn(e, d, t), g = p.text, v = xt(g), y = oe(g), S = y[0] || o;
   let E = y.slice(1, 4);
   E.length === 0 && y.length > 0 ? E = [y[0]] : E.length === 0 && (E = ["\uC6D0\uBB38\uC5D0\uC11C \uD575\uC2EC \uB0B4\uC6A9\uC744 \uCD94\uCD9C\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."]);
   const N = [], _ = ["\uC774 \uAE00\uC740", "\uC124\uBA85\uD55C\uB2E4", "\uC120\uD589\uC5F0\uAD6C", "\uB2E4\uC591\uD55C \uAD00\uC810", "\uCCB4\uACC4\uC801\uC73C\uB85C \uBD84\uC11D", "\uADDC\uC815\uD574 \uC654\uB2E4"];
@@ -1264,7 +1264,7 @@ __name2(vn, "vn");
 function yn(e, t) {
   const r = oe(e), n = 4, s = [], i = Math.ceil(r.length / n);
   for (let a = 0; a < n; a++) {
-    const c = a * i, l = r.slice(c, c + i);
+    const o = a * i, l = r.slice(o, o + i);
     if (l.length === 0)
       break;
     s.push({ id: `section-${a + 1}`, title: `${a + 1}. ${l[0].split("\uB2E4")[0] || "\uD56D\uBAA9"}`, content: l });
@@ -1276,10 +1276,10 @@ __name2(yn, "yn");
 function Sn(e, t) {
   const r = Ne(e);
   un(e);
-  const n = oe(e), s = 7, i = [], a = ["\uACF5\uAD50\uC721", "\uC0AC\uAD50\uC721", "GDP", "\uBBFC\uAC04 \uBD80\uB2F4", "OECD", ...r];
-  for (let c = 0; c < s && c < a.length; c++) {
-    const l = a[c], o = wn(l), u = n.find((d) => d.includes(l)) || `${l}\uC5D0 \uB300\uD55C \uC124\uBA85`;
-    i.push({ word: l, coreMeaning: o, explanation: u.slice(0, 80) });
+  const n = oe(e), s = 7, i = [], a = r.filter((o) => e.includes(o));
+  for (let o = 0; o < s && o < a.length; o++) {
+    const l = a[o], c = wn(l), u = n.find((d) => d.includes(l)) || `${l}\uC5D0 \uB300\uD55C \uC124\uBA85`;
+    e.includes(l) && i.push({ word: l, coreMeaning: c, explanation: u.slice(0, 80) });
   }
   return i;
 }
@@ -1291,8 +1291,8 @@ function wn(e) {
 __name(wn, "wn");
 __name2(wn, "wn");
 function bn(e, t) {
-  const r = vn(e), n = yn(e), s = Sn(e), i = Ne(e), a = [{ title: `\uD559\uC2B5 \uB2E8\uC704: ${r.unitName}`, keywords: i.slice(0, 3), bullets: [`\uBC94\uC704: ${r.scope}`, `\uB300\uC0C1: ${r.targetLevel}`], children: n.map((o) => ({ title: o.title, keywords: Ne(o.content.join(" ")).slice(0, 3), bullets: o.content, children: [] })) }], c = s.map((o) => ({ term: o.word, def: `${o.coreMeaning} \u2014 ${o.explanation}` })), l = n.map((o, u) => ({ title: o.title, anchor: `sec-${u + 1}` }));
-  return { type: "structured", level: t, learningUnit: r, toc: l, hierarchy: a, glossary: c, coreTerms: s };
+  const r = vn(e), n = yn(e), s = Sn(e), i = Ne(e), a = [{ title: `\uD559\uC2B5 \uB2E8\uC704: ${r.unitName}`, keywords: i.slice(0, 3), bullets: [`\uBC94\uC704: ${r.scope}`, `\uB300\uC0C1: ${r.targetLevel}`], children: n.map((c) => ({ title: c.title, keywords: Ne(c.content.join(" ")).slice(0, 3), bullets: c.content, children: [] })) }], o = s.map((c) => ({ term: c.word, def: `${c.coreMeaning} \u2014 ${c.explanation}` })), l = n.map((c, u) => ({ title: c.title, anchor: `sec-${u + 1}` }));
+  return { type: "structured", level: t, learningUnit: r, toc: l, hierarchy: a, glossary: o, coreTerms: s };
 }
 __name(bn, "bn");
 __name2(bn, "bn");
@@ -1332,16 +1332,16 @@ function Tn(e, t) {
   const r = [], n = cr[t], s = ce(e);
   for (const l of or)
     s.includes(l) && r.push(`\uAE08\uC9C0 \uD45C\uD604 \uD3EC\uD568: "${l}"`);
-  for (const { pattern1: l, pattern2: o, desc: u } of En)
-    l.test(s) && o.test(s) && r.push(`\uB17C\uB9AC \uBAA8\uC21C: ${u}`);
+  for (const { pattern1: l, pattern2: c, desc: u } of En)
+    l.test(s) && c.test(s) && r.push(`\uB17C\uB9AC \uBAA8\uC21C: ${u}`);
   const i = lr(s), a = new Set(i.map((l) => l.trim()));
   if (a.size < i.length) {
     const l = i.length - a.size;
     r.push(`\uBB38\uC7A5 \uC911\uBCF5: ${l}\uD68C \uBC18\uBCF5`);
   }
   i.length < n.minSentences && r.push(`\uBB38\uC7A5 \uC218 \uBD80\uC871: ${i.length}/${n.minSentences}`), n.mustIncludeComparison && (s.includes("\uD55C\uAD6D") && s.includes("\uC2A4\uC6E8\uB374") || r.push("\uD55C\uAD6D/\uC2A4\uC6E8\uB374 \uBE44\uAD50 \uC694\uC18C \uB204\uB77D"));
-  const c = Qe(s, Le);
-  return c < n.minNumbers && r.push(`\uD575\uC2EC \uC218\uCE58 \uBD80\uC871: ${c}/${n.minNumbers}`), { ok: r.length === 0, errors: r };
+  const o = Qe(s, Le);
+  return o < n.minNumbers && r.push(`\uD575\uC2EC \uC218\uCE58 \uBD80\uC871: ${o}/${n.minNumbers}`), { ok: r.length === 0, errors: r };
 }
 __name(Tn, "Tn");
 __name2(Tn, "Tn");
@@ -1360,8 +1360,8 @@ function et(e, t, r) {
     for (; s.length > 1 && (s.pop(), a = Ie(e, i(), r), !(a.ratio <= n.max)); )
       ;
   if (a.ratio < n.min) {
-    const c = kn(r);
-    for (const l of c)
+    const o = kn(r);
+    for (const l of o)
       if (s.push(l), a = Ie(e, i(), r), a.ratio >= n.min)
         break;
   }
@@ -1393,10 +1393,10 @@ __name(An, "An");
 __name2(An, "An");
 function ur(e) {
   var d;
-  const t = [], r = [e.narrative.brief, e.narrative.standard, e.narrative.detail].join(" "), n = JSON.stringify(e.structured || {}), s = An((d = e.mindmap) == null ? void 0 : d.root).join(" | "), i = dt(r), a = dt(n), c = dt(s);
-  i.score < i.need && t.push("\uC11C\uC220\uC694\uC57D: \uB17C\uC810 \uC575\uCEE4 \uC57D\uD568"), a.score < a.need && t.push("\uAD6C\uC870\uD654: \uB17C\uC810 \uC575\uCEE4 \uC57D\uD568"), c.score < c.need && t.push("\uB9C8\uC778\uB4DC\uB9F5: \uB17C\uC810 \uC575\uCEE4 \uC57D\uD568"), r.includes("\uD55C\uAD6D") && r.includes("\uC2A4\uC6E8\uB374") || t.push("\uC11C\uC220\uC694\uC57D: \uD55C\uAD6D/\uC2A4\uC6E8\uB374 \uBE44\uAD50 \uB204\uB77D"), n.includes("\uD55C\uAD6D") && n.includes("\uC2A4\uC6E8\uB374") || t.push("\uAD6C\uC870\uD654: \uD55C\uAD6D/\uC2A4\uC6E8\uB374 \uBE44\uAD50 \uB204\uB77D"), s.includes("\uD55C\uAD6D") && s.includes("\uC2A4\uC6E8\uB374") || t.push("\uB9C8\uC778\uB4DC\uB9F5: \uD55C\uAD6D/\uC2A4\uC6E8\uB374 \uBE44\uAD50 \uB204\uB77D");
-  const l = Qe(r, Le), o = Qe(n, Le), u = Qe(s, Le);
-  return l < 2 && t.push("\uC11C\uC220\uC694\uC57D: \uD575\uC2EC \uC218\uCE58 \uADFC\uAC70 \uBD80\uC871"), o < 2 && t.push("\uAD6C\uC870\uD654: \uD575\uC2EC \uC218\uCE58 \uADFC\uAC70 \uBD80\uC871"), u < 2 && t.push("\uB9C8\uC778\uB4DC\uB9F5: \uD575\uC2EC \uC218\uCE58 \uADFC\uAC70 \uBD80\uC871"), { ok: t.length === 0, errors: t };
+  const t = [], r = [e.narrative.brief, e.narrative.standard, e.narrative.detail].join(" "), n = JSON.stringify(e.structured || {}), s = An((d = e.mindmap) == null ? void 0 : d.root).join(" | "), i = dt(r), a = dt(n), o = dt(s);
+  i.score < i.need && t.push("\uC11C\uC220\uC694\uC57D: \uB17C\uC810 \uC575\uCEE4 \uC57D\uD568"), a.score < a.need && t.push("\uAD6C\uC870\uD654: \uB17C\uC810 \uC575\uCEE4 \uC57D\uD568"), o.score < o.need && t.push("\uB9C8\uC778\uB4DC\uB9F5: \uB17C\uC810 \uC575\uCEE4 \uC57D\uD568"), r.includes("\uD55C\uAD6D") && r.includes("\uC2A4\uC6E8\uB374") || t.push("\uC11C\uC220\uC694\uC57D: \uD55C\uAD6D/\uC2A4\uC6E8\uB374 \uBE44\uAD50 \uB204\uB77D"), n.includes("\uD55C\uAD6D") && n.includes("\uC2A4\uC6E8\uB374") || t.push("\uAD6C\uC870\uD654: \uD55C\uAD6D/\uC2A4\uC6E8\uB374 \uBE44\uAD50 \uB204\uB77D"), s.includes("\uD55C\uAD6D") && s.includes("\uC2A4\uC6E8\uB374") || t.push("\uB9C8\uC778\uB4DC\uB9F5: \uD55C\uAD6D/\uC2A4\uC6E8\uB374 \uBE44\uAD50 \uB204\uB77D");
+  const l = Qe(r, Le), c = Qe(n, Le), u = Qe(s, Le);
+  return l < 2 && t.push("\uC11C\uC220\uC694\uC57D: \uD575\uC2EC \uC218\uCE58 \uADFC\uAC70 \uBD80\uC871"), c < 2 && t.push("\uAD6C\uC870\uD654: \uD575\uC2EC \uC218\uCE58 \uADFC\uAC70 \uBD80\uC871"), u < 2 && t.push("\uB9C8\uC778\uB4DC\uB9F5: \uD575\uC2EC \uC218\uCE58 \uADFC\uAC70 \uBD80\uC871"), { ok: t.length === 0, errors: t };
 }
 __name(ur, "ur");
 __name2(ur, "ur");
@@ -1466,22 +1466,22 @@ __name2(jn, "jn");
 async function Rn(e) {
   const { originalText: t, model: r, callLLM: n, db: s } = e, i = {}, a = ["brief", "standard", "detail"];
   for (const l of a) {
-    let o = ce(e.narrative[l]).trim();
-    const u = et(t, o, l);
-    o = u.text, i[l] = { ratio: u.ratio, rule: u.rule };
-    const d = Tn(o, l), f = Ie(t, o, l);
+    let c = ce(e.narrative[l]).trim();
+    const u = et(t, c, l);
+    c = u.text, i[l] = { ratio: u.ratio, rule: u.rule };
+    const d = Tn(c, l), f = Ie(t, c, l);
     if (!d.ok || !f.ok) {
       const m = [...d.ok ? [] : d.errors, ...f.ok ? [] : [`\uC694\uC57D\uC728 \uC704\uBC18: ${Math.round(f.ratio * 1e3) / 10}% (\uD5C8\uC6A9 ${Math.round(f.rule.min * 100)}~${Math.round(f.rule.max * 100)}%)`]];
       await Rt(s, { ts: (/* @__PURE__ */ new Date()).toISOString(), model: r, level: l, stage: "narrative", errors: m, ratio: f.ratio });
-      const p = jn(t, o, l, m), g = await Promise.resolve(n(p));
+      const p = jn(t, c, l, m), g = await Promise.resolve(n(p));
       e.narrative[l] = ce(g).trim();
       const v = et(t, e.narrative[l], l);
       e.narrative[l] = v.text, i[l] = { ratio: v.ratio, rule: v.rule, rewritten: true };
     } else
-      e.narrative[l] = o;
+      e.narrative[l] = c;
   }
-  const c = ur({ narrative: e.narrative, structured: e.structured, mindmap: e.mindmap });
-  return c.ok || await Rt(s, { ts: (/* @__PURE__ */ new Date()).toISOString(), model: r, stage: "qa_cross", errors: c.errors }), { narrative: e.narrative, structured: e.structured, mindmap: e.mindmap, qa: { cross_ok: c.ok, cross_errors: c.errors, ratios: i } };
+  const o = ur({ narrative: e.narrative, structured: e.structured, mindmap: e.mindmap });
+  return o.ok || await Rt(s, { ts: (/* @__PURE__ */ new Date()).toISOString(), model: r, stage: "qa_cross", errors: o.errors }), { narrative: e.narrative, structured: e.structured, mindmap: e.mindmap, qa: { cross_ok: o.ok, cross_errors: o.errors, ratios: i } };
 }
 __name(Rn, "Rn");
 __name2(Rn, "Rn");
@@ -1544,7 +1544,7 @@ function vt(e) {
 __name(vt, "vt");
 __name2(vt, "vt");
 function Nn(e) {
-  const t = mn(e, "detail"), r = bn(e, "detail"), n = gn(e, "detail"), s = xn(t.text, "detail", "exam"), i = e.length, a = dr(e), c = t.coreClaim, l = t.grounds, o = t.comparisons || [], u = t.implications || [];
+  const t = mn(e, "detail"), r = bn(e, "detail"), n = gn(e, "detail"), s = xn(t.text, "detail", "exam"), i = e.length, a = dr(e), o = t.coreClaim, l = t.grounds, c = t.comparisons || [], u = t.implications || [];
   let d = t.text;
   if (!d.includes(`
 
@@ -1560,7 +1560,7 @@ function Nn(e) {
     g.children[0].children.push({ title: `\uCD94\uAC00 \uB178\uB4DC ${y}`, pack: ["\uD575\uC2EC", "\uAC1C\uB150", "\uC815\uBCF4"], explain: `\uCD94\uAC00 \uB178\uB4DC ${y}\uB294 \uC6D0\uBB38\uC758 \uB9E5\uB77D\uC744 \uBC18\uC601\uD55C \uBD84\uC11D \uACB0\uACFC\uB85C, \uC8FC\uC694 \uB17C\uC810\uC744 \uBCF4\uC644\uD558\uB294 \uB0B4\uC6A9\uC774\uB2E4.`, children: [] });
   }
   const v = { passScorePct: s.passScorePct, items: s.items };
-  return { schemaVersion: "ms-v4", lang: "ko", source: { charCount: i, checksum: a }, narrative: { coreClaim: c, grounds: l, comparisons: o, implications: u, summaryDetail: d }, structured: { toc: f, hierarchy: m, glossary: p }, mindmap: g, selftest: v };
+  return { schemaVersion: "ms-v4", lang: "ko", source: { charCount: i, checksum: a }, narrative: { coreClaim: o, grounds: l, comparisons: c, implications: u, summaryDetail: d }, structured: { toc: f, hierarchy: m, glossary: p }, mindmap: g, selftest: v };
 }
 __name(Nn, "Nn");
 __name2(Nn, "Nn");
@@ -1572,32 +1572,32 @@ __name(Mt, "Mt");
 __name2(Mt, "Mt");
 function ht(e, t) {
   var j;
-  const r = t === "brief", n = t === "standard", s = e.narrative.coreClaim || "", i = e.narrative.grounds || [], a = e.narrative.comparisons || [], c = e.narrative.implications || [], l = ((j = e.source) == null ? void 0 : j.charCount) || 1e3;
-  let o = "", u = s, d = [], f = [], m = [];
+  const r = t === "brief", n = t === "standard", s = e.narrative.coreClaim || "", i = e.narrative.grounds || [], a = e.narrative.comparisons || [], o = e.narrative.implications || [], l = ((j = e.source) == null ? void 0 : j.charCount) || 1e3;
+  let c = "", u = s, d = [], f = [], m = [];
   if (t === "detail")
-    o = String(e.narrative.summaryDetail || "").trim(), u = s, d = i, f = a, m = c;
+    c = String(e.narrative.summaryDetail || "").trim(), u = s, d = i, f = a, m = o;
   else if (t === "brief") {
     const T = Math.floor(l * 0.18);
     u = M(s, 60);
     const x = a[0] ? M(a[0], 80) : "";
     if (d = [], f = x ? [x] : [], m = [], x)
-      o = `${u}. ${x}.`;
+      c = `${u}. ${x}.`;
     else {
       const R = i[0] ? M(i[0], 60) : "";
-      o = R ? `${u}. ${R}.` : `${u}.`;
+      c = R ? `${u}. ${R}.` : `${u}.`;
     }
-    o.length > T && (o = o.slice(0, Math.max(0, T - 1)).trim());
+    c.length > T && (c = c.slice(0, Math.max(0, T - 1)).trim());
   } else {
     const T = Math.floor(l * 0.38);
     u = M(s, 80), d = i.slice(0, 2).map((O) => M(O, 70));
     const x = a[0] ? M(a[0], 90) : "";
     f = x ? [x] : [], m = [];
     const R = [u];
-    if (d.length > 0 && R.push(d.join(". ")), x && R.push(`\uBC18\uBA74 ${x}`), o = R.join(". ") + ".", o.length > T)
-      o = o.slice(0, Math.max(0, T - 1)).trim();
-    else if (o.length < Math.floor(l * 0.25) && c.length > 0) {
-      const O = M(c[0], 60);
-      o += ` ${O}.`;
+    if (d.length > 0 && R.push(d.join(". ")), x && R.push(`\uBC18\uBA74 ${x}`), c = R.join(". ") + ".", c.length > T)
+      c = c.slice(0, Math.max(0, T - 1)).trim();
+    else if (c.length < Math.floor(l * 0.25) && o.length > 0) {
+      const O = M(o[0], 60);
+      c += ` ${O}.`;
     }
   }
   const p = e.structured.toc || [], g = r ? 2 : n ? 4 : 10, v = (e.structured.glossary || []).slice(0, g).map((T) => ({ term: M(T.term, 20), def: M(T.def, r ? 70 : 120) })), y = r ? 2 : n ? 3 : 5, S = /* @__PURE__ */ __name2((T) => (T || []).map((x) => ({ title: M(x.title, 60), keywords: (x.keywords || []).slice(0, r ? 3 : n ? 4 : 6).map((R) => M(R, 16)), bullets: (x.bullets || []).slice(0, y).map((R) => M(R, r ? 90 : 140)), children: x.children ? S(x.children) : void 0 })), "S"), E = S(e.structured.hierarchy || []), N = Cn({ toc: p, hierarchy: E, glossary: v }), _ = JSON.parse(JSON.stringify(e.mindmap || { title: "\uB9C8\uC778\uB4DC\uB9F5", children: [] })), K = r ? 70 : n ? 110 : 160, F = r ? 2 : 3;
@@ -1608,7 +1608,7 @@ function ht(e, t) {
     var x, R, O;
     return { id: T.id, type: T.type, question: M(T.question, r ? 140 : 220), hint: T.hint ? M(T.hint, r ? 90 : 140) : void 0, rubric: { mustInclude: (((x = T.rubric) == null ? void 0 : x.mustInclude) || []).slice(0, r ? 2 : 4).map((B) => M(B, 20)), mustNotInclude: (((R = T.rubric) == null ? void 0 : R.mustNotInclude) || []).slice(0, 2).map((B) => M(B, 20)), maxChars: ((O = T.rubric) == null ? void 0 : O.maxChars) ?? (r ? 140 : 220) }, answerKey: T.answerKey ? M(T.answerKey, r ? 160 : 260) : void 0 };
   });
-  return { narrative: { text: o, coreClaim: u, grounds: d, comparisons: f, implications: m }, structured: { text: N, toc: p, hierarchy: E, glossary: v }, mindmap: { tree: _ }, selftest: { passScorePct: 90, items: A } };
+  return { narrative: { text: c, coreClaim: u, grounds: d, comparisons: f, implications: m }, structured: { text: N, toc: p, hierarchy: E, glossary: v }, mindmap: { tree: _ }, selftest: { passScorePct: 90, items: A } };
 }
 __name(ht, "ht");
 __name2(ht, "ht");
@@ -1617,10 +1617,10 @@ function Cn(e) {
   const t = [];
   t.push("\u2160. \uBAA9\uCC28"), (n = e.toc) != null && n.length ? e.toc.forEach((i, a) => t.push(`  ${a + 1}. ${i.title}`)) : t.push("  1. \uBCF8\uBB38"), t.push(""), t.push("\u2161. \uD575\uC2EC \uC815\uB9AC(\uC704\uACC4)");
   const r = /* @__PURE__ */ __name2((i, a) => {
-    var c, l;
-    for (const o of i || []) {
+    var o, l;
+    for (const c of i || []) {
       const u = "  ".repeat(a);
-      t.push(`${u}- ${o.title}`), (c = o.keywords) != null && c.length && t.push(`${u}  \xB7 \uD575\uC2EC\uD0A4\uC6CC\uB4DC: ${o.keywords.join(" \xB7 ")}`), (o.bullets || []).forEach((d) => t.push(`${u}  \xB7 ${d}`)), (l = o.children) != null && l.length && r(o.children, a + 1);
+      t.push(`${u}- ${c.title}`), (o = c.keywords) != null && o.length && t.push(`${u}  \xB7 \uD575\uC2EC\uD0A4\uC6CC\uB4DC: ${c.keywords.join(" \xB7 ")}`), (c.bullets || []).forEach((d) => t.push(`${u}  \xB7 ${d}`)), (l = c.children) != null && l.length && r(c.children, a + 1);
     }
   }, "r");
   return r(e.hierarchy || [], 1), t.push(""), t.push("\u2162. \uC6A9\uC5B4\uC0AC\uC804"), (s = e.glossary) != null && s.length ? e.glossary.forEach((i) => t.push(`- ${i.def || `${i.term}: (\uC815\uC758 \uC5C6\uC74C)`}`)) : t.push("- (\uC6A9\uC5B4\uC0AC\uC804 \uC5C6\uC74C)"), t.join(`
@@ -1629,11 +1629,11 @@ function Cn(e) {
 __name(Cn, "Cn");
 __name2(Cn, "Cn");
 function In(e) {
-  var i, a, c, l, o, u, d, f;
+  var i, a, o, l, c, u, d, f;
   const t = [];
-  (e == null ? void 0 : e.schemaVersion) !== "ms-v4" && t.push("schemaVersion must be ms-v4"), (!((i = e == null ? void 0 : e.narrative) != null && i.coreClaim) || e.narrative.coreClaim.length < 10) && t.push("narrative.coreClaim too short"), (!Array.isArray((a = e == null ? void 0 : e.narrative) == null ? void 0 : a.grounds) || e.narrative.grounds.length < 1) && t.push("narrative.grounds must be >= 1"), (!((c = e == null ? void 0 : e.narrative) != null && c.summaryDetail) || String(e.narrative.summaryDetail).split(`
+  (e == null ? void 0 : e.schemaVersion) !== "ms-v4" && t.push("schemaVersion must be ms-v4"), (!((i = e == null ? void 0 : e.narrative) != null && i.coreClaim) || e.narrative.coreClaim.length < 10) && t.push("narrative.coreClaim too short"), (!Array.isArray((a = e == null ? void 0 : e.narrative) == null ? void 0 : a.grounds) || e.narrative.grounds.length < 1) && t.push("narrative.grounds must be >= 1"), (!((o = e == null ? void 0 : e.narrative) != null && o.summaryDetail) || String(e.narrative.summaryDetail).split(`
 
-`).length < 2) && t.push("narrative.summaryDetail must have paragraphs"), (!Array.isArray((l = e == null ? void 0 : e.structured) == null ? void 0 : l.hierarchy) || e.structured.hierarchy.length < 1) && t.push("structured.hierarchy missing"), (!Array.isArray((o = e == null ? void 0 : e.structured) == null ? void 0 : o.glossary) || e.structured.glossary.length < 1) && t.push("structured.glossary must be >= 1");
+`).length < 2) && t.push("narrative.summaryDetail must have paragraphs"), (!Array.isArray((l = e == null ? void 0 : e.structured) == null ? void 0 : l.hierarchy) || e.structured.hierarchy.length < 1) && t.push("structured.hierarchy missing"), (!Array.isArray((c = e == null ? void 0 : e.structured) == null ? void 0 : c.glossary) || e.structured.glossary.length < 1) && t.push("structured.glossary must be >= 1");
   let r = 0, n = 0, s = 0;
   for (const m of ((u = e == null ? void 0 : e.mindmap) == null ? void 0 : u.children) || [])
     for (const p of (m == null ? void 0 : m.children) || [])
@@ -1643,26 +1643,26 @@ function In(e) {
 __name(In, "In");
 __name2(In, "In");
 function Pn(e) {
-  var o, u, d, f;
+  var c, u, d, f;
   const t = [], r = (e.brief.narrative.text || "").replace(/\s+/g, ""), n = (e.standard.narrative.text || "").replace(/\s+/g, ""), s = (e.detail.narrative.text || "").replace(/\s+/g, "");
-  r.length < 40 && t.push("brief narrative too short"), n.length < r.length + 20 && t.push("standard narrative not meaningfully longer than brief"), s.length < n.length + 40 && t.push("detail narrative not meaningfully longer than standard"), r === n && t.push("brief narrative equals standard narrative"), n === s && t.push("standard narrative equals detail narrative"), (((o = e.standard.structured.glossary) == null ? void 0 : o.length) || 0) < (((u = e.brief.structured.glossary) == null ? void 0 : u.length) || 0) && t.push("standard glossary must be >= brief glossary"), (((d = e.detail.structured.glossary) == null ? void 0 : d.length) || 0) < (((f = e.standard.structured.glossary) == null ? void 0 : f.length) || 0) && t.push("detail glossary must be >= standard glossary");
+  r.length < 40 && t.push("brief narrative too short"), n.length < r.length + 20 && t.push("standard narrative not meaningfully longer than brief"), s.length < n.length + 40 && t.push("detail narrative not meaningfully longer than standard"), r === n && t.push("brief narrative equals standard narrative"), n === s && t.push("standard narrative equals detail narrative"), (((c = e.standard.structured.glossary) == null ? void 0 : c.length) || 0) < (((u = e.brief.structured.glossary) == null ? void 0 : u.length) || 0) && t.push("standard glossary must be >= brief glossary"), (((d = e.detail.structured.glossary) == null ? void 0 : d.length) || 0) < (((f = e.standard.structured.glossary) == null ? void 0 : f.length) || 0) && t.push("detail glossary must be >= standard glossary");
   const i = /* @__PURE__ */ __name2((m) => {
     let p = 0;
     for (const g of (m == null ? void 0 : m.children) || [])
       p += ((g == null ? void 0 : g.children) || []).length;
     return p;
-  }, "i"), a = i(e.brief.mindmap.tree), c = i(e.standard.mindmap.tree), l = i(e.detail.mindmap.tree);
-  return a === c && c === l || t.push(`mindmap L2 count mismatch (brief:${a}, standard:${c}, detail:${l})`), t;
+  }, "i"), a = i(e.brief.mindmap.tree), o = i(e.standard.mindmap.tree), l = i(e.detail.mindmap.tree);
+  return a === o && o === l || t.push(`mindmap L2 count mismatch (brief:${a}, standard:${o}, detail:${l})`), t;
 }
 __name(Pn, "Pn");
 __name2(Pn, "Pn");
 async function ft(e, t) {
-  var c, l, o, u;
+  var o, l, c, u;
   const r = e.env.GEMINI_API_KEY;
   if (!r)
     throw new Error("GEMINI_API_KEY missing");
   const n = e.env.GEMINI_MODEL || "gemini-2.0-flash-exp", i = await (await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${n}:generateContent?key=${r}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: t }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 8192 } }) })).json();
-  return ((u = (o = (l = (c = i == null ? void 0 : i.candidates) == null ? void 0 : c[0]) == null ? void 0 : l.content) == null ? void 0 : o.parts) == null ? void 0 : u.map((d) => d.text).join("")) || "";
+  return ((u = (c = (l = (o = i == null ? void 0 : i.candidates) == null ? void 0 : o[0]) == null ? void 0 : l.content) == null ? void 0 : c.parts) == null ? void 0 : u.map((d) => d.text).join("")) || "";
 }
 __name(ft, "ft");
 __name2(ft, "ft");
@@ -1692,11 +1692,11 @@ function Dn(e, t, r, n) {
   const s = e === "brief" ? 2 : e === "standard" ? 4 : 6;
   let i = rt(tt(t));
   const a = Math.floor(n * q[e].max);
-  let c = 0;
-  for (; vt(i).length < s && c < r.length; ) {
-    const l = rt(tt(r[c++])), o = he(i + " " + l);
-    if (o.length <= a)
-      i = o;
+  let o = 0;
+  for (; vt(i).length < s && o < r.length; ) {
+    const l = rt(tt(r[o++])), c = he(i + " " + l);
+    if (c.length <= a)
+      i = c;
     else
       break;
   }
@@ -1705,17 +1705,17 @@ function Dn(e, t, r, n) {
 __name(Dn, "Dn");
 __name2(Dn, "Dn");
 function pt(e, t, r) {
-  const n = t.length, s = M(he(r.claim || ""), e === "brief" ? 80 : 120), i = (r.grounds || []).map((p) => M(he(p), 140)).filter(Boolean), a = (r.comparisons || []).map((p) => M(he(p), 140)).filter(Boolean), c = (r.implications || []).map((p) => M(he(p), 140)).filter(Boolean);
+  const n = t.length, s = M(he(r.claim || ""), e === "brief" ? 80 : 120), i = (r.grounds || []).map((p) => M(he(p), 140)).filter(Boolean), a = (r.comparisons || []).map((p) => M(he(p), 140)).filter(Boolean), o = (r.implications || []).map((p) => M(he(p), 140)).filter(Boolean);
   let l = "";
   if (e === "brief") {
-    const p = (a[0] || i[0] || c[0] || "").trim();
+    const p = (a[0] || i[0] || o[0] || "").trim();
     l = p ? `${s}. ${p}.` : `${s}.`;
   } else if (e === "standard") {
-    const p = i.slice(0, 2), g = (a[0] || c[0] || "").trim(), v = [s];
+    const p = i.slice(0, 2), g = (a[0] || o[0] || "").trim(), v = [s];
     p.length && v.push(p.join(". ")), g && v.push(g), l = v.join(". ") + ".";
   } else {
     const p = i.slice(0, Math.max(3, Math.min(6, i.length))), g = [s, ...p].join(". ") + ".", v = [];
-    a[0] && v.push(`\uD55C\uD3B8 ${a[0]}.`), c[0] && v.push(`${c[0]}.`);
+    a[0] && v.push(`\uD55C\uD3B8 ${a[0]}.`), o[0] && v.push(`${o[0]}.`);
     const y = v.length ? v.join(" ") : i[3] ? `${i[3]}.` : "";
     l = y ? `${g}
 
@@ -1723,10 +1723,10 @@ ${y}` : g, l.includes(`
 
 `) || (l = `${g}
 
-${c[0] ? `${c[0]}.` : "\uC774 \uCC28\uC774\uB294 \uD559\uB144\uC774 \uC62C\uB77C\uAC08\uC218\uB85D \uC591\uC0C1\uC774 \uB2EC\uB77C\uC9C8 \uC218 \uC788\uC74C\uC744 \uC2DC\uC0AC\uD55C\uB2E4."}`);
+${o[0] ? `${o[0]}.` : "\uC774 \uCC28\uC774\uB294 \uD559\uB144\uC774 \uC62C\uB77C\uAC08\uC218\uB85D \uC591\uC0C1\uC774 \uB2EC\uB77C\uC9C8 \uC218 \uC788\uC74C\uC744 \uC2DC\uC0AC\uD55C\uB2E4."}`);
   }
-  const o = [...i, ...a, ...c].map((p) => rt(p)).filter(Boolean);
-  let u = Dn(e, l, o, n);
+  const c = [...i, ...a, ...o].map((p) => rt(p)).filter(Boolean);
+  let u = Dn(e, l, c, n);
   u = tt(u), z(u) && (u = vt(u).filter((g) => !z(g)).join(" ").trim(), u || (u = s ? `${s}.` : "\uD575\uC2EC \uB0B4\uC6A9\uC744 \uC694\uC57D\uD588\uB2E4."));
   let f = et(t, u, e).text;
   if (de(f) || z(f)) {
@@ -1739,9 +1739,9 @@ __name(pt, "pt");
 __name2(pt, "pt");
 function Ln(e) {
   e.post("/api/matrix", async (t) => {
-    var o, u;
-    const r = Date.now(), n = `matrix-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`, s = !!((o = t.env) != null && o.GEMINI_API_KEY && String(t.env.GEMINI_API_KEY).trim().length > 10), i = String(((u = t.env) == null ? void 0 : u.USE_MOCK) || "").toLowerCase() === "true", a = s && !i ? "phase2" : "phase1";
-    let c = null;
+    var c, u;
+    const r = Date.now(), n = `matrix-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`, s = !!((c = t.env) != null && c.GEMINI_API_KEY && String(t.env.GEMINI_API_KEY).trim().length > 10), i = String(((u = t.env) == null ? void 0 : u.USE_MOCK) || "").toLowerCase() === "true", a = s && !i ? "phase2" : "phase1";
+    let o = null;
     function l(d) {
       return { cross_ok: false, cross_errors: [d], ratios: { brief: { ratio: 0, ok: false }, standard: { ratio: 0, ok: false }, detail: { ratio: 0, ok: false } } };
     }
@@ -1766,38 +1766,38 @@ function Ln(e) {
           B = await ft(t, at), g = _t(B);
         }
         if (!g)
-          return t.json({ ok: false, error: { code: "DETAIL_JSON_PARSE_FAIL", message: "detail JSON \uD30C\uC2F1 \uC2E4\uD328" }, meta: { reqId: n, elapsedMs: Date.now() - r, phase: a, qa: c } }, 502);
+          return t.json({ ok: false, error: { code: "DETAIL_JSON_PARSE_FAIL", message: "detail JSON \uD30C\uC2F1 \uC2E4\uD328" }, meta: { reqId: n, elapsedMs: Date.now() - r, phase: a, qa: o } }, 502);
       }
       const v = In(g);
       if (v.length)
-        return t.json({ ok: false, error: { code: "DETAIL_VALIDATION_FAIL", message: v.join(" | ") }, meta: { reqId: n, elapsedMs: Date.now() - r, phase: a, qa: c } }, 422);
+        return t.json({ ok: false, error: { code: "DETAIL_VALIDATION_FAIL", message: v.join(" | ") }, meta: { reqId: n, elapsedMs: Date.now() - r, phase: a, qa: o } }, 422);
       const y = ht(g, "brief"), S = ht(g, "standard"), E = ht(g, "detail"), N = { claim: g.narrative.coreClaim || "", grounds: g.narrative.grounds || [], comparisons: g.narrative.comparisons || [], implications: g.narrative.implications || [] }, _ = pt("brief", m, N), K = pt("standard", m, N), F = pt("detail", m, N);
       y.narrative.text = _.text, S.narrative.text = K.text, E.narrative.text = F.text, y.narrative.ratio = _.ratio, S.narrative.ratio = K.ratio, E.narrative.ratio = F.ratio;
       const C = [];
       if ((de(y.narrative.text) || de(S.narrative.text) || de(E.narrative.text)) && C.push("ELLIPSIS_OR_TRUNCATION_FOUND"), (z(y.narrative.text) || z(S.narrative.text) || z(E.narrative.text)) && C.push("FORBIDDEN_TOPIC_TOKEN_FOUND"), C.length && a === "phase2")
-        return t.json({ ok: false, error: { code: "NARRATIVE_FORTRESS_FAIL", message: C.join(" | ") }, meta: { reqId: n, elapsedMs: Date.now() - r, phase: a, qa: c } }, 422);
+        return t.json({ ok: false, error: { code: "NARRATIVE_FORTRESS_FAIL", message: C.join(" | ") }, meta: { reqId: n, elapsedMs: Date.now() - r, phase: a, qa: o } }, 422);
       console.log("[Matrix V4] FORTRESS narrative-quality:", { brief_ratio: _.ratio, standard_ratio: K.ratio, detail_ratio: F.ratio, hardFailReasons: C });
       const A = { narrative: { ...y.narrative, ratio: y.narrative.ratio, warnings: C }, structured: y.structured, mindmap: y.mindmap, selftest: y.selftest }, j = { narrative: { ...S.narrative, ratio: S.narrative.ratio, warnings: C }, structured: S.structured, mindmap: S.mindmap, selftest: S.selftest };
       E.narrative.warnings = C;
       const T = Pn({ brief: A, standard: j, detail: E });
       if (T.length && a === "phase2")
-        return t.json({ ok: false, error: { code: "LEVEL_SEPARATION_FAIL", message: T.join(" | ") }, meta: { reqId: n, elapsedMs: Date.now() - r, phase: a, qa: c } }, 422);
+        return t.json({ ok: false, error: { code: "LEVEL_SEPARATION_FAIL", message: T.join(" | ") }, meta: { reqId: n, elapsedMs: Date.now() - r, phase: a, qa: o } }, 422);
       let x = { brief: A.narrative.text, standard: j.narrative.text, detail: E.narrative.text };
-      if (c = null, a === "phase2")
+      if (o = null, a === "phase2")
         try {
           const O = /* @__PURE__ */ __name2(async (at) => await ft(t, at), "O"), B = await Rn({ originalText: m, model: t.env.GEMINI_MODEL || "gemini", callLLM: O, db: t.env.DB, narrative: x, structured: { brief: A.structured, standard: j.structured, detail: E.structured }, mindmap: { brief: A.mindmap, standard: j.mindmap, detail: E.mindmap } });
-          x = B.narrative, c = B.qa, (de(x.brief) || de(x.standard) || de(x.detail) || z(x.brief) || z(x.standard) || z(x.detail)) && (x = { brief: A.narrative.text, standard: j.narrative.text, detail: E.narrative.text }, c = c || null), A.narrative.text = x.brief, j.narrative.text = x.standard, E.narrative.text = x.detail, console.log("[Matrix V4] Phase 2 Quality Gate \uC644\uB8CC:", { cross_ok: c == null ? void 0 : c.cross_ok, ratios: c == null ? void 0 : c.ratios });
+          x = B.narrative, o = B.qa, (de(x.brief) || de(x.standard) || de(x.detail) || z(x.brief) || z(x.standard) || z(x.detail)) && (x = { brief: A.narrative.text, standard: j.narrative.text, detail: E.narrative.text }, o = o || null), A.narrative.text = x.brief, j.narrative.text = x.standard, E.narrative.text = x.detail, console.log("[Matrix V4] Phase 2 Quality Gate \uC644\uB8CC:", { cross_ok: o == null ? void 0 : o.cross_ok, ratios: o == null ? void 0 : o.ratios });
         } catch (O) {
-          console.error("[Matrix V4] Phase 2 \uC624\uB958:", O.message), c = null;
+          console.error("[Matrix V4] Phase 2 \uC624\uB958:", O.message), o = null;
         }
-      if (a === "phase1" || !c) {
+      if (a === "phase1" || !o) {
         const O = ur({ narrative: x, structured: { brief: A.structured, standard: j.structured, detail: E.structured }, mindmap: { brief: A.mindmap, standard: j.mindmap, detail: E.mindmap } });
-        c = { cross_ok: O.ok, cross_errors: O.errors.concat(C.map((B) => `FORTRESS_${B}`)), ratios: { brief: { ratio: A.narrative.ratio, rule: q.brief, ok: A.narrative.ratio >= q.brief.min && A.narrative.ratio <= q.brief.max }, standard: { ratio: j.narrative.ratio, rule: q.standard, ok: j.narrative.ratio >= q.standard.min && j.narrative.ratio <= q.standard.max }, detail: { ratio: E.narrative.ratio, rule: q.detail, ok: E.narrative.ratio >= q.detail.min && E.narrative.ratio <= q.detail.max } } }, console.log("[Matrix V4] Phase 1 \uC9C4\uB2E8 \uC644\uB8CC (FORTRESS):", { cross_ok: c.cross_ok, ratios_ok: [c.ratios.brief.ok, c.ratios.standard.ok, c.ratios.detail.ok] });
+        o = { cross_ok: O.ok, cross_errors: O.errors.concat(C.map((B) => `FORTRESS_${B}`)), ratios: { brief: { ratio: A.narrative.ratio, rule: q.brief, ok: A.narrative.ratio >= q.brief.min && A.narrative.ratio <= q.brief.max }, standard: { ratio: j.narrative.ratio, rule: q.standard, ok: j.narrative.ratio >= q.standard.min && j.narrative.ratio <= q.standard.max }, detail: { ratio: E.narrative.ratio, rule: q.detail, ok: E.narrative.ratio >= q.detail.min && E.narrative.ratio <= q.detail.max } } }, console.log("[Matrix V4] Phase 1 \uC9C4\uB2E8 \uC644\uB8CC (FORTRESS):", { cross_ok: o.cross_ok, ratios_ok: [o.ratios.brief.ok, o.ratios.standard.ok, o.ratios.detail.ok] });
       }
-      const R = { ok: true, data: { schemaVersion: "ms-v4", levels: { brief: A, standard: j, detail: E }, views: { narrative: { brief: A.narrative, standard: j.narrative, detail: E.narrative }, structured: { brief: A.structured, standard: j.structured, detail: E.structured }, mindmap: { brief: A.mindmap, standard: j.mindmap, detail: E.mindmap }, selftest: { brief: A.selftest, standard: j.selftest, detail: E.selftest } } }, meta: { reqId: n, elapsedMs: Date.now() - r, phase: a, qa: c }, result: { qa: c } };
+      const R = { ok: true, data: { schemaVersion: "ms-v4", levels: { brief: A, standard: j, detail: E }, views: { narrative: { brief: A.narrative, standard: j.narrative, detail: E.narrative }, structured: { brief: A.structured, standard: j.structured, detail: E.structured }, mindmap: { brief: A.mindmap, standard: j.mindmap, detail: E.mindmap }, selftest: { brief: A.selftest, standard: j.selftest, detail: E.selftest } } }, meta: { reqId: n, elapsedMs: Date.now() - r, phase: a, qa: o }, result: { qa: o } };
       return t.json(R, 200);
     } catch (d) {
-      return t.json({ ok: false, error: { code: "MATRIX_V4_ERROR", message: (d == null ? void 0 : d.message) || String(d) }, meta: { reqId: n, elapsedMs: Date.now() - r, phase: a, qa: c } }, 500);
+      return t.json({ ok: false, error: { code: "MATRIX_V4_ERROR", message: (d == null ? void 0 : d.message) || String(d) }, meta: { reqId: n, elapsedMs: Date.now() - r, phase: a, qa: o } }, 500);
     }
   }), e.post("/api/selftest/grade", async (t) => {
     try {
@@ -1857,13 +1857,13 @@ function qn(e) {
 __name(qn, "qn");
 __name2(qn, "qn");
 function Bn(e, t) {
-  const r = Math.max(60, ke(e)), n = 0.53, s = Math.floor(r * n * 0.85), i = Math.ceil(r * n * 1.15), a = Math.floor(r * n), c = Math.ceil(r * 0.05);
-  return { base: r, min: s, max: i, keep: a, tol: c };
+  const r = Math.max(60, ke(e)), n = 0.53, s = Math.floor(r * n * 0.85), i = Math.ceil(r * n * 1.15), a = Math.floor(r * n), o = Math.ceil(r * 0.05);
+  return { base: r, min: s, max: i, keep: a, tol: o };
 }
 __name(Bn, "Bn");
 __name2(Bn, "Bn");
 function Un(e) {
-  const t = String((e == null ? void 0 : e.text) || "").trim(), r = qn((e == null ? void 0 : e.viewType) || "narrative"), n = Fn(e == null ? void 0 : e.level), s = "detail", { base: i, min: a, max: c } = Bn(t), l = String((e == null ? void 0 : e.grade) || "general").toLowerCase(), o = String((e == null ? void 0 : e.subject) || "general").toLowerCase(), d = ["\uB2F9\uC2E0\uC740 \uD559\uC2B5 \uCF58\uD150\uCE20\uB97C \uCC38\uACE0\uC11C/\uAD50\uACFC\uC11C \uC218\uC900\uC73C\uB85C \uC7AC\uAD6C\uC131\uD558\uB294 \uC9C0\uC2DD \uAD6C\uC870\uD654 \uC5D4\uC9C4\uC785\uB2C8\uB2E4.", `
+  const t = String((e == null ? void 0 : e.text) || "").trim(), r = qn((e == null ? void 0 : e.viewType) || "narrative"), n = Fn(e == null ? void 0 : e.level), s = "detail", { base: i, min: a, max: o } = Bn(t), l = String((e == null ? void 0 : e.grade) || "general").toLowerCase(), c = String((e == null ? void 0 : e.subject) || "general").toLowerCase(), d = ["\uB2F9\uC2E0\uC740 \uD559\uC2B5 \uCF58\uD150\uCE20\uB97C \uCC38\uACE0\uC11C/\uAD50\uACFC\uC11C \uC218\uC900\uC73C\uB85C \uC7AC\uAD6C\uC131\uD558\uB294 \uC9C0\uC2DD \uAD6C\uC870\uD654 \uC5D4\uC9C4\uC785\uB2C8\uB2E4.", `
 [\uAD6C\uC870\uD654 \uD575\uC2EC \uC9C0\uCE68(\uAC15\uC81C)]
 - \uD559\uC2B5 \uB2E8\uC704(Learning Unit):
   \xB7 \uCD08\uB4F1(elem): \uC911\uB2E8\uC6D0+\uC18C\uB2E8\uC6D0\uC744 \uD558\uB098\uC758 \uB2E8\uC704\uB85C \uBB36\uC5B4 \uAD6C\uC870\uD654(\uBB36\uAE30)
@@ -1882,13 +1882,13 @@ function Un(e) {
   \xB7 root -> question(1\uB808\uBCA8) -> keyword(2\uB808\uBCA8) \uD56D\uC0C1 \uC720\uC9C0
   \xB7 \uC2EC\uD654(advanced)\uB294 children\uC73C\uB85C \uB123\uB418 \uAE30\uBCF8 collapsed
   \xB7 brief/standard/detail\uC740 downsample\uC774 \uB9CC\uB4E4\uBBC0\uB85C \uC9C0\uAE08\uC740 detail\uB9CC \uC0DD\uC131
-`.trim(), `[\uC785\uB825 \uBA54\uD0C0] grade=${l}, subject=${o}, requestedLevel=${n}, forcedLevel=${s}, viewType=${r}`, "\uC544\uB798 [\uCD9C\uB825 \uC2A4\uD0A4\uB9C8] \uC678\uC5D0\uB294 \uC5B4\uB5A4 \uD14D\uC2A4\uD2B8\uB3C4 \uCD9C\uB825\uD558\uC9C0 \uB9C8\uC138\uC694.", "\uC6D0\uBB38:", t].join(`
+`.trim(), `[\uC785\uB825 \uBA54\uD0C0] grade=${l}, subject=${c}, requestedLevel=${n}, forcedLevel=${s}, viewType=${r}`, "\uC544\uB798 [\uCD9C\uB825 \uC2A4\uD0A4\uB9C8] \uC678\uC5D0\uB294 \uC5B4\uB5A4 \uD14D\uC2A4\uD2B8\uB3C4 \uCD9C\uB825\uD558\uC9C0 \uB9C8\uC138\uC694.", "\uC6D0\uBB38:", t].join(`
 `), f = `
 [\uCD9C\uB825 \uC2A4\uD0A4\uB9C8: narrative]
 {
   "level": "detail",
   "viewType": "narrative",
-  "meta": { "grade": "${l}", "subject": "${o}", "charTarget": { "min": ${a}, "max": ${c}, "base": ${i} } },
+  "meta": { "grade": "${l}", "subject": "${c}", "charTarget": { "min": ${a}, "max": ${o}, "base": ${i} } },
   "narrative": {
     "title": "\uD55C \uC904 \uC81C\uBAA9(10~18\uC790)",
     "paragraphs": [
@@ -1906,7 +1906,7 @@ function Un(e) {
 {
   "level": "detail",
   "viewType": "structured",
-  "meta": { "grade": "${l}", "subject": "${o}", "charTarget": { "min": ${a}, "max": ${c}, "base": ${i} } },
+  "meta": { "grade": "${l}", "subject": "${c}", "charTarget": { "min": ${a}, "max": ${o}, "base": ${i} } },
   "structured": {
     "outline": [
       { "h": "\uB300\uC8FC\uC81C(\u2160/\u2161/\u2162 \uB290\uB08C\uC758 \uC81C\uBAA9)", "points": [ { "k": "\uD575\uC2EC \uB17C\uC810(1\uBB38\uC7A5)", "sub": ["\uADFC\uAC701", "\uADFC\uAC702"] } ] }
@@ -1924,7 +1924,7 @@ function Un(e) {
 {
   "level": "detail",
   "viewType": "mindmap",
-  "meta": { "grade": "${l}", "subject": "${o}", "charTarget": { "min": ${a}, "max": ${c}, "base": ${i} } },
+  "meta": { "grade": "${l}", "subject": "${c}", "charTarget": { "min": ${a}, "max": ${o}, "base": ${i} } },
   "mindmap": {
     "title": "\uD559\uC2B5 \uB2E8\uC704(\uC911\uB2E8\uC6D0/\uC18C\uB2E8\uC6D0\uBA85 \uB610\uB294 \uD575\uC2EC \uC8FC\uC81C)",
     "children": [
@@ -1953,7 +1953,7 @@ function Un(e) {
 {
   "level": "detail",
   "viewType": "selftest",
-  "meta": { "grade": "${l}", "subject": "${o}", "passScore": 90, "charTarget": { "min": ${a}, "max": ${c}, "base": ${i} } },
+  "meta": { "grade": "${l}", "subject": "${c}", "passScore": 90, "charTarget": { "min": ${a}, "max": ${o}, "base": ${i} } },
   "selftest": {
     "items": [
       {
@@ -2015,9 +2015,9 @@ function bt(e) {
     return [{ title: "\uBCF8\uBB38", body: ye(e) }];
   const n = [];
   for (let s = 0; s < r.length; s++) {
-    const i = r[s], a = r[s + 1], c = i.startIdx, l = a ? a.startIdx : t.length, o = i.title, u = t.slice(c + 1, l).join(`
+    const i = r[s], a = r[s + 1], o = i.startIdx, l = a ? a.startIdx : t.length, c = i.title, u = t.slice(o + 1, l).join(`
 `).trim();
-    n.push({ title: o, body: u });
+    n.push({ title: c, body: u });
   }
   return n.filter((s) => s.body.length > 0);
 }
@@ -2054,14 +2054,14 @@ function Fe(e, t, r) {
   if (ke(i) <= s)
     return i;
   const a = it(i);
-  let c = "";
+  let o = "";
   for (const l of a) {
-    const o = (c ? c + " " : "") + l;
-    if (ke(o) > s)
+    const c = (o ? o + " " : "") + l;
+    if (ke(c) > s)
       break;
-    c = o;
+    o = c;
   }
-  return c || a[0] || i.slice(0, Math.min(i.length, 200));
+  return o || a[0] || i.slice(0, Math.min(i.length, 200));
 }
 __name(Fe, "Fe");
 __name2(Fe, "Fe");
@@ -2073,20 +2073,20 @@ __name2(mt, "mt");
 function Vn(e) {
   const t = bt(e), r = { id: "root", title: "\uD575\uC2EC \uAD6C\uC870", type: "root", collapsed: false, children: [] }, n = /* @__PURE__ */ new Map();
   return t.forEach((s, i) => {
-    const a = mt("sec", i + 1), c = { id: a, title: s.title, type: "section", collapsed: false, children: [] }, l = Te(s.body, 6), o = [];
+    const a = mt("sec", i + 1), o = { id: a, title: s.title, type: "section", collapsed: false, children: [] }, l = Te(s.body, 6), c = [];
     for (const S of l)
       (S.match(/[가-힣A-Za-z·/()]{2,20}/g) || []).slice(0, 8).forEach((N) => {
         const _ = N.replace(/[()]/g, "").trim();
-        _.length >= 2 && _.length <= 12 && !/^(그리고|하지만|또한|이와|이에|우선|한편)$/.test(_) && o.push(_);
+        _.length >= 2 && _.length <= 12 && !/^(그리고|하지만|또한|이와|이에|우선|한편)$/.test(_) && c.push(_);
       });
     const u = /* @__PURE__ */ new Map();
-    o.forEach((S) => u.set(S, (u.get(S) || 0) + 1));
+    c.forEach((S) => u.set(S, (u.get(S) || 0) + 1));
     const d = Array.from(u.entries()).sort((S, E) => E[1] - S[1]).map((S) => S[0]).filter((S) => S.length <= 10).slice(0, 3), f = Te(s.body, 3).join(" "), m = Te(s.body, 2).join(" "), p = Te(s.body, 1).join(" "), g = { id: mt(a + "_kw", 1), title: "\uD575\uC2EC \uAC1C\uB150", type: "keyword", collapsed: false, pack: d, explain: f, explainStandard: m, explainBrief: p, children: [] };
     d.forEach((S) => {
       n.has(S) || n.set(S, `\uBCF8\uBB38 \uB9E5\uB77D\uC5D0\uC11C "${S}"\uC758 \uD575\uC2EC \uC758\uBBF8\uB97C \uC694\uC57D\uD558\uBA74, ${Te(s.body, 1)[0] || "\uAD00\uB828 \uB0B4\uC6A9\uC758 \uD575\uC2EC \uAC1C\uB150\uC774\uB2E4."}`);
     });
     const y = it(s.body).filter((S) => /(\d{4}|%|가산점|전형|평가|프로그램|운영)/.test(S)).slice(0, 2);
-    y.length && g.children.push({ id: mt(a + "_adv", 1), title: y.join(" "), type: "advanced", collapsed: true, children: [] }), c.children.push(g), r.children.push(c);
+    y.length && g.children.push({ id: mt(a + "_adv", 1), title: y.join(" "), type: "advanced", collapsed: true, children: [] }), o.children.push(g), r.children.push(o);
   }), { tree: r, glossary: Array.from(n.entries()).map(([s, i]) => ({ term: s, def: i })) };
 }
 __name(Vn, "Vn");
@@ -2103,13 +2103,13 @@ function Jn(e, t, r, n) {
   const s = (t.children || []).map((u) => u.title), a = (hr(t, n).children || []).map((u) => {
     const d = (u.children || []).find((m) => m.type === "keyword"), f = Array.isArray(d == null ? void 0 : d.pack) ? d.pack : typeof (d == null ? void 0 : d.pack) == "string" ? [d.pack] : [];
     return { title: u.title, key: f.slice(0, 3), summary: (d == null ? void 0 : d.explain) || "" };
-  }), c = n === "brief" ? 4 : n === "standard" ? 6 : 10, l = r.slice(0, c).map((u) => ({ term: u.term, def: Fe(e, u.def, n) })), o = [];
-  return o.push("\u2160. \uBAA9\uCC28"), s.forEach((u, d) => o.push(`  ${d + 1}. ${u}`)), o.push(""), o.push("\u2161. \uD575\uC2EC \uC815\uB9AC(\uC704\uACC4)"), a.forEach((u, d) => {
+  }), o = n === "brief" ? 4 : n === "standard" ? 6 : 10, l = r.slice(0, o).map((u) => ({ term: u.term, def: Fe(e, u.def, n) })), c = [];
+  return c.push("\u2160. \uBAA9\uCC28"), s.forEach((u, d) => c.push(`  ${d + 1}. ${u}`)), c.push(""), c.push("\u2161. \uD575\uC2EC \uC815\uB9AC(\uC704\uACC4)"), a.forEach((u, d) => {
     var f;
-    o.push(`  ${d + 1}. ${u.title}`), (f = u.key) != null && f.length && o.push(`     - \uD575\uC2EC\uD0A4\uC6CC\uB4DC: ${u.key.join(" \xB7 ")}`), u.summary && o.push(`     - \uC694\uC9C0: ${Fe(e, u.summary, n)}`), o.push("");
-  }), o.push("\u2162. \uC6A9\uC5B4\uC0AC\uC804"), l.forEach((u) => {
-    o.push(`  - ${u.term}: ${u.def}`);
-  }), { kind: "reference", toc: s, sections: a, glossary: l, renderText: o.join(`
+    c.push(`  ${d + 1}. ${u.title}`), (f = u.key) != null && f.length && c.push(`     - \uD575\uC2EC\uD0A4\uC6CC\uB4DC: ${u.key.join(" \xB7 ")}`), u.summary && c.push(`     - \uC694\uC9C0: ${Fe(e, u.summary, n)}`), c.push("");
+  }), c.push("\u2162. \uC6A9\uC5B4\uC0AC\uC804"), l.forEach((u) => {
+    c.push(`  - ${u.term}: ${u.def}`);
+  }), { kind: "reference", toc: s, sections: a, glossary: l, renderText: c.join(`
 `) };
 }
 __name(Jn, "Jn");
@@ -2117,8 +2117,8 @@ __name2(Jn, "Jn");
 function zn(e, t) {
   const r = bt(e), n = t === "brief" ? 2 : t === "standard" ? 4 : 7, s = [];
   r.forEach((a) => {
-    const c = t === "brief" || t === "standard" ? 1 : 2;
-    s.push(...Te(a.body, c));
+    const o = t === "brief" || t === "standard" ? 1 : 2;
+    s.push(...Te(a.body, o));
   });
   const i = s.slice(0, n).join(" ");
   return Fe(e, i, t);
@@ -2127,11 +2127,11 @@ __name(zn, "zn");
 __name2(zn, "zn");
 function Xn(e, t) {
   bt(e);
-  const r = it(e), n = [], s = r.find((c) => /(일컫|정의|란)/.test(c)) || r[0] || "";
+  const r = it(e), n = [], s = r.find((o) => /(일컫|정의|란)/.test(o)) || r[0] || "";
   s && n.push({ id: "q1", type: "short", question: '\uBCF8\uBB38\uC5D0\uC11C \uB9D0\uD558\uB294 "\uC120\uD589\uD559\uC2B5"\uC740 \uBB34\uC5C7\uC744 \uC758\uBBF8\uD558\uB098\uC694?', answer: s, rubric: "\uC6D0\uBB38 \uC815\uC758 \uBB38\uC7A5\uC744 \uC694\uC9C0\uB85C \uC7AC\uC9C4\uC220", sourceHint: s });
-  const i = r.find((c) => /(이에 반해|반면|대조)/.test(c));
+  const i = r.find((o) => /(이에 반해|반면|대조)/.test(o));
   i && n.push({ id: "q2", type: "compare", question: "\uBCF8\uBB38\uC5D0\uC11C \uAD50\uC721\uBD80 \uAD00\uC810\uACFC \uC0AC\uAD50\uC721 \uAD00\uC810\uC740 \uC120\uD589\uD559\uC2B5\uC744 \uC5B4\uB5BB\uAC8C \uB2E4\uB974\uAC8C \uBCF4\uB098\uC694? \uD575\uC2EC \uCC28\uC774\uB97C 2\uAC00\uC9C0\uB85C \uC815\uB9AC\uD558\uC138\uC694.", answer: "\uAD50\uC721\uBD80\uB294 \uC120\uD589\uD559\uC2B5\uC774 \uACF5\uAD50\uC721 \uC815\uC0C1\uD654\uB97C \uBC29\uD574\uD558\uACE0 \uACA9\uCC28/\uBD80\uC815\uC801 \uC601\uD5A5 \uC694\uC778\uC774 \uB41C\uB2E4\uACE0 \uBCF8\uB2E4. \uC0AC\uAD50\uC721\uC740 \uC608\uC2B5\uACFC \uAD6C\uBD84\uD558\uBA70 \uC218\uC5C5 \uC131\uACFC\xB7\uC790\uC2E0\uAC10\xB7\uD765\uBBF8\uB97C \uB192\uC77C \uC218 \uC788\uB2E4\uACE0 \uBCF8\uB2E4.", rubric: "\uAD00\uC810 2\uAC1C(\uAD50\uC721\uBD80/\uC0AC\uAD50\uC721) \uBAA8\uB450 \uC5B8\uAE09 + \uCC28\uC774 2\uAC00\uC9C0", sourceHint: i });
-  const a = r.find((c) => /(%|\d{4}|전형|가산점|비율)/.test(c));
+  const a = r.find((o) => /(%|\d{4}|전형|가산점|비율)/.test(o));
   return a && n.push({ id: "q3", type: "evidence", question: "\uBCF8\uBB38\uC5D0\uC11C \uC81C\uC2DC\uB41C \uC218\uCE58/\uADFC\uAC70 1\uAC00\uC9C0\uB97C \uACE8\uB77C, \uADF8\uAC83\uC774 \uC65C \uC911\uC694\uD558\uB2E4\uACE0 \uB9D0\uD558\uB294\uC9C0 \uD55C \uBB38\uC7A5\uC73C\uB85C \uC124\uBA85\uD558\uC138\uC694.", answer: a, rubric: "\uC218\uCE58/\uADFC\uAC70 1\uAC1C \uC815\uD655\uD788 \uC81C\uC2DC + \uC758\uBBF8 1\uBB38\uC7A5", sourceHint: a }), n.slice(0, 4);
 }
 __name(Xn, "Xn");
@@ -2140,17 +2140,17 @@ function Yn(e, t) {
   let r = e.length, n = 0;
   const s = [];
   for (const a of e) {
-    const c = ((t == null ? void 0 : t[a.id]) || "").trim();
-    if (!c) {
+    const o = ((t == null ? void 0 : t[a.id]) || "").trim();
+    if (!o) {
       s.push({ id: a.id, ok: false, score: 0 });
       continue;
     }
-    const o = (String(a.sourceHint || a.answer || "").match(/[가-힣A-Za-z0-9·/]{2,}/g) || []).map((p) => p.replace(/[()]/g, "")).filter(Boolean), u = Array.from(new Set(o)).slice(0, 8);
+    const c = (String(a.sourceHint || a.answer || "").match(/[가-힣A-Za-z0-9·/]{2,}/g) || []).map((p) => p.replace(/[()]/g, "")).filter(Boolean), u = Array.from(new Set(c)).slice(0, 8);
     let d = 0;
     u.forEach((p) => {
-      c.includes(p) && d++;
+      o.includes(p) && d++;
     });
-    const f = d >= 2 || c.length >= 30, m = f ? 1 : d === 1 ? 0.5 : 0;
+    const f = d >= 2 || o.length >= 30, m = f ? 1 : d === 1 ? 0.5 : 0;
     n += m, s.push({ id: a.id, ok: f, score: m, hit: d });
   }
   const i = r ? Math.round(n / r * 100) : 0;
@@ -2161,8 +2161,8 @@ __name2(Yn, "Yn");
 function Ct(e) {
   const t = ye(e), { tree: r, glossary: n } = Vn(t), s = { originalMeta: { textHash: wt(t), chars: t.length, ts: He() }, modes: {} };
   return ["detail", "standard", "brief"].forEach((i) => {
-    const a = zn(t, i), c = Jn(t, r, n, i), l = hr(r, i), o = Xn(t), d = Nt(t, a, i).ok ? a : Fe(t, a, i), f = c.renderText || "", m = Nt(t, f, i);
-    c.renderText = m.ok ? f : Fe(t, f, i), s.modes[i] = { narrative: d, structured: c, mindmap: { tree: l }, selftest: o };
+    const a = zn(t, i), o = Jn(t, r, n, i), l = hr(r, i), c = Xn(t), d = Nt(t, a, i).ok ? a : Fe(t, a, i), f = o.renderText || "", m = Nt(t, f, i);
+    o.renderText = m.ok ? f : Fe(t, f, i), s.modes[i] = { narrative: d, structured: o, mindmap: { tree: l }, selftest: c };
   }), s;
 }
 __name(Ct, "Ct");
@@ -2175,24 +2175,24 @@ X.post("/api/engine", async (e) => {
   var m, p, g, v, y, S, E;
   const t = await e.req.json().catch(() => ({})), r = String((t == null ? void 0 : t.text) || ""), n = (t == null ? void 0 : t.mode) === "brief" || (t == null ? void 0 : t.mode) === "standard" || (t == null ? void 0 : t.mode) === "detail" ? t.mode : "standard", s = (t == null ? void 0 : t.viewType) === "narrative" || (t == null ? void 0 : t.viewType) === "structured" || (t == null ? void 0 : t.viewType) === "mindmap" || (t == null ? void 0 : t.viewType) === "selftest" ? t.viewType : "narrative";
   String((t == null ? void 0 : t.userId) || "anon");
-  const i = String((t == null ? void 0 : t.grade) || "general"), a = String((t == null ? void 0 : t.subject) || "general"), c = (t == null ? void 0 : t.useGemini) === true, l = ye(r);
+  const i = String((t == null ? void 0 : t.grade) || "general"), a = String((t == null ? void 0 : t.subject) || "general"), o = (t == null ? void 0 : t.useGemini) === true, l = ye(r);
   if (l.length < 5)
     return e.json({ ok: false, error: "text_too_short", message: "\uC785\uB825\uC740 5\uC790 \uC774\uC0C1\uC774\uC5B4\uC57C \uD569\uB2C8\uB2E4." }, 400);
-  let o = "v5-local", u;
-  if (c && e.env.GEMINI_API_KEY)
+  let c = "v5-local", u;
+  if (o && e.env.GEMINI_API_KEY)
     try {
       const N = Un({ text: l, viewType: s, level: "detail", grade: i, subject: a }), _ = e.env.GEMINI_MODEL || "gemini-2.0-flash-exp", F = await (await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${_}:generateContent?key=${e.env.GEMINI_API_KEY}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: N }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 8192 } }) })).json(), A = (((y = (v = (g = (p = (m = F == null ? void 0 : F.candidates) == null ? void 0 : m[0]) == null ? void 0 : p.content) == null ? void 0 : g.parts) == null ? void 0 : v[0]) == null ? void 0 : y.text) || "").match(/\{[\s\S]*\}/);
       if (A) {
         const j = JSON.parse(A[0]);
-        u = { originalMeta: { textHash: wt(l), chars: l.length, ts: He() }, modes: { detail: { [s]: j }, standard: { [s]: j }, brief: { [s]: j } } }, o = "gemini-" + _;
+        u = { originalMeta: { textHash: wt(l), chars: l.length, ts: He() }, modes: { detail: { [s]: j }, standard: { [s]: j }, brief: { [s]: j } } }, c = "gemini-" + _;
       } else
         throw new Error("Gemini \uC751\uB2F5\uC744 JSON\uC73C\uB85C \uD30C\uC2F1\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.");
     } catch (N) {
-      console.error("[Gemini Error]", N), u = Ct(l), o = "v5-local-fallback";
+      console.error("[Gemini Error]", N), u = Ct(l), c = "v5-local-fallback";
     }
   else
     u = Ct(l);
-  const d = (E = (S = u.modes) == null ? void 0 : S[n]) == null ? void 0 : E[s], f = { engine: o, mode: n, viewType: s, ts: He(), textHash: u.originalMeta.textHash, grade: i, subject: a };
+  const d = (E = (S = u.modes) == null ? void 0 : S[n]) == null ? void 0 : E[s], f = { engine: c, mode: n, viewType: s, ts: He(), textHash: u.originalMeta.textHash, grade: i, subject: a };
   return e.json({ ok: true, data: d, allSummaries: u.modes, meta: f });
 });
 X.post("/api/selftest/score", async (e) => {
@@ -2206,7 +2206,7 @@ X.post("/api/saveSummary", async (e) => {
   const r = await e.req.json().catch(() => ({})), n = String((r == null ? void 0 : r.userId) || "anon"), s = ye(String((r == null ? void 0 : r.originalText) || "")), i = r == null ? void 0 : r.allSummaries;
   if (!s || !i)
     return e.json({ ok: false, error: "bad_request" }, 400);
-  const a = String((r == null ? void 0 : r.id) || `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`), c = He(), l = wt(s), o = JSON.stringify(i);
+  const a = String((r == null ? void 0 : r.id) || `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`), o = He(), l = wt(s), c = JSON.stringify(i);
   return await t.prepare(`
     INSERT INTO summaries (id, userId, createdAt, updatedAt, textHash, originalText, allSummariesJson)
     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -2215,7 +2215,7 @@ X.post("/api/saveSummary", async (e) => {
       textHash=excluded.textHash,
       originalText=excluded.originalText,
       allSummariesJson=excluded.allSummariesJson
-  `).bind(a, n, c, c, l, s, o).run(), e.json({ ok: true, id: a, textHash: l, ts: c });
+  `).bind(a, n, o, o, l, s, c).run(), e.json({ ok: true, id: a, textHash: l, ts: o });
 });
 X.get("/api/loadSummary", async (e) => {
   const t = e.env.DB;
@@ -2276,22 +2276,22 @@ function es(e, t, r) {
     const S = r === 1 ? e.hint1 || "\uD78C\uD2B8: \uBCF8\uBB38/\uC694\uC57D\uC5D0\uC11C \uAD00\uB828 \uBB38\uC7A5\uC744 \uCC3E\uC544\uBCF4\uC138\uC694." : r === 2 ? e.hint2 || "\uD78C\uD2B8: \uD575\uC2EC \uC218\uCE58/\uB300\uC870 \uD45C\uD604\uC744 \uC911\uC2EC\uC73C\uB85C \uB2E4\uC2DC \uD655\uC778\uD558\uC138\uC694." : void 0, E = r >= 3 ? e.explanation || e.answerKey || "\uD574\uC124: \uC694\uC57D\uC758 \uD575\uC2EC \uADFC\uAC70\uB97C \uCC38\uACE0\uD558\uC138\uC694." : void 0;
     return { id: e.id, score: 0, maxScore: s, correct: false, feedback: "\uBBF8\uC751\uB2F5", nextAction: "retry", hintToShow: S, explanationToShow: E };
   }
-  const i = ((p = e.rubric) == null ? void 0 : p.mustIncludeAny) || [], a = ((g = e.rubric) == null ? void 0 : g.mustIncludeAll) || [], c = ((v = e.rubric) == null ? void 0 : v.forbid) || [], l = (y = e.rubric) == null ? void 0 : y.maxChars;
-  let o = 100, u = [];
-  l && n.length > l && (o -= 15, u.push(`\uBD84\uB7C9 \uCD08\uACFC(-15): ${n.length}/${l}`)), c.length && Pt(n, c) && (o -= 20, u.push("\uAE08\uC9C0 \uD0A4\uC6CC\uB4DC \uD3EC\uD568(-20)")), a.length && !Qn(n, a) && (o -= 40, u.push("\uD544\uC218 \uC694\uC18C \uC77C\uBD80 \uB204\uB77D(-40)")), i.length && !Pt(n, i) && (o -= 25, u.push("\uD575\uC2EC \uD0A4\uC6CC\uB4DC \uBBF8\uD3EC\uD568(-25)")), o = Zn(o, 0, 100);
-  const d = o >= 90, f = !d && r === 1 ? e.hint1 || "\uD78C\uD2B8: \uC694\uC57D\uC5D0\uC11C \uD575\uC2EC \uC8FC\uC7A5/\uADFC\uAC70\uB97C \uCC3E\uC544 \uB2E8\uC5B4\uB85C \uBA3C\uC800 \uC801\uC5B4\uBCF4\uC138\uC694." : !d && r === 2 ? e.hint2 || "\uD78C\uD2B8: \uC218\uCE58\xB7\uB300\uC870(\uBC18\uBA74/\uBE44\uD574)\xB7\uACB0\uB860 \uBB38\uC7A5\uC744 \uC911\uC2EC\uC73C\uB85C \uB2E4\uC2DC \uAD6C\uC131\uD558\uC138\uC694." : void 0, m = !d && r >= 3 ? e.explanation || e.answerKey || "\uD574\uC124: \uC694\uC57D\uC758 \uD575\uC2EC \uADFC\uAC70\uC640 \uBE44\uAD50 \uD3EC\uC778\uD2B8\uB97C \uBC18\uC601\uD574\uC57C \uD569\uB2C8\uB2E4." : void 0;
-  return { id: e.id, score: o, maxScore: s, correct: d, feedback: u.length ? u.join(" / ") : "\uCDA9\uBD84\uD788 \uC815\uD655\uD569\uB2C8\uB2E4.", nextAction: d ? "pass" : "retry", hintToShow: f, explanationToShow: m };
+  const i = ((p = e.rubric) == null ? void 0 : p.mustIncludeAny) || [], a = ((g = e.rubric) == null ? void 0 : g.mustIncludeAll) || [], o = ((v = e.rubric) == null ? void 0 : v.forbid) || [], l = (y = e.rubric) == null ? void 0 : y.maxChars;
+  let c = 100, u = [];
+  l && n.length > l && (c -= 15, u.push(`\uBD84\uB7C9 \uCD08\uACFC(-15): ${n.length}/${l}`)), o.length && Pt(n, o) && (c -= 20, u.push("\uAE08\uC9C0 \uD0A4\uC6CC\uB4DC \uD3EC\uD568(-20)")), a.length && !Qn(n, a) && (c -= 40, u.push("\uD544\uC218 \uC694\uC18C \uC77C\uBD80 \uB204\uB77D(-40)")), i.length && !Pt(n, i) && (c -= 25, u.push("\uD575\uC2EC \uD0A4\uC6CC\uB4DC \uBBF8\uD3EC\uD568(-25)")), c = Zn(c, 0, 100);
+  const d = c >= 90, f = !d && r === 1 ? e.hint1 || "\uD78C\uD2B8: \uC694\uC57D\uC5D0\uC11C \uD575\uC2EC \uC8FC\uC7A5/\uADFC\uAC70\uB97C \uCC3E\uC544 \uB2E8\uC5B4\uB85C \uBA3C\uC800 \uC801\uC5B4\uBCF4\uC138\uC694." : !d && r === 2 ? e.hint2 || "\uD78C\uD2B8: \uC218\uCE58\xB7\uB300\uC870(\uBC18\uBA74/\uBE44\uD574)\xB7\uACB0\uB860 \uBB38\uC7A5\uC744 \uC911\uC2EC\uC73C\uB85C \uB2E4\uC2DC \uAD6C\uC131\uD558\uC138\uC694." : void 0, m = !d && r >= 3 ? e.explanation || e.answerKey || "\uD574\uC124: \uC694\uC57D\uC758 \uD575\uC2EC \uADFC\uAC70\uC640 \uBE44\uAD50 \uD3EC\uC778\uD2B8\uB97C \uBC18\uC601\uD574\uC57C \uD569\uB2C8\uB2E4." : void 0;
+  return { id: e.id, score: c, maxScore: s, correct: d, feedback: u.length ? u.join(" / ") : "\uCDA9\uBD84\uD788 \uC815\uD655\uD569\uB2C8\uB2E4.", nextAction: d ? "pass" : "retry", hintToShow: f, explanationToShow: m };
 }
 __name(es, "es");
 __name2(es, "es");
 function ts(e, t) {
   const r = Math.max(1, Math.floor(t.attemptNo || 1)), n = e.questions.map((l) => {
     var u;
-    const o = ((u = t.userAnswers) == null ? void 0 : u[l.id]) ?? "";
-    return es(l, o, r);
-  }), s = Math.round(n.reduce((l, o) => l + o.score, 0) / Math.max(1, n.length)), i = n.filter((l) => !l.correct).map((l) => l.id), a = s >= e.masteryScore;
-  let c = "";
-  return a ? c = "PASS: 90\uC810 \uC774\uC0C1 \uD1B5\uACFC\uD588\uC2B5\uB2C8\uB2E4. \uB2E4\uC74C \uB2E8\uACC4\uB85C \uC774\uB3D9\uD569\uB2C8\uB2E4." : r === 1 ? c = "1\uCC28: \uD2C0\uB9B0 \uBB38\uD56D\uB9CC \uB2E4\uC2DC \uD480\uC5B4\uC8FC\uC138\uC694. (\uD78C\uD2B8 1 \uC81C\uACF5)" : r === 2 ? c = "2\uCC28: \uD2C0\uB9B0 \uBB38\uD56D\uB9CC \uB2E4\uC2DC \uD480\uC5B4\uC8FC\uC138\uC694. (\uD78C\uD2B8 2 + \uADFC\uAC70 \uAC15\uD654)" : c = "3\uCC28 \uC774\uC0C1: \uD574\uC124\uC744 \uCC38\uACE0\uD558\uACE0, \uB3D9\uC77C \uBB38\uD56D\uC744 \uB2E4\uC2DC \uD480\uC5B4 \uC815\uB2F5 \uAE30\uC900(90\uC810)\uC744 \uCDA9\uC871\uD558\uC138\uC694.", { ok: true, attemptNo: r, totalScore: s, pass: a, wrongIds: i, marks: n, meta: { message: c } };
+    const c = ((u = t.userAnswers) == null ? void 0 : u[l.id]) ?? "";
+    return es(l, c, r);
+  }), s = Math.round(n.reduce((l, c) => l + c.score, 0) / Math.max(1, n.length)), i = n.filter((l) => !l.correct).map((l) => l.id), a = s >= e.masteryScore;
+  let o = "";
+  return a ? o = "PASS: 90\uC810 \uC774\uC0C1 \uD1B5\uACFC\uD588\uC2B5\uB2C8\uB2E4. \uB2E4\uC74C \uB2E8\uACC4\uB85C \uC774\uB3D9\uD569\uB2C8\uB2E4." : r === 1 ? o = "1\uCC28: \uD2C0\uB9B0 \uBB38\uD56D\uB9CC \uB2E4\uC2DC \uD480\uC5B4\uC8FC\uC138\uC694. (\uD78C\uD2B8 1 \uC81C\uACF5)" : r === 2 ? o = "2\uCC28: \uD2C0\uB9B0 \uBB38\uD56D\uB9CC \uB2E4\uC2DC \uD480\uC5B4\uC8FC\uC138\uC694. (\uD78C\uD2B8 2 + \uADFC\uAC70 \uAC15\uD654)" : o = "3\uCC28 \uC774\uC0C1: \uD574\uC124\uC744 \uCC38\uACE0\uD558\uACE0, \uB3D9\uC77C \uBB38\uD56D\uC744 \uB2E4\uC2DC \uD480\uC5B4 \uC815\uB2F5 \uAE30\uC900(90\uC810)\uC744 \uCDA9\uC871\uD558\uC138\uC694.", { ok: true, attemptNo: r, totalScore: s, pass: a, wrongIds: i, marks: n, meta: { message: o } };
 }
 __name(ts, "ts");
 __name2(ts, "ts");
@@ -2325,17 +2325,17 @@ async function ss(e, t) {
       ORDER BY ts DESC
       LIMIT 500
     `).bind(n).all();
-    s = ((l == null ? void 0 : l.results) || []).map((o) => ({ ts: o.ts, model: o.model, level: o.level, stage: o.stage, errors: JSON.parse(o.errors || "[]"), ratio: o.ratio, sample_hash: o.sample_hash }));
+    s = ((l == null ? void 0 : l.results) || []).map((c) => ({ ts: c.ts, model: c.model, level: c.level, stage: c.stage, errors: JSON.parse(c.errors || "[]"), ratio: c.ratio, sample_hash: c.sample_hash }));
   } else
     s = ns.filter((l) => l.ts >= n).slice().reverse();
   const i = {}, a = {};
   for (const l of s) {
     i[l.stage] = (i[l.stage] || 0) + 1;
-    for (const o of l.errors || [])
-      a[o] = (a[o] || 0) + 1;
+    for (const c of l.errors || [])
+      a[c] = (a[c] || 0) + 1;
   }
-  const c = Object.entries(a).sort((l, o) => o[1] - l[1]).slice(0, 10).map(([l, o]) => ({ error: l, count: o }));
-  return { window: { sinceTs: n, count: s.length }, byStage: i, topErr: c, notes: ['\uC0C1\uC704 \uC5D0\uB7EC\uAC00 "\uAE08\uC9C0 \uD45C\uD604"\uC5D0 \uBAB0\uB9AC\uBA74: \uD504\uB86C\uD504\uD2B8/\uB9AC\uB77C\uC774\uD2B8 \uAE08\uC9C0\uC5B4 \uAC15\uD654\uAC00 \uC6B0\uC120', '\uC0C1\uC704 \uC5D0\uB7EC\uAC00 "\uC218\uCE58 \uBD80\uC871"\uC774\uBA74: numbers \uCD5C\uC18C \uD3EC\uD568 \uADDC\uCE59\uC744 \uAC15\uD654', '\uC0C1\uC704 \uC5D0\uB7EC\uAC00 "\uB17C\uC810 \uC575\uCEE4 \uBD88\uC77C\uCE58"\uBA74: \uAD6C\uC870\uD654/\uB9C8\uC778\uB4DC\uB9F5\uB3C4 \uC575\uCEE4\uB97C \uAC15\uC81C'] };
+  const o = Object.entries(a).sort((l, c) => c[1] - l[1]).slice(0, 10).map(([l, c]) => ({ error: l, count: c }));
+  return { window: { sinceTs: n, count: s.length }, byStage: i, topErr: o, notes: ['\uC0C1\uC704 \uC5D0\uB7EC\uAC00 "\uAE08\uC9C0 \uD45C\uD604"\uC5D0 \uBAB0\uB9AC\uBA74: \uD504\uB86C\uD504\uD2B8/\uB9AC\uB77C\uC774\uD2B8 \uAE08\uC9C0\uC5B4 \uAC15\uD654\uAC00 \uC6B0\uC120', '\uC0C1\uC704 \uC5D0\uB7EC\uAC00 "\uC218\uCE58 \uBD80\uC871"\uC774\uBA74: numbers \uCD5C\uC18C \uD3EC\uD568 \uADDC\uCE59\uC744 \uAC15\uD654', '\uC0C1\uC704 \uC5D0\uB7EC\uAC00 "\uB17C\uC810 \uC575\uCEE4 \uBD88\uC77C\uCE58"\uBA74: \uAD6C\uC870\uD654/\uB9C8\uC778\uB4DC\uB9F5\uB3C4 \uC575\uCEE4\uB97C \uAC15\uC81C'] };
 }
 __name(ss, "ss");
 __name2(ss, "ss");
@@ -2535,7 +2535,7 @@ function transformRoutingRuleToRegExp(rule) {
 }
 __name(transformRoutingRuleToRegExp, "transformRoutingRuleToRegExp");
 
-// .wrangler/tmp/pages-x3IpyE/vnqyl6japk.js
+// .wrangler/tmp/pages-BzoTZh/f818k1mtszu.js
 var define_ROUTES_default = { version: 1, include: ["/*"], exclude: ["/app.html", "/favicon.ico", "/index.html", "/static/*", "/v5.html"] };
 var routes = define_ROUTES_default;
 var pages_dev_pipeline_default = {
@@ -2600,7 +2600,7 @@ var jsonError2 = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx
 }, "jsonError");
 var middleware_miniflare3_json_error_default2 = jsonError2;
 
-// .wrangler/tmp/bundle-6MiTcj/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-3ARQpj/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__2 = [
   middleware_ensure_req_body_drained_default2,
   middleware_miniflare3_json_error_default2
@@ -2632,7 +2632,7 @@ function __facade_invoke__2(request, env, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__2, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-6MiTcj/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-3ARQpj/middleware-loader.entry.ts
 var __Facade_ScheduledController__2 = class {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
@@ -2730,4 +2730,4 @@ export {
   __INTERNAL_WRANGLER_MIDDLEWARE__2 as __INTERNAL_WRANGLER_MIDDLEWARE__,
   middleware_loader_entry_default2 as default
 };
-//# sourceMappingURL=vnqyl6japk.js.map
+//# sourceMappingURL=f818k1mtszu.js.map
