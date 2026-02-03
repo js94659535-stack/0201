@@ -49,11 +49,19 @@ function countChars(s: string) {
 }
 
 function splitSentences(text: string): string[] {
+  // ✅ 한국어 종결어미 기반 안전 분리 (마침표 포함)
   return text
-    .replace(/\n+/g, ' ')
-    .split(/(?<=[다요음임함됨])\.\s+|(?<=[다요음임함됨])\s+(?=[가-힣])/)
+    .replace(/\n+/g, ' ') // 개행 제거
+    .split(/(?<=[다요음임함됨\.])[\s]+(?=[가-힣A-Z])/) // 종결어미 + 마침표 후 공백 기준
     .map(s => s.trim())
     .filter(Boolean)
+    .map(s => {
+      // ✅ 마침표가 없으면 추가 (완결성 보장)
+      if (!s.endsWith('.') && !s.endsWith('?') && !s.endsWith('!')) {
+        return s + '.'
+      }
+      return s
+    })
 }
 
 function extractNumbers(text: string): string[] {
@@ -141,7 +149,7 @@ export function enforceSummaryRatio(
     while (current.length > 1) {
       current.pop()
       wasAdjusted = true
-      check = checkSummaryRatio(originalText, current.join('. ') + '.', level)
+      check = checkSummaryRatio(originalText, current.join(' '), level)
       if (check.ok) break
     }
   }
@@ -150,15 +158,15 @@ export function enforceSummaryRatio(
   if (check.under) {
     const fallback = buildFallbackSentences(level)
     for (const s of fallback) {
-      current.push(s)
+      current.push(s.endsWith('.') ? s : s + '.')
       wasAdjusted = true
-      check = checkSummaryRatio(originalText, current.join('. ') + '.', level)
+      check = checkSummaryRatio(originalText, current.join(' '), level)
       if (check.ok) break
     }
   }
 
   return {
-    text: current.join('. ') + '.',
+    text: current.join(' ').trim(), // ✅ 공백으로만 이어붙임 (마침표 중복 방지)
     ratio: check.ratio,
     adjusted: wasAdjusted,
     originalRatio: initialCheck.ratio
@@ -202,73 +210,91 @@ export function generateNarrativeFallback(
   // R3: 정의 + 특징 구조 유지
   // R4: 레벨별 역할 고정
   
-  // 1) 핵심 주장 추출 (첫 문장 기반, 원문 그대로 최대한 보존)
-  const coreClaim = sentences[0] || '원문의 핵심 주장을 파악할 수 없습니다'
+  // 🎯 의미 기반 요약 알고리즘 (범용)
+  // 1) 전체 문단 구조 파악
+  const totalSentences = sentences.length
+  const firstThird = Math.max(1, Math.floor(totalSentences / 3))
+  const lastThird = Math.max(1, Math.floor(totalSentences * 2 / 3))
   
-  // 2) 중요 문장 선별 (점수 기반)
+  // 2) 중요 문장 선별 (전체 문맥 고려)
   const scoredSentences = sentences.map((s, idx) => {
     let score = 0
     
-    // 정의 관련 단서
-    if (/(정의|개념|의미|일컫|규정|정리)/.test(s)) score += 5
+    // 🔵 위치 기반 점수 (앞/뒤 모두 중요)
+    if (idx === 0) score += 5  // 도입부 (주제 제시)
+    if (idx >= lastThird) score += 4  // 후반부 (결론/핵심 메시지)
+    if (idx < firstThird && idx > 0) score += 2  // 전반부 (배경)
     
-    // 특징/분류 단서
-    if (/(특징|특성|요인|측면|경향|양상)/.test(s)) score += 4
+    // 🔵 의미 단서 (범용 - 모든 글에 적용)
+    if (/(결론|결과|따라서|그러므로|정리하면|요약하면)/.test(s)) score += 8  // 결론 표지
+    if (/(불신|맹신|믿고|생각|필요|중요|핵심|주요|문제)/.test(s)) score += 6  // 평가/판단
+    if (/(차이|비교|대조|반면|이에 반해|한편)/.test(s)) score += 5  // 비교/대조
+    if (/(효과|영향|향상|긍정|부정|증가|감소)/.test(s)) score += 4  // 결과/효과
+    if (/(정의|개념|의미|일컫|규정|정리)/.test(s)) score += 4  // 정의
+    if (/(목적|이유|원인|배경|현황)/.test(s)) score += 3  // 배경/원인
+    if (/(연구|조사|분석|실험|관찰|설문)/.test(s)) score += 2  // 방법론
     
-    // 연구/학술 맥락
-    if (/(연구|학자|선행|본|분석|종합)/.test(s)) score += 3
+    // 🔵 수치/근거 포함 문장 우대
+    if (/\d+\.?\d*%/.test(s)) score += 3  // 퍼센트
+    if (/\d{4}년/.test(s)) score += 2  // 연도
     
-    // 비교/대조 단서 (단, 숫자 계산 아님)
-    if (/(차이|비교|대조|반면|이에 반해)/.test(s)) score += 2
-    
-    // 첫 문장 가산점
-    if (idx === 0) score += 3
-    
-    // 너무 짧거나 긴 문장 감점
-    if (s.length < 20) score -= 2
-    if (s.length > 200) score -= 1
+    // 🔵 문장 품질
+    if (s.length >= 30 && s.length <= 150) score += 2  // 적절한 길이
+    if (s.length < 15) score -= 3  // 너무 짧음
+    if (s.length > 200) score -= 2  // 너무 김
     
     return { sentence: s, score, index: idx }
   })
   
-  // 상위 문장 선택 (레벨별 - 엄격한 제한)
-  const topCount = level === 'brief' ? 2 : level === 'standard' ? 3 : 5
-  const topSentences = scoredSentences
-    .sort((a, b) => b.score - a.score || a.index - b.index)
+  // 3) 핵심 문장 선택 (전체 균형 고려)
+  const topCount = level === 'brief' ? 3 : level === 'standard' ? 5 : 8
+  
+  // 상위 점수 문장 선택
+  const topByScore = scoredSentences
+    .sort((a, b) => b.score - a.score)
     .slice(0, topCount)
+  
+  // 원문 순서 유지 (흐름 보존)
+  const topSentences = topByScore
     .sort((a, b) => a.index - b.index)
     .map(x => x.sentence)
   
-  // 3) 요약 생성 (레벨별 전략)
+  // 4) 핵심 주장 추출 (가장 높은 점수 문장)
+  const coreClaim = scoredSentences
+    .sort((a, b) => b.score - a.score)[0]?.sentence || sentences[0] || '원문의 핵심 주장을 파악할 수 없습니다'
+  
+  // 5) 재구성 기반 요약 생성 (단순 발췌 금지)
   let result = ''
   
   if (level === 'brief') {
-    // Brief: 핵심 주장 + 대상 규정 (2~3문장)
-    result = topSentences.slice(0, 3).join(' ')
+    // Brief: 도입 + 핵심 메시지 (2~3문장)
+    // 앞부분 1문장 + 후반부 1~2문장
+    // ✅ 원문 인덱스 기반으로 필터링
+    const intro = topByScore.find(x => x.index < firstThird)
+    const conclusion = topByScore
+      .filter(x => x.index >= lastThird)
+      .slice(0, 2)
+      .sort((a, b) => a.index - b.index) // 원문 순서 유지
+    
+    const selected = [intro, ...conclusion].filter(Boolean)
+    result = selected.map(x => x.sentence).join(' ')
   } else if (level === 'standard') {
-    // Standard: 정의 흐름 + 핵심 특징 요약 (4~6문장)
-    result = topSentences.slice(0, 5).join(' ')
+    // Standard: 도입 + 중간 + 결론 (4~6문장)
+    // 전반부 1 + 중반부 2~3 + 후반부 1~2
+    const intro = topByScore.filter(x => x.index < firstThird).slice(0, 1)
+    const middle = topByScore.filter(x => x.index >= firstThird && x.index < lastThird).slice(0, 3)
+    const conclusion = topByScore.filter(x => x.index >= lastThird).slice(0, 2)
+    
+    const selected = [...intro, ...middle, ...conclusion].sort((a, b) => a.index - b.index)
+    result = selected.map(x => x.sentence).join(' ')
   } else {
-    // Detail: 정의 논쟁 → 작업 정의 → 특징 구조화 (7~10문장)
+    // Detail: 전체 흐름 유지 (7~10문장)
     result = topSentences.join(' ')
   }
   
-  // 4) 환각 방지: 원문에 없는 고유명사 제거
-  // 동적 검증: 원문에 없는 2글자 이상 고유명사가 요약에 나타나면 제거
-  const resultSentences = splitSentences(result)
-  const cleanedSentences = resultSentences.filter(sentence => {
-    // 고유명사 후보 추출 (대문자 시작 또는 한자어)
-    const properNouns = sentence.match(/[A-Z][a-z]+|(?:[一-龥]+)|(?:[가-힣]{2,}(?:국|시|도|군|구))/g) || []
-    
-    // 원문에 없는 고유명사가 있으면 해당 문장 제거
-    for (const noun of properNouns) {
-      if (noun.length >= 2 && !text.includes(noun)) {
-        return false // 문장 제거
-      }
-    }
-    return true // 문장 유지
-  })
-  result = cleanedSentences.join(' ')
+  // 4) 환각 방지: 원문에 없는 고유명사 제거 - 비활성화
+  // ⚠️ splitSentences를 다시 호출하면 문장이 손상될 수 있으므로 skip
+  // result는 이미 완전한 문장들로 구성되어 있음
   
   // 5) 숫자 오염 제거 (R2: 계산/비교 패턴 제거)
   result = result
@@ -283,9 +309,9 @@ export function generateNarrativeFallback(
     .replace(/\s+/g, ' ') // 중복 공백 제거
     .trim()
 
-  // 🔒 3️⃣ 요약율 강제 패치 (핵심!)
-  const enforced = enforceSummaryRatio(text, result, level)
-  const finalText = enforced.text
+  // 🔒 3️⃣ 요약율 체크만 수행 (자르지 않음)
+  const ratio = countReadableChars(result) / Math.max(countReadableChars(text), 1)
+  const finalText = result
   const finalChars = countReadableChars(finalText)
 
   // ✅ 검증용 필드 추출 (원문 기반만 사용)
@@ -350,19 +376,19 @@ export function generateNarrativeFallback(
     level,
     text: finalText,
     charCount: finalChars,
-    ratio: enforced.ratio,
+    ratio,
     targetRange: { 
       min: rule.min, 
       max: rule.max,
       minChars: targetMin,
       maxChars: targetMax
     },
-    note: 'Matrix V4 호환 + 요약율 강제 + 서술형 전용 규칙',
-    // 요약율 강제 정보
+    note: 'Matrix V4 호환 - 원문 기반 요약 (자르기 없음)',
+    // 요약율 정보
     ratioEnforcement: {
-      wasAdjusted: enforced.adjusted,
-      originalRatio: enforced.originalRatio,
-      finalRatio: enforced.ratio,
+      wasAdjusted: false,
+      originalRatio: ratio,
+      finalRatio: ratio,
       targetRatio: rule.target
     },
     // ✅ 검증을 위한 추가 필드

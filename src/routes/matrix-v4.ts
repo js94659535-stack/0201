@@ -158,8 +158,9 @@ function smartTrim(s: string, maxChars: number) {
     cut.lastIndexOf('!'),
     cut.lastIndexOf('?')
   );
+  // ✅ 자르지 않고 전체 반환 (생략부호 금지)
   if (lastDot > Math.floor(maxChars * 0.6)) return cut.slice(0, lastDot + 1).trim();
-  return cut.trim() + '…';
+  return t; // 전체 문장 반환
 }
 
 function safeJsonParse(text: string) {
