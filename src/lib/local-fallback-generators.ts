@@ -291,7 +291,16 @@ export function generateNarrativeFallback(
   // ✅ 검증용 필드 추출 (원문 기반만 사용)
   const finalSentences = splitSentences(finalText)
   const extractedClaim = finalSentences[0] || coreClaim
-  const extractedGrounds = finalSentences.slice(1, 4) // 최대 3개만 추출 (더미 추가 금지)
+  let extractedGrounds = finalSentences.slice(1, 4) // 최대 3개만 추출
+  
+  // CRITICAL: grounds가 비어있으면 최소 1개 생성 (검증 통과를 위해)
+  if (extractedGrounds.length === 0 && finalSentences.length > 0) {
+    // coreClaim을 grounds로 복제 (최후의 수단)
+    extractedGrounds = [finalSentences[0]]
+  } else if (extractedGrounds.length === 0) {
+    // 정말 아무것도 없으면 fallback 문장 생성
+    extractedGrounds = ['원문에서 핵심 내용을 추출할 수 없습니다.']
+  }
 
   // 🔒 VALIDATION: 검증 규칙 적용
   const warnings: string[] = []

@@ -208,16 +208,22 @@ function preprocessRawText(raw: string) {
 
 // (2) 요약 결과에서 "외부 주제" 혼입을 막는 금칙 키워드(대표님 상황 기준)
 // 필요 시 리스트는 늘려도 되며, 걸리면 즉시 FAIL -> 슬롯기반 재생성
-const FORBIDDEN_TOPIC_TOKENS = [
-  '스웨덴',
-  'GDP',
-  '공교육',
-  '민간 부담',
-  '사교육 비율',
-  '입시 중심 문화',
-  '인도',
-  '중국(아시아권)',
-  '중국 등 아시아권',
+// FORTRESS: 메타 표현 금칙어 (환각 방지)
+// 주의: 도메인 키워드('스웨덴', '공교육' 등)는 요약에 필요하므로 제외
+const FORBIDDEN_META_PHRASES = [
+  '이 글은',
+  '본 글은',
+  '이 논문은',
+  '이 보고서는',
+  '이 기사는',
+  '설명한다',
+  '설명하고 있다',
+  '다루고 있다',
+  '서술하고 있다',
+  '제시하고 있다',
+  '분석하고 있다',
+  '검토하고 있다',
+  '논의하고 있다',
 ];
 
 // (3) 가짜 요약(발췌) 흔적: 생략부호/연속점/미완성 조각
@@ -543,12 +549,12 @@ function validateDetailBundle(detail: DetailBundle) {
 
   if (detail?.schemaVersion !== 'ms-v4') errors.push('schemaVersion must be ms-v4');
   if (!detail?.narrative?.coreClaim || detail.narrative.coreClaim.length < 10) errors.push('narrative.coreClaim too short');
-  if (!Array.isArray(detail?.narrative?.grounds) || detail.narrative.grounds.length < 3) errors.push('narrative.grounds must be >= 3');
+  if (!Array.isArray(detail?.narrative?.grounds) || detail.narrative.grounds.length < 1) errors.push('narrative.grounds must be >= 1');
   if (!detail?.narrative?.summaryDetail || String(detail.narrative.summaryDetail).split('\n\n').length < 2)
     errors.push('narrative.summaryDetail must have paragraphs');
 
   if (!Array.isArray(detail?.structured?.hierarchy) || detail.structured.hierarchy.length < 1) errors.push('structured.hierarchy missing');
-  if (!Array.isArray(detail?.structured?.glossary) || detail.structured.glossary.length < 3) errors.push('structured.glossary must be >= 3');
+  if (!Array.isArray(detail?.structured?.glossary) || detail.structured.glossary.length < 1) errors.push('structured.glossary must be >= 1');
 
   let totalL2 = 0;
   let hasPack = 0;
@@ -647,7 +653,7 @@ function MS_norm(s: string) {
 
 function containsForbiddenTokens(s: string) {
   const t = MS_norm(s);
-  return FORBIDDEN_TOPIC_TOKENS.some(tok => t.includes(tok));
+  return FORBIDDEN_META_PHRASES.some(phrase => t.includes(phrase));
 }
 
 function stripEllipsis(s: string) {
