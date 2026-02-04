@@ -275,11 +275,25 @@
     }
 
     const data = resp.data;
-    console.log('[MS Learn V5] API 응답:', data);
+    console.log('[MS Learn V5] API 응답 수신:', {
+      schemaVersion: data?.schemaVersion,
+      hasViews: !!data?.views,
+      viewTypes: Object.keys(data?.views || {}),
+      requestedView: viewType,
+      requestedMode: mode
+    });
     
     // Matrix V4 응답 구조: { views: { narrative: { brief, standard, detail }, ... } }
     const views = data?.views || {};
     const levelData = views[viewType]?.[mode];
+    
+    console.log('[MS Learn V5] levelData 추출:', {
+      found: !!levelData,
+      type: typeof levelData,
+      hasText: !!(levelData?.text),
+      hasItems: !!(levelData?.items),
+      keys: levelData ? Object.keys(levelData).slice(0, 5) : []
+    });
     
     // ② viewType 분기를 switch로 고정 (독립 if 4개 → 상호배타적 분기)
     switch (viewType) {
