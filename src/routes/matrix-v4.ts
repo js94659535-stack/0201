@@ -16,17 +16,18 @@ import { Hono } from 'hono';
 
 import {
   buildLocalFallbackDetail,
-} from '../lib/local-fallback-generators';
+} from '../라이브러리/local-fallback-generators';
 
 import {
   validateCrossConsistency,
   validateLevelSeparation,
   SUMMARY_RATIO_TABLE,
-} from '../lib/summary-guard-v1';
+} from '../라이브러리/ms-summary-guard-v1';
 
 import {
   qualityGateAll,
-} from '../lib/summary-quality-v4';
+} from '../라이브러리/summary-quality-v4';
+
 type Bindings = {
   GEMINI_API_KEY?: string;
   GEMINI_MODEL?: string;
