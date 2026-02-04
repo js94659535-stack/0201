@@ -27,3 +27,29 @@ export type SummaryResult = {
   brief: any | null
 }
 
+export async function runSummaryEngineV4(
+  req: SummaryRequest
+): Promise<SummaryResult> {
+  const { text, options } = req
+
+  if (!text || !text.trim()) {
+    throw new Error('SUMMARY_INPUT_EMPTY')
+  }
+
+  const now = new Date().toISOString()
+
+  // TODO:
+  // 1. detail 요약 생성 (단 1회)
+  // 2. standard / brief downsample
+  // 3. summary-guard 검사 연결
+
+  return {
+    meta: {
+      engine: 'SUMMARY_V4',
+      createdAt: now,
+    },
+    detail: null,
+    standard: null,
+    brief: null,
+  }
+}
