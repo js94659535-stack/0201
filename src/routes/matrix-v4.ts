@@ -13,19 +13,20 @@
 ===================================================================== */
 
 import { Hono } from 'hono';
+
 import {
-  generateNarrativeFallback,
-  generateUserCentricStructured,
-  generateMindmapFallback,
-  generateSelftestFallback
+  buildLocalFallbackDetail,
 } from '../lib/local-fallback-generators';
+
+import {
+  validateCrossConsistency,
+  validateLevelSeparation,
+  SUMMARY_RATIO_TABLE,
+} from '../lib/summary-guard-v1';
+
 import {
   qualityGateAll,
-  enforceSummaryRatio,
-  validateCrossConsistency,
-  SUMMARY_RATIO_TABLE
-} from '../summary/summary-guard';
-
+} from '../lib/summary-quality-v4';
 type Bindings = {
   GEMINI_API_KEY?: string;
   GEMINI_MODEL?: string;
