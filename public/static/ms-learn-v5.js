@@ -208,7 +208,7 @@
             <div class="ms-q">
               <div class="ms-qtitle">${i+1}. ${escapeHtml(q.question)}</div>
               <textarea class="ms-ta" name="${escapeHtml(q.id)}" rows="3" placeholder="답을 입력하세요"></textarea>
-              <div class="ms-hint">힌트: ${escapeHtml(String(q.sourceHint || '').slice(0, 80))}</div>
+              <div class="ms-hint">힌트: ${escapeHtml(String(q.hint || '').slice(0, 80))}</div>
             </div>
           `).join('')}
           <div class="ms-row">
@@ -315,7 +315,7 @@
         renderMindmap(containerEl, levelData);
         break;
       case 'selftest':
-        const questions = levelData?.questions || [];
+        const questions = levelData?.items || [];
         await renderSelftest(containerEl, questions, onSelftestPassed);
         break;
       default:
