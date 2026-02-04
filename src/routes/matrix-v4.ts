@@ -15,18 +15,19 @@
 import { Hono } from 'hono';
 
 import {
-  buildLocalFallbackDetail,
+  generateNarrativeFallback,
+  generateStructuredFallback,
+  generateMindmapFallback,
+  generateSelftestFallback,
+  enforceSummaryRatio,
 } from '../lib/local-fallback-generators';
 
 import {
   validateCrossConsistency,
   validateLevelSeparation,
   SUMMARY_RATIO_TABLE,
-} from '../lib/ms-summary-guard-v1';
-
-import {
   qualityGateAll,
-} from '../lib/summary-quality-v4';
+} from '../lib/ms-summary-guard-v1';
 
 type Bindings = {
   GEMINI_API_KEY?: string;
@@ -250,11 +251,11 @@ function splitSentencesKo(s: string) {
 }
 
 // ------------------------------
-// 로컬 Fallback: 새 모듈 사용
+// 로컬 Fallback: 외부 모듈 사용 (local-fallback-generators.ts)
 // ------------------------------
 function buildLocalFallbackDetail(rawText: string): DetailBundle {
   const narrativeDetail = generateNarrativeFallback(rawText, 'detail');
-  const structuredDetail = generateUserCentricStructured(rawText, 'detail');
+  const structuredDetail = generateStructuredFallback(rawText, 'detail');
   const mindmapDetail = generateMindmapFallback(rawText, 'detail');
   const selftestDetail = generateSelftestFallback(narrativeDetail.text, 'detail', 'exam');
 
