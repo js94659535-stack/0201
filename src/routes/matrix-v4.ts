@@ -719,9 +719,128 @@ async function callGeminiText(c: any, prompt: string) {
   // 4순위: Extractive Fallback (최후의 수단 - 절대 실패 없음)
   console.log('[LLM] 4/4 Extractive Fallback 사용 (모든 API 실패)');
   
-  // ❌ Extractive는 plain text를 반환하므로 JSON 파싱 실패를 유발
-  // → 빈 문자열 반환하여 buildLocalFallbackDetail()로 전환
-  return '';
+  // ✅ Extractive는 원문에서 의미 기반으로 핵심 문장 추출하여 JSON으로 래핑
+  // → Phase1/Phase2 모두에서 작동하는 안전망
+  try {
+    // 원문에서 프롬프트 추출 (JSON 요청 구조 제거)
+    let rawText = '';
+    
+    // 프롬프트에서 실제 원문 추출 시도
+    const textMatch = prompt.match(/```(?:text|plaintext)?\s*\n([\s\S]+?)\n```/);
+    if (textMatch) {
+      rawText = textMatch[1].trim();
+    } else {
+      // 프롬프트에서 큰따옴표 안의 텍스트 추출
+      const quoteMatch = prompt.match(/"([^"]{50,})"/);
+      if (quoteMatch) {
+        rawText = quoteMatch[1];
+      } else {
+        // 프롬프트 전체를 원문으로 사용 (최후)
+        rawText = prompt.slice(0, 500);
+      }
+    }
+    
+    // 의미 기반 문장 추출
+    const sentences = rawText
+      .split(/[.!?]\s+|다\.|요\.|습니다\.|니다\./)
+      .map(s => s.trim())
+      .filter(s => s.length >= 15 && s.length <= 200);
+    
+    // 점수 기반 문장 선택 (위치 + 키워드)
+    const scoredSentences = sentences.map((sent, idx) => {
+      let score = 0;
+      
+      // 위치 보너스
+      if (idx === 0) score += 5; // 첫 문장
+      if (idx === sentences.length - 1) score += 4; // 마지막 문장
+      if (idx < sentences.length / 3) score += 2; // 전반부
+      
+      // 키워드 보너스
+      if (/정의|개념|의미|특징|속성/.test(sent)) score += 4;
+      if (/원인|이유|배경|근거/.test(sent)) score += 3;
+      if (/결과|효과|영향|변화/.test(sent)) score += 4;
+      if (/따라서|그러므로|결론적으로/.test(sent)) score += 5;
+      if (/[0-9]+%|[0-9]+명|[0-9]+건/.test(sent)) score += 2;
+      
+      // 문장 길이 보너스 (30~120자 최적)
+      if (sent.length >= 30 && sent.length <= 120) score += 2;
+      
+      return { sent, score, idx };
+    });
+    
+    // 점수 상위 문장 선택
+    scoredSentences.sort((a, b) => b.score - a.score || a.idx - b.idx);
+    const topSentences = scoredSentences.slice(0, 8);
+    
+    // 원문 순서로 재정렬
+    topSentences.sort((a, b) => a.idx - b.idx);
+    
+    // 레벨별 분리
+    const briefSents = topSentences.slice(0, 2);
+    const standardSents = topSentences.slice(0, 4);
+    const detailSents = topSentences;
+    
+    // coreClaim: 가장 점수가 높은 문장
+    const coreClaim = topSentences[0]?.sent || sentences[0] || rawText.slice(0, 100);
+    
+    // JSON 래핑 (buildDetailPrompt와 동일한 구조)
+    const extractiveJSON = {
+      schemaVersion: 'ms-v4',
+      lang: 'ko',
+      source: {
+        charCount: rawText.length,
+        checksum: 'extractive-' + Date.now()
+      },
+      narrative: {
+        text: detailSents.map(s => s.sent).join(' '),
+        coreClaim: coreClaim,
+        grounds: detailSents.slice(0, 3).map(s => s.sent),
+        comparisons: detailSents.slice(3, 5).map(s => s.sent).filter(Boolean),
+        implications: detailSents.slice(5, 8).map(s => s.sent).filter(Boolean),
+        ratio: 0.42
+      },
+      structured: {
+        toc: [
+          { level: 1, title: '주요 개념', content: briefSents.map(s => s.sent).join(' ') },
+          { level: 2, title: '핵심 내용', content: standardSents.map(s => s.sent).join(' ') }
+        ],
+        hierarchy: [
+          { heading: '주요 개념', level: 1, children: [] }
+        ],
+        glossary: []
+      },
+      mindmap: {
+        root: {
+          concept: coreClaim.slice(0, 30),
+          explain: coreClaim,
+          children: topSentences.slice(1, 4).map(s => ({
+            title: s.sent.slice(0, 20),
+            explain: s.sent,
+            pack: [s.sent.slice(0, 10), '핵심', '내용']
+          }))
+        }
+      },
+      selftest: {
+        passScorePct: 90,
+        items: [
+          {
+            question: '다음 중 핵심 개념은 무엇인가?',
+            choices: [coreClaim.slice(0, 50), '기타 선택지 1', '기타 선택지 2', '기타 선택지 3'],
+            correctIdx: 0,
+            explanation: coreClaim
+          }
+        ]
+      }
+    };
+    
+    console.log('[LLM] ✓ Extractive Fallback 성공 (의미 기반 추출)');
+    return JSON.stringify(extractiveJSON, null, 2);
+    
+  } catch (e) {
+    console.log('[LLM] ✗ Extractive Fallback 실패, 빈 JSON 반환:', (e as Error).message);
+    // 최후의 최후: 빈 문자열 (buildLocalFallbackDetail 호출됨)
+    return '';
+  }
 }
 
 // =====================================================================
