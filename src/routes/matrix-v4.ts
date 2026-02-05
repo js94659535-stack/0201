@@ -1170,26 +1170,31 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
 
       let detail: DetailBundle | null = null;
 
-      if (phase === 'phase1') {
-        console.log('[Matrix V4] Phase 1: 로컬 Fallback 모드 사용');
-        detail = buildLocalFallbackDetail(rawText);
-      } else {
-        const detailPrompt = buildDetailPrompt(rawText);
-        let detailText = await callGeminiText(c, detailPrompt);
+      // ✅ Phase1/Phase2 모두 LLM 시도 (Fallback Chain)
+      console.log(`[Matrix V4] ${phase}: Trying LLM Fallback Chain (Ollama → Claude → Gemini → Extractive)`);
+      
+      const detailPrompt = buildDetailPrompt(rawText);
+      let detailText = await callGeminiText(c, detailPrompt);
+      detail = safeJsonParse(detailText) as DetailBundle | null;
+
+      if (!detail) {
+        console.log('[Matrix V4] First attempt failed, trying repair...');
+        const repairPrompt = [
+          `너의 직전 출력은 JSON 파싱에 실패했다.`,
+          `설명/마크다운 없이, 오직 JSON만 다시 출력하라.`,
+          buildDetailPrompt(rawText)
+        ].join('\n');
+        detailText = await callGeminiText(c, repairPrompt);
         detail = safeJsonParse(detailText) as DetailBundle | null;
+      }
 
-        if (!detail) {
-          const repairPrompt = [
-            `너의 직전 출력은 JSON 파싱에 실패했다.`,
-            `설명/마크다운 없이, 오직 JSON만 다시 출력하라.`,
-            buildDetailPrompt(rawText)
-          ].join('\n');
-          detailText = await callGeminiText(c, repairPrompt);
-          detail = safeJsonParse(detailText) as DetailBundle | null;
-        }
-
-        if (!detail) {
-          // FALSE Bucket: JSON 파싱 실패 기록
+      if (!detail) {
+        // LLM 완전 실패 → 로컬 Fallback으로 전환
+        console.log('[Matrix V4] All LLM attempts failed, using local fallback');
+        detail = buildLocalFallbackDetail(rawText);
+        
+        // Phase2에서만 FALSE Bucket 기록 (Phase1은 경고만)
+        if (phase === 'phase2') {
           await insertFalseBucket(c.env.DB, {
             source: 'matrix_v4',
             reason: 'DETAIL_JSON_PARSE_FAIL',
@@ -1199,15 +1204,6 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
             retry_count: 0,
             meta: { reqId, phase, elapsedMs: Date.now() - t0 }
           });
-
-          return c.json(
-            {
-              ok: false,
-              error: { code: 'DETAIL_JSON_PARSE_FAIL', message: 'detail JSON 파싱 실패' },
-              meta: { reqId, elapsedMs: Date.now() - t0, phase, qa }
-            },
-            502
-          );
         }
       }
 
