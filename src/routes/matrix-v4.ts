@@ -1386,6 +1386,13 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         result: { qa }
       };
 
+      // ✅ 캐시 무효화 헤더 (브라우저/프록시 캐시 방지)
+      c.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      c.header('Pragma', 'no-cache');
+      c.header('Expires', '0');
+      c.header('X-MS-Build', 'NARRATIVE_V5_PATCH_2026-02-05');
+      c.header('X-MS-Phase', phase);
+
       return c.json(out, 200);
     } catch (e: any) {
       return c.json(
