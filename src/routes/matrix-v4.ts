@@ -642,6 +642,254 @@ async function callGeminiText(c: any, prompt: string) {
 }
 
 // =====================================================================
+// MS NARRATIVE V5 — Helper Functions (Gemini-based detail.narrative)
+// =====================================================================
+
+/** 한국어 친화 글자수(공백 제거) */
+function _msCharCount(s: string) {
+  return (s ?? '').replace(/\s+/g, '').length;
+}
+
+/** 문장 분리(아주 단순) */
+function _msSplitSentences(text: string): string[] {
+  const t = (text ?? '').replace(/\s+/g, ' ').trim();
+  if (!t) return [];
+  const parts = t
+    .split(/(?<=[\.!\?]|다\.|요\.|니다\.|습니다\.|임\.|함\.|됨\.)\s+/g)
+    .map(s => s.trim())
+    .filter(Boolean);
+  return parts.length ? parts : [t];
+}
+
+/** 말줄임/중략/잘림 징후 */
+function _msHasEllipsisOrTrunc(s: string) {
+  const t = s ?? '';
+  return /(\.\.\.|…|중략|이하\s*생략|생략함|생략|\/\*|\*\/)$/.test(t) || /(\.\.\.|…|중략)/.test(t);
+}
+
+/** "완전한 문장" 최소 검사: 끝이 종결 부호/종결어미로 마무리되는지 */
+function _msLooksLikeCompleteSentence(s: string) {
+  const t = (s ?? '').trim();
+  if (!t) return false;
+  if (/[\.!\?]$/.test(t)) return true;
+  if (/(다|요|니다|습니다|임|함|됨)\.$/.test(t)) return true;
+  if (/(다|요|니다|습니다|임|함|됨)$/.test(t)) return true;
+  return false;
+}
+
+/** 중복 문장 제거 */
+function _msDedupSentences(text: string) {
+  const sents = _msSplitSentences(text);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of sents) {
+    const k = s.replace(/\s+/g, '').slice(0, 80);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(s);
+  }
+  return out.join(' ');
+}
+
+/** 원문 핵심 키워드(아주 러프): 2글자 이상 한글 토큰 상위 n개 */
+function _msTopKeywordsKorean(text: string, n = 10): string[] {
+  const t = (text ?? '').replace(/[0-9]+/g, ' ');
+  const tokens = t.match(/[가-힣]{2,}/g) ?? [];
+  const freq = new Map<string, number>();
+  for (const w of tokens) {
+    if (['그리고', '그러나', '하지만', '또한', '따라서', '때문에', '즉', '반면에', '이처럼'].includes(w)) continue;
+    freq.set(w, (freq.get(w) ?? 0) + 1);
+  }
+  return [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([w]) => w);
+}
+
+/** 주제 혼입(오염) 간단 검사: 원문 키워드가 요약에 어느 정도 포함되는지 */
+function _msTopicContamination(original: string, summary: string) {
+  const kw = _msTopKeywordsKorean(original, 10);
+  if (!kw.length) return { ok: true, score: 1 };
+  const s = summary ?? '';
+  let hit = 0;
+  for (const w of kw) if (s.includes(w)) hit++;
+  const score = hit / kw.length;
+  return { ok: score >= 0.3, score };
+}
+
+function _msClamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+/** 목표 비율 기반 타겟 범위 */
+function _msTargetsByRatio(originalText: string) {
+  const base = Math.max(50, _msCharCount(originalText));
+  const mk = (min: number, max: number, target: number, minChars: number) => {
+    const tgt = Math.max(minChars, Math.floor(base * target));
+    return {
+      minChars: Math.max(minChars, Math.floor(base * min)),
+      maxChars: Math.max(minChars, Math.ceil(base * max)),
+      targetChars: tgt,
+    };
+  };
+  return {
+    detail: mk(0.39, 0.45, 0.42, 300),
+  };
+}
+
+/** Extractive fallback: 원문 문장 일부를 "자르지 않고" 목표 길이까지 */
+function _msExtractiveFallback(originalText: string, targetChars: number) {
+  const sents = _msSplitSentences(originalText);
+  const out: string[] = [];
+  let acc = 0;
+  for (const s of sents) {
+    const sc = _msCharCount(s);
+    if (!sc) continue;
+    if (acc + sc > targetChars && out.length) break;
+    out.push(s.endsWith('.') || s.endsWith('다') || s.endsWith('요') ? s : `${s}.`);
+    acc += sc;
+    if (acc >= targetChars) break;
+  }
+  const joined = out.join(' ');
+  return _msDedupSentences(joined);
+}
+
+/**
+ * detail.narrative 생성(V5) - Gemini 기반 진짜 요약
+ */
+async function _msGenerateNarrativeDetailV5(c: any, originalText: string) {
+  const targets = _msTargetsByRatio(originalText).detail;
+
+  const jsonSchemaHint = `
+출력은 "JSON만" (설명/코드블록 금지). 다음 형태를 정확히 지켜라:
+{
+  "text": string,
+  "coreClaim": string,
+  "grounds": string[],
+  "comparisons": string[],
+  "implications": string[]
+}
+규칙:
+- text는 '완전한 문장'들로만 구성, 문장 파손/중간절단 금지
+- "...", "…", "중략", "이하 생략" 금지
+- 중복 문장 금지
+- 원문에 없는 사실/고유명/숫자/비교(예: 한국/스웨덴 등) "새로 만들지 말 것"
+- 문장수: 4~7문장 권장(학습용 상세요약)
+- grounds는 2~4개(가능하면 3개), comparisons/implications는 있으면 1~2개
+`;
+
+  const promptBase = `
+당신은 "초·중·고 학습자용 학습 요약 엔진"이다.
+아래 원문을 학습용 상세요약(detail)로 압축하라.
+
+[원문]
+${originalText}
+
+[요구]
+- 길이: 공백 제외 ${targets.minChars}~${targets.maxChars}자 (권장 ${targets.targetChars}자)
+- 반드시 의미를 보존하며 "진짜 요약"을 하라(복붙/단순 축약 금지)
+- 문장 파손 0, 말줄임/중략 0, 중복 0
+- 핵심 주장(coreClaim) 1문장
+- 근거(grounds) 2~4개(가능하면 3개): 원문에서 확인 가능한 핵심 근거만
+- 비교/대조(comparisons): 원문에 비교가 있으면 1~2개, 없으면 빈 배열
+- 함의/의미(implications): 원문에서 직접 도출되는 의미 1~2개, 없으면 빈 배열
+
+${jsonSchemaHint}
+`;
+
+  const validate = (obj: any) => {
+    const errors: string[] = [];
+    if (!obj || typeof obj !== 'object') errors.push('not_object');
+    const text = (obj?.text ?? '').trim();
+    const coreClaim = (obj?.coreClaim ?? '').trim();
+    const grounds = Array.isArray(obj?.grounds) ? obj.grounds : [];
+    const comparisons = Array.isArray(obj?.comparisons) ? obj.comparisons : [];
+    const implications = Array.isArray(obj?.implications) ? obj.implications : [];
+
+    if (!text || text.length < 20) errors.push('text_empty_or_too_short');
+    if (_msHasEllipsisOrTrunc(text)) errors.push('ellipsis_or_trunc');
+    if (!_msLooksLikeCompleteSentence(text)) errors.push('text_not_complete_sentence_end');
+
+    const sents = _msSplitSentences(text);
+    if (sents.length < 2) errors.push('too_few_sentences');
+    for (const s of sents) {
+      if (_msHasEllipsisOrTrunc(s)) errors.push('ellipsis_in_sentence');
+      if (!_msLooksLikeCompleteSentence(s)) errors.push('incomplete_sentence');
+    }
+
+    const dedup = _msDedupSentences(text);
+    if (_msCharCount(dedup) < _msCharCount(text) * 0.85) errors.push('too_many_duplicates');
+
+    const cc = _msCharCount(text);
+    if (cc < targets.minChars || cc > targets.maxChars) errors.push(`ratio_out_of_range:${cc}`);
+
+    if (!coreClaim || coreClaim.length < 10) errors.push('coreClaim_weak');
+    if (_msHasEllipsisOrTrunc(coreClaim)) errors.push('coreClaim_ellipsis');
+    if (!_msLooksLikeCompleteSentence(coreClaim)) errors.push('coreClaim_not_sentence');
+    if (!grounds.length) errors.push('grounds_empty');
+
+    const topic = _msTopicContamination(originalText, text);
+    if (!topic.ok) errors.push(`topic_contamination:${topic.score.toFixed(2)}`);
+
+    return { ok: errors.length === 0, errors, normalized: { text: _msDedupSentences(text), coreClaim, grounds, comparisons, implications } };
+  };
+
+  const tryOnce = async (attempt: number, extraRepairNote?: string) => {
+    const prompt = extraRepairNote ? `${promptBase}\n\n[수정 지시]\n${extraRepairNote}\n` : promptBase;
+    const raw = await callGeminiText(c, prompt);
+    let obj: any = null;
+    try {
+      obj = JSON.parse(String(raw));
+    } catch {
+      const m = String(raw).match(/\{[\s\S]*\}$/);
+      if (m) {
+        try { obj = JSON.parse(m[0]); } catch { obj = null; }
+      }
+    }
+    const v = validate(obj);
+    return { attempt, raw, obj, v };
+  };
+
+  // 1차 생성
+  let r1 = await tryOnce(1);
+  if (r1.v.ok) return { ...r1.v.normalized, _debug: { attempts: 1 } };
+
+  // 2차 repair
+  const repairNote1 = `
+이전 출력이 규칙을 위반했다. 다음을 반드시 고쳐라:
+- 말줄임/중략/…/… 금지
+- 문장 파손 금지(모든 문장 종결)
+- 원문에 없는 비교/사실/숫자 추가 금지
+- 길이(공백 제외) ${targets.minChars}~${targets.maxChars}자로 맞출 것
+- 중복 문장 제거
+- grounds는 최소 2개, 가능하면 3개
+오직 JSON만 출력
+`;
+  let r2 = await tryOnce(2, repairNote1);
+  if (r2.v.ok) return { ...r2.v.normalized, _debug: { attempts: 2, repairedFrom: r1.v.errors } };
+
+  // 3차 repair
+  const repairNote2 = `
+규칙 위반이 계속된다. 가장 중요한 것은:
+(1) 완전한 문장, (2) 말줄임/중략 0, (3) 중복 0, (4) 원문 기반 근거 2~4개, (5) 길이 범위 준수
+오직 JSON만 출력
+`;
+  let r3 = await tryOnce(3, repairNote2);
+  if (r3.v.ok) return { ...r3.v.normalized, _debug: { attempts: 3, repairedFrom: [...r1.v.errors, ...r2.v.errors] } };
+
+  // 최종 fallback (extractive)
+  const fb = _msExtractiveFallback(originalText, targets.targetChars);
+  return {
+    text: fb,
+    coreClaim: (_msSplitSentences(fb)[0] ?? '').trim(),
+    grounds: _msSplitSentences(fb).slice(1, 4).map(s => s.trim()).filter(Boolean),
+    comparisons: [],
+    implications: [],
+    _debug: { attempts: 3, fallback: true, errors: [...r1.v.errors, ...r2.v.errors, ...r3.v.errors] },
+  };
+}
+
+// =====================================================================
 // FORTRESS: Narrative 강제 생성기(슬롯 기반) + 금칙/생략부호 방지
 // =====================================================================
 
@@ -880,12 +1128,49 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         );
       }
 
-      // ✅ V4 핵심: downsampleFromDetail()만 사용
+      // ✅ V5 핵심: detail.narrative를 Gemini로 "진짜 요약" 생성
+      console.log('[Matrix V4 → V5] Generating detail.narrative with Gemini (V5 Engine)');
+      const baseChars = Math.max(50, _msCharCount(rawText));
+      const narrativeV5 = await _msGenerateNarrativeDetailV5(c, rawText);
+
+      // 최종 safety: 중복/말줄임 제거 1회 더
+      const cleanedText = _msDedupSentences(String(narrativeV5.text ?? ''));
+      const finalText = _msHasEllipsisOrTrunc(cleanedText) 
+        ? _msExtractiveFallback(rawText, Math.floor(baseChars * 0.42)) 
+        : cleanedText;
+
+      const charCount = _msCharCount(finalText);
+      const ratio = charCount / baseChars;
+
+      // detail.narrative에 주입 (V5 결과)
+      detail.narrative = {
+        text: finalText,
+        coreClaim: String(narrativeV5.coreClaim ?? '').trim() || (_msSplitSentences(finalText)[0] ?? '').trim(),
+        grounds: Array.isArray(narrativeV5.grounds) ? narrativeV5.grounds.filter(Boolean) : [],
+        comparisons: Array.isArray(narrativeV5.comparisons) ? narrativeV5.comparisons.filter(Boolean) : [],
+        implications: Array.isArray(narrativeV5.implications) ? narrativeV5.implications.filter(Boolean) : [],
+        ratio,
+        warnings: [],
+        _localSpec: {
+          usedLLM: !(narrativeV5 as any)._debug?.fallback,
+          charCount,
+          ratio,
+        },
+      } as any;
+
+      console.log('[Matrix V4 → V5] Detail narrative generated:', {
+        usedLLM: !(narrativeV5 as any)._debug?.fallback,
+        charCount,
+        ratio: ratio.toFixed(3),
+        attempts: (narrativeV5 as any)._debug?.attempts,
+      });
+
+      // ✅ downsampleFromDetail()로 brief/standard 생성 (기존 흐름 유지)
       const briefLv = downsampleFromDetail(detail, 'brief');
       const standardLv = downsampleFromDetail(detail, 'standard');
       const detailLv = downsampleFromDetail(detail, 'detail');
 
-      // 슬롯 기반 "진짜 요약" 강제 (오염/생략부호 차단)
+      // 슬롯 기반 "진짜 요약" 강제 (오염/생략부호 차단) - brief/standard만 적용
       const slots = {
         claim: detail.narrative.coreClaim || '',
         grounds: detail.narrative.grounds || [],
@@ -895,15 +1180,14 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
 
       const __b = buildNarrativeFromSlots('brief', rawText, slots);
       const __s = buildNarrativeFromSlots('standard', rawText, slots);
-      const __d = buildNarrativeFromSlots('detail', rawText, slots);
 
       briefLv.narrative.text = __b.text;
       standardLv.narrative.text = __s.text;
-      detailLv.narrative.text = __d.text;
+      // detailLv는 이미 V5로 생성되었으므로 그대로 유지
 
       (briefLv.narrative as any).ratio = __b.ratio;
       (standardLv.narrative as any).ratio = __s.ratio;
-      (detailLv.narrative as any).ratio = __d.ratio;
+      (detailLv.narrative as any).ratio = ratio;
 
       // ✅ 마지막 방어: 생략부호/금칙 키워드가 남아 있으면 즉시 FAIL(phase2), phase1은 경고로 qa에 기록
       const hardFailReasons: string[] = [];
