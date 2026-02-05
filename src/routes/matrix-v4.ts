@@ -719,31 +719,9 @@ async function callGeminiText(c: any, prompt: string) {
   // 4순위: Extractive Fallback (최후의 수단 - 절대 실패 없음)
   console.log('[LLM] 4/4 Extractive Fallback 사용 (모든 API 실패)');
   
-  // prompt에서 원문 추출 시도
-  const lines = prompt.split('\n');
-  let rawText = '';
-  for (const line of lines) {
-    if (line.includes('원문:') || line.includes('텍스트:')) {
-      const idx = lines.indexOf(line);
-      rawText = lines.slice(idx + 1).join('\n').trim();
-      break;
-    }
-  }
-  
-  if (!rawText) rawText = prompt; // 원문 추출 실패 시 전체 사용
-
-  // 문장 단위로 자르기
-  const sentences = rawText
-    .split(/[.!?]\s+/)
-    .filter(s => s.trim().length > 10);
-
-  let result = '';
-  for (const sent of sentences) {
-    if (result.length + sent.length > MAX_CHARS) break;
-    result += sent + '. ';
-  }
-
-  return result.trim() || rawText.slice(0, MAX_CHARS);
+  // ❌ Extractive는 plain text를 반환하므로 JSON 파싱 실패를 유발
+  // → 빈 문자열 반환하여 buildLocalFallbackDetail()로 전환
+  return '';
 }
 
 // =====================================================================
