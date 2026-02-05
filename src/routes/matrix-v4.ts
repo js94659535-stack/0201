@@ -1128,42 +1128,46 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         );
       }
 
-      // ✅ V5 핵심: detail.narrative를 Gemini로 "진짜 요약" 생성
-      console.log('[Matrix V4 → V5] Generating detail.narrative with Gemini (V5 Engine)');
-      const baseChars = Math.max(50, _msCharCount(rawText));
-      const narrativeV5 = await _msGenerateNarrativeDetailV5(c, rawText);
+      // ✅ V5 핵심: Phase2일 때만 detail.narrative를 Gemini로 "진짜 요약" 생성
+      if (phase === 'phase2') {
+        console.log('[Matrix V4 → V5] Phase 2: Generating detail.narrative with Gemini (V5 Engine)');
+        const baseChars = Math.max(50, _msCharCount(rawText));
+        const narrativeV5 = await _msGenerateNarrativeDetailV5(c, rawText);
 
-      // 최종 safety: 중복/말줄임 제거 1회 더
-      const cleanedText = _msDedupSentences(String(narrativeV5.text ?? ''));
-      const finalText = _msHasEllipsisOrTrunc(cleanedText) 
-        ? _msExtractiveFallback(rawText, Math.floor(baseChars * 0.42)) 
-        : cleanedText;
+        // 최종 safety: 중복/말줄임 제거 1회 더
+        const cleanedText = _msDedupSentences(String(narrativeV5.text ?? ''));
+        const finalText = _msHasEllipsisOrTrunc(cleanedText) 
+          ? _msExtractiveFallback(rawText, Math.floor(baseChars * 0.42)) 
+          : cleanedText;
 
-      const charCount = _msCharCount(finalText);
-      const ratio = charCount / baseChars;
+        const charCount = _msCharCount(finalText);
+        const ratio = charCount / baseChars;
 
-      // detail.narrative에 주입 (V5 결과)
-      detail.narrative = {
-        text: finalText,
-        coreClaim: String(narrativeV5.coreClaim ?? '').trim() || (_msSplitSentences(finalText)[0] ?? '').trim(),
-        grounds: Array.isArray(narrativeV5.grounds) ? narrativeV5.grounds.filter(Boolean) : [],
-        comparisons: Array.isArray(narrativeV5.comparisons) ? narrativeV5.comparisons.filter(Boolean) : [],
-        implications: Array.isArray(narrativeV5.implications) ? narrativeV5.implications.filter(Boolean) : [],
-        ratio,
-        warnings: [],
-        _localSpec: {
+        // detail.narrative에 주입 (V5 결과)
+        detail.narrative = {
+          text: finalText,
+          coreClaim: String(narrativeV5.coreClaim ?? '').trim() || (_msSplitSentences(finalText)[0] ?? '').trim(),
+          grounds: Array.isArray(narrativeV5.grounds) ? narrativeV5.grounds.filter(Boolean) : [],
+          comparisons: Array.isArray(narrativeV5.comparisons) ? narrativeV5.comparisons.filter(Boolean) : [],
+          implications: Array.isArray(narrativeV5.implications) ? narrativeV5.implications.filter(Boolean) : [],
+          ratio,
+          warnings: [],
+          _localSpec: {
+            usedLLM: !(narrativeV5 as any)._debug?.fallback,
+            charCount,
+            ratio,
+          },
+        } as any;
+
+        console.log('[Matrix V4 → V5] Detail narrative generated:', {
           usedLLM: !(narrativeV5 as any)._debug?.fallback,
           charCount,
-          ratio,
-        },
-      } as any;
-
-      console.log('[Matrix V4 → V5] Detail narrative generated:', {
-        usedLLM: !(narrativeV5 as any)._debug?.fallback,
-        charCount,
-        ratio: ratio.toFixed(3),
-        attempts: (narrativeV5 as any)._debug?.attempts,
-      });
+          ratio: ratio.toFixed(3),
+          attempts: (narrativeV5 as any)._debug?.attempts,
+        });
+      } else {
+        console.log('[Matrix V4 → V5] Phase 1: Skipping V5 engine (using existing detail.narrative from fallback)');
+      }
 
       // ✅ downsampleFromDetail()로 brief/standard 생성 (기존 흐름 유지)
       const briefLv = downsampleFromDetail(detail, 'brief');
