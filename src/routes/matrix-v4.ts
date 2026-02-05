@@ -1184,20 +1184,52 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         implications: detail.narrative.implications || []
       };
 
-      const __b = buildNarrativeFromSlots('brief', rawText, slots);
-      const __s = buildNarrativeFromSlots('standard', rawText, slots);
-      const __d = buildNarrativeFromSlots('detail', rawText, slots);
+      // Phase1: 모든 레벨을 Extractive로 생성 (원문 문장 그대로 추출 = 변화 반영)
+      // Phase2: V5 엔진에서 downsample한 결과 사용
+      let __b_text = '';
+      let __s_text = '';
+      let __d_text = '';
+      let __b_ratio = 0;
+      let __s_ratio = 0;
+      let __d_ratio = 0;
 
-      briefLv.narrative.text = __b.text;
-      standardLv.narrative.text = __s.text;
-      // Phase1일 때는 슬롯 기반 detail을 사용, Phase2일 때는 V5 결과 유지
       if (phase === 'phase1') {
-        detailLv.narrative.text = __d.text;
+        // Extractive: 원문에서 각 레벨별 비율만큼 문장 추출
+        const briefTarget = Math.floor(baseChars * 0.15);
+        const standardTarget = Math.floor(baseChars * 0.26);
+        const detailTarget = Math.floor(baseChars * 0.42);
+        
+        __b_text = _msExtractiveFallback(rawText, briefTarget);
+        __s_text = _msExtractiveFallback(rawText, standardTarget);
+        __d_text = _msExtractiveFallback(rawText, detailTarget);
+        
+        __b_ratio = _msCharCount(__b_text) / baseChars;
+        __s_ratio = _msCharCount(__s_text) / baseChars;
+        __d_ratio = _msCharCount(__d_text) / baseChars;
+        
+        console.log('[Matrix V4] Phase 1: Using extractive fallback for all levels:', {
+          brief: { length: _msCharCount(__b_text), ratio: __b_ratio.toFixed(3) },
+          standard: { length: _msCharCount(__s_text), ratio: __s_ratio.toFixed(3) },
+          detail: { length: _msCharCount(__d_text), ratio: __d_ratio.toFixed(3) }
+        });
+      } else {
+        // Phase2: downsample 결과 사용 (이미 위에서 설정됨)
+        __b_text = briefLv.narrative.text;
+        __s_text = standardLv.narrative.text;
+        __d_text = detailLv.narrative.text;
+        
+        __b_ratio = _msCharCount(__b_text) / baseChars;
+        __s_ratio = _msCharCount(__s_text) / baseChars;
+        __d_ratio = detailRatio;
       }
 
-      (briefLv.narrative as any).ratio = __b.ratio;
-      (standardLv.narrative as any).ratio = __s.ratio;
-      (detailLv.narrative as any).ratio = phase === 'phase2' ? detailRatio : __d.ratio;
+      briefLv.narrative.text = __b_text;
+      standardLv.narrative.text = __s_text;
+      detailLv.narrative.text = __d_text;
+
+      (briefLv.narrative as any).ratio = __b_ratio;
+      (standardLv.narrative as any).ratio = __s_ratio;
+      (detailLv.narrative as any).ratio = phase === 'phase2' ? detailRatio : __d_ratio;
 
       // ✅ 마지막 방어: 생략부호/금칙 키워드가 남아 있으면 즉시 FAIL(phase2), phase1은 경고로 qa에 기록
       const hardFailReasons: string[] = [];
@@ -1218,7 +1250,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           model: c.env.GEMINI_MODEL || 'gemini',
           payload: { brief: briefLv, standard: standardLv, detail: detailLv },
           retry_count: 0,
-          meta: { reqId, phase, elapsedMs: Date.now() - t0, ratios: { brief: __b.ratio, standard: __s.ratio, detail: __d.ratio } }
+          meta: { reqId, phase, elapsedMs: Date.now() - t0, ratios: { brief: __b.ratio, standard: __s.ratio, detail: __d_ratio } }
         });
 
         return c.json(
@@ -1234,7 +1266,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       console.log('[Matrix V4] FORTRESS narrative-quality:', {
         brief_ratio: __b.ratio,
         standard_ratio: __s.ratio,
-        detail_ratio: __d.ratio,
+        detail_ratio: __d_ratio,
         hardFailReasons
       });
 
