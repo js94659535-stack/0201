@@ -113,18 +113,8 @@ function buildFallbackSentences(level: Level): string[] {
     ]
   }
 
-  if (level === 'standard') {
-    return [
-      '선행연구에서는 이러한 개념을 다양한 관점에서 규정해 왔다',
-      '본 연구는 이를 종합하여 작업 정의를 제시한다'
-    ]
-  }
-
-  // detail
-  return [
-    '이러한 특징은 여러 측면에서 체계적으로 분석될 수 있다',
-    '종합하면 해당 개념의 다면적 이해가 가능하다'
-  ]
+  // 템플릿 제거: 빈 배열 반환하여 원문 문장만 사용
+  return []
 }
 
 /**

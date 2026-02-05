@@ -974,8 +974,11 @@ function buildNarrativeFromSlots(level: Level, rawText: string, slots: { claim: 
     const para2 = para2Parts.length ? para2Parts.join(' ') : (g[3] ? `${g[3]}.` : '');
     base = para2 ? `${para1}\n\n${para2}` : para1;
 
-    // 문단 보장
-    if (!base.includes('\n\n')) base = `${para1}\n\n${im[0] ? `${im[0]}.` : '이 차이는 학년이 올라갈수록 양상이 달라질 수 있음을 시사한다.'}`;
+    // 문단 보장: 템플릿 대신 원문에서 문장 추출
+    if (!base.includes('\n\n')) {
+      const extraSent = g[4] || g[3] || c[1] || im[1] || '';
+      base = `${para1}\n\n${im[0] ? `${im[0]}.` : (extraSent ? `${extraSent}.` : para1)}`;
+    }
   }
 
   // 풀(추가 문장 후보)
@@ -1250,7 +1253,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           model: c.env.GEMINI_MODEL || 'gemini',
           payload: { brief: briefLv, standard: standardLv, detail: detailLv },
           retry_count: 0,
-          meta: { reqId, phase, elapsedMs: Date.now() - t0, ratios: { brief: __b.ratio, standard: __s.ratio, detail: __d_ratio } }
+          meta: { reqId, phase, elapsedMs: Date.now() - t0, ratios: { brief: __b_ratio, standard: __s_ratio, detail: __d_ratio } }
         });
 
         return c.json(
@@ -1264,8 +1267,8 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       }
 
       console.log('[Matrix V4] FORTRESS narrative-quality:', {
-        brief_ratio: __b.ratio,
-        standard_ratio: __s.ratio,
+        brief_ratio: __b_ratio,
+        standard_ratio: __s_ratio,
         detail_ratio: __d_ratio,
         hardFailReasons
       });
