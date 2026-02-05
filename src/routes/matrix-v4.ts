@@ -1129,9 +1129,11 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       }
 
       // ✅ V5 핵심: Phase2일 때만 detail.narrative를 Gemini로 "진짜 요약" 생성
+      const baseChars = Math.max(50, _msCharCount(rawText));
+      let detailRatio = 0;
+      
       if (phase === 'phase2') {
         console.log('[Matrix V4 → V5] Phase 2: Generating detail.narrative with Gemini (V5 Engine)');
-        const baseChars = Math.max(50, _msCharCount(rawText));
         const narrativeV5 = await _msGenerateNarrativeDetailV5(c, rawText);
 
         // 최종 safety: 중복/말줄임 제거 1회 더
@@ -1141,7 +1143,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           : cleanedText;
 
         const charCount = _msCharCount(finalText);
-        const ratio = charCount / baseChars;
+        detailRatio = charCount / baseChars;
 
         // detail.narrative에 주입 (V5 결과)
         detail.narrative = {
@@ -1150,19 +1152,19 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           grounds: Array.isArray(narrativeV5.grounds) ? narrativeV5.grounds.filter(Boolean) : [],
           comparisons: Array.isArray(narrativeV5.comparisons) ? narrativeV5.comparisons.filter(Boolean) : [],
           implications: Array.isArray(narrativeV5.implications) ? narrativeV5.implications.filter(Boolean) : [],
-          ratio,
+          ratio: detailRatio,
           warnings: [],
           _localSpec: {
             usedLLM: !(narrativeV5 as any)._debug?.fallback,
             charCount,
-            ratio,
+            ratio: detailRatio,
           },
         } as any;
 
         console.log('[Matrix V4 → V5] Detail narrative generated:', {
           usedLLM: !(narrativeV5 as any)._debug?.fallback,
           charCount,
-          ratio: ratio.toFixed(3),
+          ratio: detailRatio.toFixed(3),
           attempts: (narrativeV5 as any)._debug?.attempts,
         });
       } else {
@@ -1174,7 +1176,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       const standardLv = downsampleFromDetail(detail, 'standard');
       const detailLv = downsampleFromDetail(detail, 'detail');
 
-      // 슬롯 기반 "진짜 요약" 강제 (오염/생략부호 차단) - brief/standard만 적용
+      // 슬롯 기반 "진짜 요약" 강제 (오염/생략부호 차단)
       const slots = {
         claim: detail.narrative.coreClaim || '',
         grounds: detail.narrative.grounds || [],
@@ -1184,14 +1186,18 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
 
       const __b = buildNarrativeFromSlots('brief', rawText, slots);
       const __s = buildNarrativeFromSlots('standard', rawText, slots);
+      const __d = buildNarrativeFromSlots('detail', rawText, slots);
 
       briefLv.narrative.text = __b.text;
       standardLv.narrative.text = __s.text;
-      // detailLv는 이미 V5로 생성되었으므로 그대로 유지
+      // Phase1일 때는 슬롯 기반 detail을 사용, Phase2일 때는 V5 결과 유지
+      if (phase === 'phase1') {
+        detailLv.narrative.text = __d.text;
+      }
 
       (briefLv.narrative as any).ratio = __b.ratio;
       (standardLv.narrative as any).ratio = __s.ratio;
-      (detailLv.narrative as any).ratio = ratio;
+      (detailLv.narrative as any).ratio = phase === 'phase2' ? detailRatio : __d.ratio;
 
       // ✅ 마지막 방어: 생략부호/금칙 키워드가 남아 있으면 즉시 FAIL(phase2), phase1은 경고로 qa에 기록
       const hardFailReasons: string[] = [];
