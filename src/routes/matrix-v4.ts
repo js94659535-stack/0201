@@ -619,26 +619,131 @@ function validateLevelSeparation(levels: { brief: LevelBundle; standard: LevelBu
 // ------------------------------
 // Gemini 호출
 // ------------------------------
+/**
+ * 🛡️ LLM Fallback Chain - API 트라우마 해결
+ * 우선순위: Ollama 로컬 → Claude → Gemini → Extractive
+ */
 async function callGeminiText(c: any, prompt: string) {
-  const key = c.env.GEMINI_API_KEY;
-  if (!key) throw new Error('GEMINI_API_KEY missing');
-  const model = c.env.GEMINI_MODEL || 'gemini-2.0-flash-exp';
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-    {
+  const MAX_CHARS = 500;
+  
+  // 1순위: Ollama 로컬 (가장 안정적)
+  try {
+    console.log('[LLM] 1/4 Ollama 로컬 시도...');
+    const localRes = await fetch('http://localhost:11434/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
+        model: 'llama3.2:3b',
+        prompt: prompt,
+        stream: false,
+        options: { temperature: 0.3, num_predict: 2048 }
       })
+    });
+    
+    if (localRes.ok) {
+      const data = await localRes.json();
+      const text = data?.response || '';
+      if (text.length > 50) {
+        console.log('[LLM] ✓ Ollama 성공 (로컬)');
+        return text;
+      }
     }
-  );
+  } catch (e) {
+    console.log('[LLM] ✗ Ollama 실패:', (e as Error).message);
+  }
 
-  const json = await res.json();
-  const text = json?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
-  return text;
+  // 2순위: Claude API (중간 안정성)
+  const claudeKey = c?.env?.ANTHROPIC_API_KEY || '';
+  if (claudeKey) {
+    try {
+      console.log('[LLM] 2/4 Claude API 시도...');
+      const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': claudeKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'claude-3-haiku-20240307',
+          max_tokens: 4096,
+          temperature: 0.3,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+
+      if (claudeRes.ok) {
+        const data = await claudeRes.json();
+        const text = data?.content?.[0]?.text || '';
+        if (text.length > 50) {
+          console.log('[LLM] ✓ Claude 성공');
+          return text;
+        }
+      }
+    } catch (e) {
+      console.log('[LLM] ✗ Claude 실패:', (e as Error).message);
+    }
+  }
+
+  // 3순위: Gemini API (기존 로직)
+  const geminiKey = c?.env?.GEMINI_API_KEY || '';
+  if (geminiKey) {
+    try {
+      console.log('[LLM] 3/4 Gemini API 시도...');
+      const model = c.env.GEMINI_MODEL || 'gemini-2.0-flash-exp';
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
+          })
+        }
+      );
+
+      if (res.ok) {
+        const json = await res.json();
+        const text = json?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
+        if (text.length > 50) {
+          console.log('[LLM] ✓ Gemini 성공');
+          return text;
+        }
+      }
+    } catch (e) {
+      console.log('[LLM] ✗ Gemini 실패:', (e as Error).message);
+    }
+  }
+
+  // 4순위: Extractive Fallback (최후의 수단 - 절대 실패 없음)
+  console.log('[LLM] 4/4 Extractive Fallback 사용 (모든 API 실패)');
+  
+  // prompt에서 원문 추출 시도
+  const lines = prompt.split('\n');
+  let rawText = '';
+  for (const line of lines) {
+    if (line.includes('원문:') || line.includes('텍스트:')) {
+      const idx = lines.indexOf(line);
+      rawText = lines.slice(idx + 1).join('\n').trim();
+      break;
+    }
+  }
+  
+  if (!rawText) rawText = prompt; // 원문 추출 실패 시 전체 사용
+
+  // 문장 단위로 자르기
+  const sentences = rawText
+    .split(/[.!?]\s+/)
+    .filter(s => s.trim().length > 10);
+
+  let result = '';
+  for (const sent of sentences) {
+    if (result.length + sent.length > MAX_CHARS) break;
+    result += sent + '. ';
+  }
+
+  return result.trim() || rawText.slice(0, MAX_CHARS);
 }
 
 // =====================================================================
