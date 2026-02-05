@@ -29,6 +29,8 @@ import {
   qualityGateAll,
 } from '../lib/ms-summary-guard-v1';
 
+import { insertFalseBucket } from '../lib/false-bucket';
+
 type Bindings = {
   GEMINI_API_KEY?: string;
   GEMINI_MODEL?: string;
@@ -831,6 +833,17 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         }
 
         if (!detail) {
+          // FALSE Bucket: JSON 파싱 실패 기록
+          await insertFalseBucket(c.env.DB, {
+            source: 'matrix_v4',
+            reason: 'DETAIL_JSON_PARSE_FAIL',
+            errors: ['detail JSON 파싱 실패', 'Gemini 응답이 유효한 JSON이 아님'],
+            input_text: rawText,
+            model: c.env.GEMINI_MODEL || 'gemini',
+            retry_count: 0,
+            meta: { reqId, phase, elapsedMs: Date.now() - t0 }
+          });
+
           return c.json(
             {
               ok: false,
@@ -845,6 +858,18 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       // detail 스키마 검증
       const detailErrs = validateDetailBundle(detail);
       if (detailErrs.length) {
+        // FALSE Bucket: 스키마 검증 실패 기록
+        await insertFalseBucket(c.env.DB, {
+          source: 'matrix_v4',
+          reason: 'DETAIL_VALIDATION_FAIL',
+          errors: detailErrs,
+          input_text: rawText,
+          model: c.env.GEMINI_MODEL || 'gemini',
+          payload: detail,
+          retry_count: 0,
+          meta: { reqId, phase, elapsedMs: Date.now() - t0 }
+        });
+
         return c.json(
           {
             ok: false,
@@ -890,6 +915,18 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       }
 
       if (hardFailReasons.length && phase === 'phase2') {
+        // FALSE Bucket: Fortress 검증 실패 기록
+        await insertFalseBucket(c.env.DB, {
+          source: 'matrix_v4',
+          reason: 'NARRATIVE_FORTRESS_FAIL',
+          errors: hardFailReasons,
+          input_text: rawText,
+          model: c.env.GEMINI_MODEL || 'gemini',
+          payload: { brief: briefLv, standard: standardLv, detail: detailLv },
+          retry_count: 0,
+          meta: { reqId, phase, elapsedMs: Date.now() - t0, ratios: { brief: __b.ratio, standard: __s.ratio, detail: __d.ratio } }
+        });
+
         return c.json(
           {
             ok: false,
@@ -927,6 +964,18 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       // 레벨 분리 검증(phase2 실패 / phase1 경고)
       const sepErrs = validateLevelSeparation({ brief, standard, detail: detailLv });
       if (sepErrs.length && phase === 'phase2') {
+        // FALSE Bucket: 레벨 분리 검증 실패 기록
+        await insertFalseBucket(c.env.DB, {
+          source: 'matrix_v4',
+          reason: 'LEVEL_SEPARATION_FAIL',
+          errors: sepErrs,
+          input_text: rawText,
+          model: c.env.GEMINI_MODEL || 'gemini',
+          payload: { brief, standard, detail: detailLv },
+          retry_count: 0,
+          meta: { reqId, phase, elapsedMs: Date.now() - t0 }
+        });
+
         return c.json(
           {
             ok: false,
