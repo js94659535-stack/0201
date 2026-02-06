@@ -1295,21 +1295,17 @@ function _structuralSlotting(originalText: string, trustList: Set<string>, level
   const midSents = sents.slice(1, 4).join(' ');
   const lastSent = sents[sents.length - 1] || '';
   
-  // 신뢰 단어 중 상위 3개 선택
-  const topKeywords = Array.from(trustList).slice(0, 3);
-  const mainKw = topKeywords[0] || '본문';
-  
   let slotted = '';
   
   if (level === 'brief') {
-    // Brief: [핵심 정의]만
-    slotted = `[핵심 정의] ${mainKw}은(는) ${firstSent.slice(0, 100)}`;
+    // Brief: [핵심 정의]만 - 원문 그대로 사용
+    slotted = `[핵심 정의] ${firstSent.slice(0, 100)}`;
   } else if (level === 'standard') {
     // Standard: [핵심 정의] + [상세 설명]
-    slotted = `[핵심 정의] ${mainKw}은(는) ${firstSent.slice(0, 80)} [상세 설명] ${midSents.slice(0, 150)}`;
+    slotted = `[핵심 정의] ${firstSent.slice(0, 80)} [상세 설명] ${midSents.slice(0, 150)}`;
   } else {
     // Detail: [핵심 정의] + [상세 설명] + [결론]
-    slotted = `[핵심 정의] ${mainKw}은(는) ${firstSent} [상세 설명] ${midSents} [결론 및 시사점] ${lastSent}`;
+    slotted = `[핵심 정의] ${firstSent} [상세 설명] ${midSents} [결론 및 시사점] ${lastSent}`;
   }
   
   return slotted;
@@ -2092,9 +2088,9 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
             mindmap: { brief: brief.mindmap, standard: standard.mindmap, detail: detailLv.mindmap },
             selftest: { brief: brief.selftest, standard: standard.selftest, detail: detailLv.selftest }
           },
-          engine: 'Universal-Logic-V2-RECOVERED'
+          engine: 'intelligent-template-v5'
         },
-        meta: { reqId, elapsedMs: Date.now() - t0, phase, qa, engine: 'Universal-Logic-V2-RECOVERED' },
+        meta: { reqId, elapsedMs: Date.now() - t0, phase, qa, engine: 'intelligent-template-v5' },
         result: { qa }
       };
 
@@ -2102,9 +2098,9 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       c.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       c.header('Pragma', 'no-cache');
       c.header('Expires', '0');
-      c.header('X-MS-Build', 'UNIVERSAL_LOGIC_V2_RECOVERED_2026-02-06');
+      c.header('X-MS-Build', 'INTELLIGENT_TEMPLATE_V5_2026-02-06');
       c.header('X-MS-Phase', phase);
-      c.header('X-MS-Engine', 'Universal-Logic-V2-RECOVERED');
+      c.header('X-MS-Engine', 'intelligent-template-v5');
 
       return c.json(out, 200);
     } catch (e: any) {
