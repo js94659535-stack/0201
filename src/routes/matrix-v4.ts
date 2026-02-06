@@ -783,7 +783,28 @@ async function callGeminiText(c: any, prompt: string) {
     // coreClaim: 가장 점수가 높은 문장
     const coreClaim = topSentences[0]?.sent || sentences[0] || rawText.slice(0, 100);
     
-    // JSON 래핑 (buildDetailPrompt와 동일한 구조)
+    // JSON 래핑 (DetailBundle 스키마 완벽 준수)
+    // 문단 분리: 전반부 + 후반부
+    const firstHalf = detailSents.slice(0, Math.ceil(detailSents.length / 2)).map(s => s.sent).join(' ');
+    const secondHalf = detailSents.slice(Math.ceil(detailSents.length / 2)).map(s => s.sent).join(' ');
+    const summaryDetail = firstHalf + '\n\n' + (secondHalf || firstHalf);
+    
+    // Keywords 추출 (glossary용)
+    const keywords = new Set<string>();
+    const keywordPattern = /([가-힣]{2,6})(?:은|는|이|가|을|를|의|에|와|과|로|으로)/g;
+    let match;
+    while ((match = keywordPattern.exec(rawText)) !== null && keywords.size < 5) {
+      keywords.add(match[1]);
+    }
+    const glossary = Array.from(keywords).slice(0, 5).map(term => ({
+      term,
+      definition: `${term}에 대한 설명`
+    }));
+    // 최소 1개 보장
+    if (glossary.length === 0) {
+      glossary.push({ term: '핵심개념', definition: coreClaim.slice(0, 50) });
+    }
+    
     const extractiveJSON = {
       schemaVersion: 'ms-v4',
       lang: 'ko',
@@ -797,6 +818,7 @@ async function callGeminiText(c: any, prompt: string) {
         grounds: detailSents.slice(0, 3).map(s => s.sent),
         comparisons: detailSents.slice(3, 5).map(s => s.sent).filter(Boolean),
         implications: detailSents.slice(5, 8).map(s => s.sent).filter(Boolean),
+        summaryDetail: summaryDetail,  // ✅ 필수 필드 추가
         ratio: 0.42
       },
       structured: {
@@ -807,18 +829,24 @@ async function callGeminiText(c: any, prompt: string) {
         hierarchy: [
           { heading: '주요 개념', level: 1, children: [] }
         ],
-        glossary: []
+        glossary: glossary  // ✅ 최소 1개 보장
       },
       mindmap: {
-        root: {
-          concept: coreClaim.slice(0, 30),
-          explain: coreClaim,
-          children: topSentences.slice(1, 4).map(s => ({
-            title: s.sent.slice(0, 20),
-            explain: s.sent,
-            pack: [s.sent.slice(0, 10), '핵심', '내용']
-          }))
-        }
+        children: topSentences.slice(0, 4).map((s, idx) => ({
+          title: `${idx + 1}. ${s.sent.slice(0, 15)}`,
+          children: [
+            {
+              title: s.sent.slice(0, 20),
+              explain: s.sent,
+              pack: [s.sent.slice(0, 10), '핵심', '내용']
+            },
+            {
+              title: '관련 내용',
+              explain: s.sent + ' 관련 설명',
+              pack: ['관련', '내용', '정보']
+            }
+          ]
+        }))
       },
       selftest: {
         passScorePct: 90,
@@ -828,8 +856,19 @@ async function callGeminiText(c: any, prompt: string) {
             choices: [coreClaim.slice(0, 50), '기타 선택지 1', '기타 선택지 2', '기타 선택지 3'],
             correctIdx: 0,
             explanation: coreClaim
+          },
+          {
+            question: '다음 중 올바른 설명은?',
+            choices: [
+              detailSents[0]?.sent.slice(0, 40) || '선택지 1',
+              '선택지 2',
+              '선택지 3',
+              '선택지 4'
+            ],
+            correctIdx: 0,
+            explanation: detailSents[0]?.sent || coreClaim
           }
-        ]
+        ]  // ✅ 최소 2개 보장
       }
     };
     
