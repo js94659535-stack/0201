@@ -1192,12 +1192,17 @@ function _msTargetsByRatio(originalText: string) {
    - engine: "intelligent-template-v5" 명시
    ============================================================ */
 function _msIntelligentTemplateSummarizer(originalText: string, level: 'brief' | 'standard' | 'detail') {
+  console.log('\n--- 🔥 INTELLIGENT ENGINE START ---');
+  console.log('[지능형 엔진] Level:', level, '| 원문 길이:', originalText.length);
+  
   // 1. 전처리 (페이지 번호 제거 및 불용어 삭제 강화)
   let clean = originalText
     .replace(/[-\[]?\d+[-\]]/g, '') 
     .replace(/^(한편|반면에|또한|그리고|더불어|따라서|아울러|게다가|뿐만아니라)[,\s]*/gm, '') 
     .replace(/(^|\.)\s*(한편|반면에|또한|그리고|더불어|따라서|아울러|게다가)/g, '$1 ')
     .replace(/\s+/g, ' ').trim();
+  
+  console.log('[지능형 엔진] 불용어 제거 완료, Clean 길이:', clean.length);
 
   // 2. 키워드 추출 및 첫 문장 확보
   const keywords = _msTopKeywordsKorean(clean, 5);
@@ -1208,13 +1213,16 @@ function _msIntelligentTemplateSummarizer(originalText: string, level: 'brief' |
   // 3. 지능형 템플릿 (재구성)
   let result = "";
   if (level === 'brief') {
-    result = `[핵심개념] ${mainKw}은(는) ${firstSent.slice(0, 80)} 내용을 중심으로 전개된다. 주요 관점으로 ${keywords.slice(1, 3).join(', ')} 등을 포함한다.`;
+    result = `[지능형 요약] ${mainKw}은(는) ${firstSent.slice(0, 80)} 내용을 중심으로 전개된다. 주요 관점으로 ${keywords.slice(1, 3).join(', ')} 등을 포함한다.`;
   } else {
     const body = sents.slice(1, 4).join(' ');
-    result = `${mainKw}에 대한 분석에 따르면, ${firstSent} 특히 ${body} 이와 같은 흐름은 해당 주제를 이해하는 데 핵심적인 근거가 된다.`;
+    result = `[지능형 요약] ${mainKw}에 대한 분석에 따르면, ${firstSent} 특히 ${body} 이와 같은 흐름은 해당 주제를 이해하는 데 핵심적인 근거가 된다.`;
   }
-
-  return _msDedupSentences(result);
+  
+  const final = _msDedupSentences(result);
+  console.log('[지능형 엔진] 생성 완료:', final.slice(0, 100));
+  console.log('--- 🔥 INTELLIGENT ENGINE END ---\n');
+  return final;
 }
 
 /**
@@ -1225,12 +1233,16 @@ function _msIntelligentTemplateSummarizer(originalText: string, level: 'brief' |
  * - 엔진명 명시: engine: "intelligent-template-v5"
  */
 function _msExtractiveFallback(originalText: string, targetChars: number) {
+  console.log('[4순위 Fallback] 지능형 템플릿 재구성 시작');
+  
   // 1. 노이즈 및 불용어 제거 (문장 시작의 '또한' 등 박멸)
   const clean = originalText
     .replace(/[-\[]?\d+[-\]]/g, '')
     .replace(/^(한편|반면에|또한|그리고|따라서|더불어|게다가|뿐만아니라)[,\s]*/gm, '')
     .replace(/\s+/g, ' ')
     .trim();
+  
+  console.log('[4순위 Fallback] 불용어 제거 완료:', clean.slice(0, 50));
 
   // 2. 키워드 추출 (상위 3개)
   const keywords = _msTopKeywordsKorean(clean, 3);
@@ -1244,12 +1256,14 @@ function _msExtractiveFallback(originalText: string, targetChars: number) {
   let result = '';
   if (targetChars < 150) {
     // Brief: 핵심 키워드 중심 간결 요약
-    result = `${mainKw}에 관한 분석 결과, ${firstSent.slice(0, 100)}을 핵심으로 한다. ${keywords.slice(1).join(', ')} 등을 주요 요소로 다루고 있다.`;
+    result = `[지능형 요약] ${mainKw}에 관한 분석 결과, ${firstSent.slice(0, 100)}을 핵심으로 한다. ${keywords.slice(1).join(', ')} 등을 주요 요소로 다루고 있다.`;
   } else {
     // Standard/Detail: 체계적 구조 강조
     const body = sents.slice(1, 4).join(' ');
-    result = `${mainKw}은(는) 다음과 같은 체계를 가진다. ${firstSent} 이를 구체화하면 ${body} 이와 같은 구조는 전체 맥락을 이해하는 데 필수적이다.`;
+    result = `[지능형 요약] ${mainKw}은(는) 다음과 같은 체계를 가진다. ${firstSent} 이를 구체화하면 ${body} 이와 같은 구조는 전체 맥락을 이해하는 데 필수적이다.`;
   }
+  
+  console.log('[4순위 Fallback] 템플릿 재구성 완료:', result.slice(0, 80));
 
   // 5. 중복 제거 및 길이 제한
   return _msDedupSentences(result.slice(0, targetChars + 50));
