@@ -966,7 +966,8 @@ async function callGeminiText(c: any, prompt: string, rawText: string) {
     };
     
     console.log('[LLM] ✓ 지능형 템플릿 요약 성공 (재구성 완료)');
-    return JSON.stringify(intelligentJSON, null, 2);
+    // 🎯 [핀셋 4] 객체 직접 반환 (JSON 문자열 X)
+    return intelligentJSON;
     
   } catch (e) {
     console.log('[LLM] ⚠️ Extractive Fallback 예외 발생, 최소 안전 JSON 반환:', (e as Error).message);
@@ -1009,7 +1010,8 @@ async function callGeminiText(c: any, prompt: string, rawText: string) {
     };
     
     console.log('[LLM] ✓ 최소 안전 JSON 생성 완료 (절대 실패 없음)');
-    return JSON.stringify(safeJSON, null, 2);
+    // 🎯 [핀셋 4] 객체 직접 반환 (JSON 문자열 X)
+    return safeJSON;
   }
 }
 /* ============================================================
@@ -1718,8 +1720,15 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       console.log(`[Matrix V4] ${phase}: Trying LLM Fallback Chain (Ollama → Claude → Gemini → Extractive)`);
       
       const detailPrompt = buildDetailPrompt(rawText);
-      let detailText = await callGeminiText(c, detailPrompt, rawText);  // ✅ 순수 원문 전달
-      detail = safeJsonParse(detailText) as DetailBundle | null;
+      let llmResult = await callGeminiText(c, detailPrompt, rawText);  // ✅ 순수 원문 전달
+      
+      // 🎯 [핀셋 4] 타입 체크: 객체면 그대로, 문자열이면 파싱
+      if (typeof llmResult === 'object' && llmResult !== null) {
+        detail = llmResult as DetailBundle;
+        console.log('[Matrix V4] ✅ LLM returned object directly (Universal Logic Engine)');
+      } else {
+        detail = safeJsonParse(String(llmResult)) as DetailBundle | null;
+      }
 
       if (!detail) {
         console.log('[Matrix V4] First attempt failed, trying repair...');
@@ -1728,8 +1737,13 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           `설명/마크다운 없이, 오직 JSON만 다시 출력하라.`,
           buildDetailPrompt(rawText)
         ].join('\n');
-        detailText = await callGeminiText(c, repairPrompt, rawText);  // ✅ 순수 원문 전달
-        detail = safeJsonParse(detailText) as DetailBundle | null;
+        llmResult = await callGeminiText(c, repairPrompt, rawText);  // ✅ 순수 원문 전달
+        
+        if (typeof llmResult === 'object' && llmResult !== null) {
+          detail = llmResult as DetailBundle;
+        } else {
+          detail = safeJsonParse(String(llmResult)) as DetailBundle | null;
+        }
       }
 
       if (!detail) {
