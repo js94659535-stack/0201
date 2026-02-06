@@ -1191,82 +1191,185 @@ function _msTargetsByRatio(originalText: string) {
    - AI 스타일 템플릿 적용
    - engine: "intelligent-template-v5" 명시
    ============================================================ */
-function _msIntelligentTemplateSummarizer(originalText: string, level: 'brief' | 'standard' | 'detail') {
-  console.log('\n--- 🔥 INTELLIGENT ENGINE START ---');
-  console.log('[지능형 엔진] Level:', level, '| 원문 길이:', originalText.length);
-  
-  // 1. 전처리 (페이지 번호 제거 및 불용어 삭제 강화)
-  let clean = originalText
-    .replace(/[-\[]?\d+[-\]]/g, '') 
-    .replace(/^(한편|반면에|또한|그리고|더불어|따라서|아울러|게다가|뿐만아니라)[,\s]*/gm, '') 
-    .replace(/(^|\.)\s*(한편|반면에|또한|그리고|더불어|따라서|아울러|게다가)/g, '$1 ')
-    .replace(/\s+/g, ' ').trim();
-  
-  console.log('[지능형 엔진] 불용어 제거 완료, Clean 길이:', clean.length);
+/* ============================================================
+   🌐 UNIVERSAL LOGIC ENGINE V1
+   - 하드코딩 제거: 특정 단어 금지 리스트 없음
+   - 동적 키워드 화이트리스트: 원문 기반 신뢰 단어 추출
+   - 문법적 정규화: 정규식 기반 접속사 자동 제거
+   - 구조적 슬롯: [핵심 정의] - [상세 설명] - [결론]
+   ============================================================ */
 
-  // 2. 키워드 추출 및 첫 문장 확보
-  const keywords = _msTopKeywordsKorean(clean, 5);
-  const mainKw = keywords[0] || '본문';
-  const sents = _msSplitSentences(clean);
-  const firstSent = sents[0] || '';
+/**
+ * STEP 1: 동적 키워드 화이트리스트 생성
+ * 원문에서 명사형 키워드를 추출하여 신뢰 단어 목록 생성
+ */
+function _extractTrustList(text: string): Set<string> {
+  console.log('[Universal-V1] 신뢰 단어 목록 추출 시작');
   
-  // 3. 지능형 템플릿 (재구성)
-  let result = "";
-  if (level === 'brief') {
-    result = `[지능형 요약] ${mainKw}은(는) ${firstSent.slice(0, 80)} 내용을 중심으로 전개된다. 주요 관점으로 ${keywords.slice(1, 3).join(', ')} 등을 포함한다.`;
-  } else {
-    const body = sents.slice(1, 4).join(' ');
-    result = `[지능형 요약] ${mainKw}에 대한 분석에 따르면, ${firstSent} 특히 ${body} 이와 같은 흐름은 해당 주제를 이해하는 데 핵심적인 근거가 된다.`;
+  // 한글 명사 추출 (2-8자)
+  const nouns = text.match(/[가-힣]{2,8}/g) || [];
+  
+  // 빈도 계산
+  const freq: Record<string, number> = {};
+  nouns.forEach(noun => {
+    freq[noun] = (freq[noun] || 0) + 1;
+  });
+  
+  // 빈도 2회 이상 + 길이 2자 이상만 신뢰 목록에 추가
+  const trustList = new Set<string>();
+  Object.entries(freq).forEach(([word, count]) => {
+    if (count >= 2 && word.length >= 2) {
+      trustList.add(word);
+    }
+  });
+  
+  console.log('[Universal-V1] 신뢰 단어:', Array.from(trustList).slice(0, 10).join(', '));
+  return trustList;
+}
+
+/**
+ * STEP 2: 환각 검증 및 제거
+ * 생성된 텍스트에서 신뢰 목록에 없는 단어를 제거
+ */
+function _verifyAndClean(generatedText: string, trustList: Set<string>, originalText: string): string {
+  console.log('[Universal-V1] 환각 검증 시작');
+  
+  // 생성 텍스트의 모든 명사 추출
+  const generatedNouns = generatedText.match(/[가-힣]{2,8}/g) || [];
+  
+  // 신뢰 목록에 없는 단어 찾기
+  const hallucinations: string[] = [];
+  generatedNouns.forEach(noun => {
+    if (!trustList.has(noun) && noun.length >= 3) {
+      hallucinations.push(noun);
+    }
+  });
+  
+  if (hallucinations.length > 0) {
+    console.log('[Universal-V1] 환각 감지:', hallucinations.slice(0, 5).join(', '));
+    // 환각 단어를 원문의 유사 단어로 치환 (간단한 구현: 제거)
+    hallucinations.forEach(word => {
+      generatedText = generatedText.replace(new RegExp(word, 'g'), '');
+    });
   }
   
-  const final = _msDedupSentences(result);
-  console.log('[지능형 엔진] 생성 완료:', final.slice(0, 100));
-  console.log('--- 🔥 INTELLIGENT ENGINE END ---\n');
+  return generatedText.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * STEP 3: 문법적 정규화 엔진
+ * 정규식으로 문장 시작 접속사 자동 제거 + 완결 구조 강제
+ */
+function _grammarNormalize(text: string): string {
+  console.log('[Universal-V1] 문법 정규화 시작');
+  
+  let normalized = text;
+  
+  // 1. 페이지 번호, 괄호 숫자 제거
+  normalized = normalized.replace(/[-\[]?\d+[-\]]/g, '');
+  normalized = normalized.replace(/\(\d+\)/g, '');
+  normalized = normalized.replace(/p\.?\s*\d+/gi, '');
+  
+  // 2. 문장 시작 접속사 자동 제거 (정규식 패턴)
+  // 한글 접속 부사: 2-4자 + 쉼표/공백
+  normalized = normalized.replace(/^[가-힣]{2,4}[,\s]+/gm, '');
+  
+  // 3. 문장 중간 접속사 정리
+  normalized = normalized.replace(/(\.)\s+[가-힣]{2,4}\s+/g, '$1 ');
+  
+  // 4. 불필요한 공백 정리
+  normalized = normalized.replace(/\s+/g, ' ').trim();
+  
+  // 5. 문장 완결성 검증 (간단한 구현: 마침표로 끝나도록)
+  if (!normalized.match(/[.!?]$/)) {
+    normalized += '.';
+  }
+  
+  console.log('[Universal-V1] 정규화 완료');
+  return normalized;
+}
+
+/**
+ * STEP 4: 구조적 슬롯 템플릿
+ * [핵심 정의] - [상세 설명] - [결론 및 시사점] 3단계 슬롯
+ */
+function _structuralSlotting(originalText: string, trustList: Set<string>, level: 'brief' | 'standard' | 'detail'): string {
+  console.log('[Universal-V1] 구조적 슬롯 적용:', level);
+  
+  // 문장 분리
+  const sents = _msSplitSentences(originalText);
+  const firstSent = sents[0] || '';
+  const midSents = sents.slice(1, 4).join(' ');
+  const lastSent = sents[sents.length - 1] || '';
+  
+  // 신뢰 단어 중 상위 3개 선택
+  const topKeywords = Array.from(trustList).slice(0, 3);
+  const mainKw = topKeywords[0] || '본문';
+  
+  let slotted = '';
+  
+  if (level === 'brief') {
+    // Brief: [핵심 정의]만
+    slotted = `[핵심 정의] ${mainKw}은(는) ${firstSent.slice(0, 100)}`;
+  } else if (level === 'standard') {
+    // Standard: [핵심 정의] + [상세 설명]
+    slotted = `[핵심 정의] ${mainKw}은(는) ${firstSent.slice(0, 80)} [상세 설명] ${midSents.slice(0, 150)}`;
+  } else {
+    // Detail: [핵심 정의] + [상세 설명] + [결론]
+    slotted = `[핵심 정의] ${mainKw}은(는) ${firstSent} [상세 설명] ${midSents} [결론 및 시사점] ${lastSent}`;
+  }
+  
+  return slotted;
+}
+
+/**
+ * MAIN: Universal Logic Engine V1
+ * 통합 함수: 동적 화이트리스트 + 환각 검증 + 문법 정규화 + 구조적 슬롯
+ */
+function _msIntelligentTemplateSummarizer(originalText: string, level: 'brief' | 'standard' | 'detail') {
+  console.log('\n--- 🌐 UNIVERSAL LOGIC ENGINE V1 START ---');
+  console.log('[Universal-V1] Level:', level, '| 원문 길이:', originalText.length);
+  
+  // STEP 1: 동적 키워드 화이트리스트 생성
+  const trustList = _extractTrustList(originalText);
+  
+  // STEP 2: 문법적 정규화
+  const normalized = _grammarNormalize(originalText);
+  
+  // STEP 3: 구조적 슬롯 템플릿 적용
+  let slotted = _structuralSlotting(normalized, trustList, level);
+  
+  // STEP 4: 환각 검증 및 제거
+  slotted = _verifyAndClean(slotted, trustList, originalText);
+  
+  // STEP 5: 최종 중복 제거
+  const final = _msDedupSentences(slotted);
+  
+  console.log('[Universal-V1] 생성 완료:', final.slice(0, 100));
+  console.log('--- 🌐 UNIVERSAL LOGIC ENGINE V1 END ---\n');
+  
   return final;
 }
 
 /**
- * 4순위: 지능형 Extractive Fallback (Template Reconstruction)
- * - 단순 추출 금지: 문장을 템플릿으로 재조립
- * - 불용어 강제 제거: 또한, 한편, 그리고, 따라서 등 박멸
- * - 키워드 기반 재구성: GPT 스타일 템플릿 적용
- * - 엔진명 명시: engine: "intelligent-template-v5"
+ * 4순위: Universal Logic Fallback
+ * - 하드코딩 없음: 정규식 기반 자동 정리
+ * - 동적 검증: 신뢰 단어 목록 기반 환각 제거
+ * - 구조적 슬롯: 일관된 품질 보장
  */
 function _msExtractiveFallback(originalText: string, targetChars: number) {
-  console.log('[4순위 Fallback] 지능형 템플릿 재구성 시작');
+  console.log('[Universal-V1 Fallback] 시작');
   
-  // 1. 노이즈 및 불용어 제거 (문장 시작의 '또한' 등 박멸)
-  const clean = originalText
-    .replace(/[-\[]?\d+[-\]]/g, '')
-    .replace(/^(한편|반면에|또한|그리고|따라서|더불어|게다가|뿐만아니라)[,\s]*/gm, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  // 레벨 결정
+  const level = targetChars < 150 ? 'brief' : (targetChars < 400 ? 'standard' : 'detail');
   
-  console.log('[4순위 Fallback] 불용어 제거 완료:', clean.slice(0, 50));
-
-  // 2. 키워드 추출 (상위 3개)
-  const keywords = _msTopKeywordsKorean(clean, 3);
-  const mainKw = keywords[0] || '본 내용';
-
-  // 3. 문장 분리 및 첫 문장 확보
-  const sents = _msSplitSentences(clean);
-  const firstSent = sents[0] || '';
-
-  // 4. 지능형 템플릿 재구성 (AI 스타일 문장 생성)
-  let result = '';
-  if (targetChars < 150) {
-    // Brief: 핵심 키워드 중심 간결 요약
-    result = `[지능형 요약] ${mainKw}에 관한 분석 결과, ${firstSent.slice(0, 100)}을 핵심으로 한다. ${keywords.slice(1).join(', ')} 등을 주요 요소로 다루고 있다.`;
-  } else {
-    // Standard/Detail: 체계적 구조 강조
-    const body = sents.slice(1, 4).join(' ');
-    result = `[지능형 요약] ${mainKw}은(는) 다음과 같은 체계를 가진다. ${firstSent} 이를 구체화하면 ${body} 이와 같은 구조는 전체 맥락을 이해하는 데 필수적이다.`;
-  }
+  // Universal Logic Engine V1 호출
+  const result = _msIntelligentTemplateSummarizer(originalText, level);
   
-  console.log('[4순위 Fallback] 템플릿 재구성 완료:', result.slice(0, 80));
-
-  // 5. 중복 제거 및 길이 제한
-  return _msDedupSentences(result.slice(0, targetChars + 50));
+  console.log('[Universal-V1 Fallback] 완료:', result.slice(0, 80));
+  
+  // 길이 제한
+  return result.slice(0, targetChars + 50);
 }
 
 /* ============================================================
@@ -1996,9 +2099,9 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
             mindmap: { brief: brief.mindmap, standard: standard.mindmap, detail: detailLv.mindmap },
             selftest: { brief: brief.selftest, standard: standard.selftest, detail: detailLv.selftest }
           },
-          engine: 'intelligent-template-v5'
+          engine: 'Universal-Logic-V1'
         },
-        meta: { reqId, elapsedMs: Date.now() - t0, phase, qa, engine: 'intelligent-template-v5' },
+        meta: { reqId, elapsedMs: Date.now() - t0, phase, qa, engine: 'Universal-Logic-V1' },
         result: { qa }
       };
 
@@ -2006,9 +2109,9 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       c.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       c.header('Pragma', 'no-cache');
       c.header('Expires', '0');
-      c.header('X-MS-Build', 'NARRATIVE_V5_PATCH_2026-02-05');
+      c.header('X-MS-Build', 'UNIVERSAL_LOGIC_V1_2026-02-06');
       c.header('X-MS-Phase', phase);
-      c.header('X-MS-Engine', 'intelligent-template-v5');
+      c.header('X-MS-Engine', 'Universal-Logic-V1');
 
       return c.json(out, 200);
     } catch (e: any) {
