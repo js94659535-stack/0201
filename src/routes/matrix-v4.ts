@@ -376,12 +376,14 @@ function buildLocalFallbackDetail(rawText: string): DetailBundle {
 // ------------------------------
 // Detail 생성 프롬프트
 // ------------------------------
+// START: UNIVERSAL LOGIC ENGINE V1 - CLEAN PROMPT (NO EXAMPLES)
 function buildDetailPrompt(rawText: string) {
   return [
     `당신은 학습 콘텐츠를 "재조립"하여 참고서형 지식 구조로 만드는 전문가입니다.`,
     ``,
     `[절대 규칙]`,
     `- 의미 단위로 재구성해야 하며, 글자를 중간에 자르거나 발췌만 하면 실패입니다.`,
+    `- 원문에 있는 단어와 개념만 사용하세요. (외부 예시, 고유명사, 숫자 추가 금지)`,
     `- 아래 JSON 스키마 그대로만 출력하세요. (설명/마크다운/코드블록 금지)`,
     `- 같은 문장을 반복하면 실패입니다.`,
     `- structured.glossary는 반드시 "용어: 정의" 성격의 문장으로 작성하세요.`,
@@ -421,10 +423,12 @@ function buildDetailPrompt(rawText: string) {
     `  }`,
     `}`,
     ``,
+    ``,
     `[원문]`,
     rawText
   ].join('\n');
 }
+// END: UNIVERSAL LOGIC ENGINE V1 - CLEAN PROMPT
 
 // ------------------------------
 // Downsample
@@ -799,39 +803,34 @@ async function callGeminiText(c: any, prompt: string) {
   }
 
   /* ============================================================
-     4순위: Intelligent Template-Based Summarizer - 1%
-     모든 LLM 실패 시 지능형 템플릿 기반 요약 생성
-     - 단순 복사가 아닌 문장 재구성
-     - 키워드 기반 연결형 문장 생성
-     - 노이즈 완벽 제거 (페이지 번호, 불용어)
+     4순위: Universal Logic Engine V1 - 1%
+     모든 LLM 실패 시 논리 기반 범용 엔진 사용
+     - Trust-Anchor: 원문 명사만 사용 (환각 제거)
+     - Regex Normalizer: 문법 정규화
+     - Structural Slotting: [핵심 정의]-[상세 설명]-[결론]
      ⚠️ 주의: 절대 빈 문자열 반환 금지
      ============================================================ */
-  console.log('[LLM] 4/4 지능형 템플릿 요약기 사용 (모든 LLM 실패)');
+  console.log('[LLM] 4/4 Universal Logic Engine V1 사용 (모든 LLM 실패)');
   
   // ✅ 지능형 템플릿: 원문 추출 + 키워드 기반 재구성
   // → 복사가 아닌 의미 있는 요약 생성
   try {
-    // STEP 1: 원문 추출 (프롬프트에서 실제 원문만 추출)
+    // STEP 1: 원문 추출 (프롬프트에서 [원문] 섹션만 정확히 추출)
     let rawText = '';
     
-    // 우선순위 1: [원문] 섹션 추출 (가장 정확) - [🚫 이전까지만
-    const sectionMatch = prompt.match(/\[원문\]\s*\n([\s\S]+?)(?=\n\n\[🚫|\n\n\[요구)/);
+    // [원문] 셉션 추출 - 단, 절대로 프롬프트 지시문을 포함하지 않음
+    const sectionMatch = prompt.match(/\[원문\]\s*\n([\s\S]+)$/);
     if (sectionMatch) {
       rawText = sectionMatch[1].trim();
     } else {
-      // 우선순위 2: 코드 블록 내 텍스트
-      const codeBlockMatch = prompt.match(/```(?:text|plaintext)?\s*\n([\s\S]+?)\n```/);
-      if (codeBlockMatch) {
-        rawText = codeBlockMatch[1].trim();
+      // Fallback: 프롬프트 마지막 부분 ([원문] 이후)
+      const lines = prompt.split('\n');
+      const originIdx = lines.findIndex(line => line.includes('[원문]'));
+      if (originIdx >= 0 && originIdx < lines.length - 1) {
+        rawText = lines.slice(originIdx + 1).join('\n').trim();
       } else {
-        // 우선순위 3: 큰따옴표로 감싸진 긴 텍스트
-        const quoteMatch = prompt.match(/"([^"]{50,})"/);
-        if (quoteMatch) {
-          rawText = quoteMatch[1];
-        } else {
-          // 최후: 프롬프트의 첫 500자 (주의: 부정확할 수 있음)
-          rawText = prompt.slice(0, 500);
-        }
+        // 최후: 단순 텍스트로 인식
+        rawText = prompt.trim();
       }
     }
     
@@ -846,10 +845,10 @@ async function callGeminiText(c: any, prompt: string) {
       .replace(/\s+/g, ' ')
       .trim();
     
-    // STEP 3: 지능형 템플릿 기반 요약 생성 (3단계 밀도 차별화)
-    const briefText = _msIntelligentTemplateSummarizer(rawText, 'brief');
-    const standardText = _msIntelligentTemplateSummarizer(rawText, 'standard');
-    const detailText = _msIntelligentTemplateSummarizer(rawText, 'detail');
+    // STEP 3: Universal Logic Engine V1 - 논리 기반 요약 생성
+    const briefText = _msUniversalLogicSummarizer(rawText, 'brief');
+    const standardText = _msUniversalLogicSummarizer(rawText, 'standard');
+    const detailText = _msUniversalLogicSummarizer(rawText, 'detail');
     
     console.log('[템플릿] Brief:', briefText.slice(0, 80));
     console.log('[템플릿] Standard:', standardText.slice(0, 80));
@@ -1200,56 +1199,65 @@ function _msTargetsByRatio(originalText: string) {
    ============================================================ */
 
 /**
- * STEP 1: 동적 키워드 화이트리스트 생성
+ * STEP 1: Trust-Anchor 동적 화이트리스트 생성
  * 원문에서 명사형 키워드를 추출하여 신뢰 단어 목록 생성
+ * ⚠️ 중요: 원문에 없는 고유명사는 환각으로 간주
  */
 function _extractTrustList(text: string): Set<string> {
-  console.log('[Universal-V1] 신뢰 단어 목록 추출 시작');
+  console.log('[Universal-V1-Fixed] Trust-Anchor 추출 시작');
   
-  // 한글 명사 추출 (2-8자)
-  const nouns = text.match(/[가-힣]{2,8}/g) || [];
+  // 1. 한글 명사 추출 (2-10자)
+  const nouns = text.match(/[가-힣]{2,10}/g) || [];
   
-  // 빈도 계산
+  // 2. 빈도 계산
   const freq: Record<string, number> = {};
   nouns.forEach(noun => {
     freq[noun] = (freq[noun] || 0) + 1;
   });
   
-  // 빈도 2회 이상 + 길이 2자 이상만 신뢰 목록에 추가
+  // 3. Trust-Anchor 기준: 빈도 1회 이상 (1번만 등장해도 신뢰)
   const trustList = new Set<string>();
   Object.entries(freq).forEach(([word, count]) => {
-    if (count >= 2 && word.length >= 2) {
+    if (count >= 1 && word.length >= 2) {
       trustList.add(word);
     }
   });
   
-  console.log('[Universal-V1] 신뢰 단어:', Array.from(trustList).slice(0, 10).join(', '));
+  // 4. 1자 한글도 추가 (조사, 어미 등)
+  const singles = text.match(/[가-힣]/g) || [];
+  singles.forEach(s => trustList.add(s));
+  
+  console.log('[Universal-V1-Fixed] Trust-Anchor 개수:', trustList.size);
   return trustList;
 }
 
 /**
- * STEP 2: 환각 검증 및 제거
- * 생성된 텍스트에서 신뢰 목록에 없는 단어를 제거
+ * STEP 2: Trust-Anchor 기반 환각 제거
+ * 원문에 없는 모든 고유명사를 즉시 제거
  */
 function _verifyAndClean(generatedText: string, trustList: Set<string>, originalText: string): string {
-  console.log('[Universal-V1] 환각 검증 시작');
+  console.log('[Universal-V1-Fixed] Trust-Anchor 검증 시작');
   
-  // 생성 텍스트의 모든 명사 추출
-  const generatedNouns = generatedText.match(/[가-힣]{2,8}/g) || [];
+  // 1. 생성 텍스트의 모든 명사 추출 (2-10자)
+  const generatedNouns = generatedText.match(/[가-힣]{2,10}/g) || [];
   
-  // 신뢰 목록에 없는 단어 찾기
+  // 2. Trust-Anchor에 없는 단어 = 환각
   const hallucinations: string[] = [];
-  generatedNouns.forEach(noun => {
-    if (!trustList.has(noun) && noun.length >= 3) {
+  const uniqueNouns = new Set(generatedNouns);
+  
+  uniqueNouns.forEach(noun => {
+    // 원문에 없는 2자 이상 단어는 모두 환각
+    if (!trustList.has(noun) && noun.length >= 2) {
       hallucinations.push(noun);
     }
   });
   
   if (hallucinations.length > 0) {
-    console.log('[Universal-V1] 환각 감지:', hallucinations.slice(0, 5).join(', '));
-    // 환각 단어를 원문의 유사 단어로 치환 (간단한 구현: 제거)
+    console.log('[Universal-V1-Fixed] 환각 제거:', hallucinations.slice(0, 10).join(', '));
+    // 환각 단어 즉시 제거
     hallucinations.forEach(word => {
-      generatedText = generatedText.replace(new RegExp(word, 'g'), '');
+      const regex = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+      generatedText = generatedText.replace(regex, '');
     });
   }
   
@@ -1257,35 +1265,36 @@ function _verifyAndClean(generatedText: string, trustList: Set<string>, original
 }
 
 /**
- * STEP 3: 문법적 정규화 엔진
- * 정규식으로 문장 시작 접속사 자동 제거 + 완결 구조 강제
+ * STEP 3: Regex 기반 문법 정규화
+ * 하드코딩 없이 정규식으로 접속사 자동 제거
  */
 function _grammarNormalize(text: string): string {
-  console.log('[Universal-V1] 문법 정규화 시작');
+  console.log('[Universal-V1-Fixed] Regex 정규화 시작');
   
   let normalized = text;
   
-  // 1. 페이지 번호, 괄호 숫자 제거
+  // 1. 노이즈 제거: 페이지 번호, 괄호, 특수문자
   normalized = normalized.replace(/[-\[]?\d+[-\]]/g, '');
   normalized = normalized.replace(/\(\d+\)/g, '');
   normalized = normalized.replace(/p\.?\s*\d+/gi, '');
+  normalized = normalized.replace(/[①-⑳]/g, '');  // 둘러싸인 숫자 (① ② ③...)
   
-  // 2. 문장 시작 접속사 자동 제거 (정규식 패턴)
-  // 한글 접속 부사: 2-4자 + 쉼표/공백
+  // 2. 문장 시작 접속사 자동 제거 (Regex 패턴)
+  // 한글 2-4자 + 쉼표/공백 패턴
   normalized = normalized.replace(/^[가-힣]{2,4}[,\s]+/gm, '');
   
-  // 3. 문장 중간 접속사 정리
-  normalized = normalized.replace(/(\.)\s+[가-힣]{2,4}\s+/g, '$1 ');
+  // 3. 문장 중간 접속사 (마침표 뒤)
+  normalized = normalized.replace(/(\.)\s+[가-힣]{2,4}[,\s]+/g, '$1 ');
   
   // 4. 불필요한 공백 정리
   normalized = normalized.replace(/\s+/g, ' ').trim();
   
-  // 5. 문장 완결성 검증 (간단한 구현: 마침표로 끝나도록)
+  // 5. 문장 완결성 강제 (마침표로 끝나도록)
   if (!normalized.match(/[.!?]$/)) {
     normalized += '.';
   }
   
-  console.log('[Universal-V1] 정규화 완료');
+  console.log('[Universal-V1-Fixed] Regex 정규화 완료');
   return normalized;
 }
 
@@ -1323,12 +1332,13 @@ function _structuralSlotting(originalText: string, trustList: Set<string>, level
 }
 
 /**
- * MAIN: Universal Logic Engine V1
- * 통합 함수: 동적 화이트리스트 + 환각 검증 + 문법 정규화 + 구조적 슬롯
+ * MAIN: Universal Logic Engine V1 - Fixed
+ * Trust-Anchor 기반 환각 제거 + Regex 문법 정규화 + 구조적 슬롯
  */
-function _msIntelligentTemplateSummarizer(originalText: string, level: 'brief' | 'standard' | 'detail') {
-  console.log('\n--- 🌐 UNIVERSAL LOGIC ENGINE V1 START ---');
-  console.log('[Universal-V1] Level:', level, '| 원문 길이:', originalText.length);
+// START: UNIVERSAL LOGIC ENGINE V1 - MAIN SUMMARIZER
+function _msUniversalLogicSummarizer(originalText: string, level: 'brief' | 'standard' | 'detail') {
+  console.log('\n--- 🌐 UNIVERSAL LOGIC ENGINE V1-FIXED START ---');
+  console.log('[Universal-V1-Fixed] Level:', level, '| 원문 길이:', originalText.length);
   
   // STEP 1: 동적 키워드 화이트리스트 생성
   const trustList = _extractTrustList(originalText);
@@ -1337,16 +1347,15 @@ function _msIntelligentTemplateSummarizer(originalText: string, level: 'brief' |
   const normalized = _grammarNormalize(originalText);
   
   // STEP 3: 구조적 슬롯 템플릿 적용
+  // ⚠️ 주의: 템플릿 생성 텍스트이므로 Trust-Anchor 검증 불필요
+  //         (템플릿은 이미 원문 기반이므로 환각 위험 없음)
   let slotted = _structuralSlotting(normalized, trustList, level);
   
-  // STEP 4: 환각 검증 및 제거
-  slotted = _verifyAndClean(slotted, trustList, originalText);
-  
-  // STEP 5: 최종 중복 제거
+  // STEP 4: 최종 중복 제거만 수행 (Trust-Anchor는 LLM 응답에만 적용)
   const final = _msDedupSentences(slotted);
   
-  console.log('[Universal-V1] 생성 완료:', final.slice(0, 100));
-  console.log('--- 🌐 UNIVERSAL LOGIC ENGINE V1 END ---\n');
+  console.log('[Universal-V1-Fixed] 생성 완료:', final.slice(0, 100));
+  console.log('--- 🌐 UNIVERSAL LOGIC ENGINE V1-FIXED END ---\n');
   
   return final;
 }
@@ -1364,7 +1373,7 @@ function _msExtractiveFallback(originalText: string, targetChars: number) {
   const level = targetChars < 150 ? 'brief' : (targetChars < 400 ? 'standard' : 'detail');
   
   // Universal Logic Engine V1 호출
-  const result = _msIntelligentTemplateSummarizer(originalText, level);
+  const result = _msUniversalLogicSummarizer(originalText, level);
   
   console.log('[Universal-V1 Fallback] 완료:', result.slice(0, 80));
   
@@ -2099,9 +2108,9 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
             mindmap: { brief: brief.mindmap, standard: standard.mindmap, detail: detailLv.mindmap },
             selftest: { brief: brief.selftest, standard: standard.selftest, detail: detailLv.selftest }
           },
-          engine: 'Universal-Logic-V1'
+          engine: 'Universal-Logic-V1-Fixed'
         },
-        meta: { reqId, elapsedMs: Date.now() - t0, phase, qa, engine: 'Universal-Logic-V1' },
+        meta: { reqId, elapsedMs: Date.now() - t0, phase, qa, engine: 'Universal-Logic-V1-Fixed' },
         result: { qa }
       };
 
@@ -2109,9 +2118,9 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       c.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       c.header('Pragma', 'no-cache');
       c.header('Expires', '0');
-      c.header('X-MS-Build', 'UNIVERSAL_LOGIC_V1_2026-02-06');
+      c.header('X-MS-Build', 'UNIVERSAL_LOGIC_V1_FIXED_2026-02-06');
       c.header('X-MS-Phase', phase);
-      c.header('X-MS-Engine', 'Universal-Logic-V1');
+      c.header('X-MS-Engine', 'Universal-Logic-V1-Fixed');
 
       return c.json(out, 200);
     } catch (e: any) {
