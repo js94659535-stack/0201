@@ -673,7 +673,8 @@ function validateLevelSeparation(levels: { brief: LevelBundle; standard: LevelBu
    Priority: Ollama(80%) → Gemini(15%) → Claude(4%) → Extractive(1%)
    OpenAI removed completely
    ============================================================ */
-async function callGeminiText(c: any, prompt: string) {
+// ✅ 수정: rawText를 별도 파라미터로 받아서 Fallback 시 프롬프트가 아닌 순수 원문만 사용
+async function callGeminiText(c: any, prompt: string, rawText: string) {
   const MIN_OK_LEN = 80;  // 최소 응답 길이
   
   // 1순위: LOCAL_LLM_URL (Ollama/LM Studio/vLLM 등) - 80%
@@ -810,56 +811,39 @@ async function callGeminiText(c: any, prompt: string) {
      - Structural Slotting: [핵심 정의]-[상세 설명]-[결론]
      ⚠️ 주의: 절대 빈 문자열 반환 금지
      ============================================================ */
-  console.log('[LLM] 4/4 Universal Logic Engine V1 사용 (모든 LLM 실패)');
+  console.log('[LLM] 4/4 Universal Logic Engine V2 사용 (모든 LLM 실패)');
+  console.log('[Universal-V2] 🔴 중요: 프롬프트가 아닌 순수 원문(rawText) 사용');
   
-  // ✅ 지능형 템플릿: 원문 추출 + 키워드 기반 재구성
-  // → 복사가 아닌 의미 있는 요약 생성
+  // ✅ 핵심 수정: 프롬프트에서 추출하지 않고 파라미터로 받은 순수 원문 직접 사용
+  // ❌ 기존: prompt에서 [원문] 추출 시도 → 프롬프트 지시문 혼입
+  // ✅ 수정: rawText 파라미터를 직접 사용 → 순수 원문만 처리
   try {
-    // STEP 1: 원문 추출 (프롬프트에서 [원문] 섹션만 정확히 추출)
-    let rawText = '';
+    console.log('[Universal-V2] 원문 길이:', rawText.length, '| 첫 60자:', rawText.slice(0, 60));
     
-    // [원문] 셉션 추출 - 단, 절대로 프롬프트 지시문을 포함하지 않음
-    const sectionMatch = prompt.match(/\[원문\]\s*\n([\s\S]+)$/);
-    if (sectionMatch) {
-      rawText = sectionMatch[1].trim();
-    } else {
-      // Fallback: 프롬프트 마지막 부분 ([원문] 이후)
-      const lines = prompt.split('\n');
-      const originIdx = lines.findIndex(line => line.includes('[원문]'));
-      if (originIdx >= 0 && originIdx < lines.length - 1) {
-        rawText = lines.slice(originIdx + 1).join('\n').trim();
-      } else {
-        // 최후: 단순 텍스트로 인식
-        rawText = prompt.trim();
-      }
-    }
-    
-    console.log('[템플릿] 원문 추출 완료:', rawText.slice(0, 60));
-    
-    // STEP 2: 노이즈 제거
-    rawText = rawText
+    // STEP 1: 노이즈 제거 (순수 원문에만 적용)
+    let cleanText = rawText
       .replace(/[-\[]?\d+[-\]]/g, '')  // 페이지 번호
       .replace(/\(페이지\s*\d+\)/g, '')
       .replace(/p\.\s*\d+/gi, '')
-      .replace(/^(한편|반면에|또한|그리고)[,\s]*/gm, '')  // 불용어
+      .replace(/^(한편|반면에|또한|그리고|따라서|더불어|게다가)[,\s]*/gm, '')  // 불용어 강화
       .replace(/\s+/g, ' ')
       .trim();
     
-    // STEP 3: Universal Logic Engine V1 - 논리 기반 요약 생성
-    const briefText = _msUniversalLogicSummarizer(rawText, 'brief');
-    const standardText = _msUniversalLogicSummarizer(rawText, 'standard');
-    const detailText = _msUniversalLogicSummarizer(rawText, 'detail');
+    // STEP 2: Universal Logic Engine V2 - 논리 기반 요약 생성 (순수 원문만 사용)
+    const briefText = _msUniversalLogicSummarizer(cleanText, 'brief');
+    const standardText = _msUniversalLogicSummarizer(cleanText, 'standard');
+    const detailText = _msUniversalLogicSummarizer(cleanText, 'detail');
     
     console.log('[템플릿] Brief:', briefText.slice(0, 80));
     console.log('[템플릿] Standard:', standardText.slice(0, 80));
     console.log('[템플릿] Detail:', detailText.slice(0, 80));
     
-    // STEP 4: 구조화된 데이터 추출
-    const sentences = _msSplitSentences(rawText).filter(s => s.length >= 10);
+    // STEP 3: 구조화된 데이터 추출 (순수 원문 기반)
+    const sentences = _msSplitSentences(cleanText).filter(s => s.length >= 10);
     const coreClaim = sentences[0] || briefText.split('.')[0] || briefText.slice(0, 100);
     
-    // STEP 5: 구조화 데이터 생성
-    const summaryDetail = detailText;  // 지능형 템플릿이 이미 문단 구조 생성
+    // STEP 4: 구조화 데이터 생성
+    const summaryDetail = detailText;  // Universal Logic Engine이 이미 문단 구조 생성
     
     // 키워드 추출 (glossary용)
     const extractKeywords = (text: string): string[] => {
@@ -878,7 +862,7 @@ async function callGeminiText(c: any, prompt: string) {
         .map(([noun]) => noun);
     };
     
-    const keywords = extractKeywords(rawText);
+    const keywords = extractKeywords(cleanText);
     const glossary = keywords.map(term => ({
       term,
       definition: `${term}은 본 주제의 핵심 개념으로, ${sentences.find(s => s.includes(term))?.slice(0, 60) || '중요한 의미를 지닙니다'}.`
@@ -893,8 +877,8 @@ async function callGeminiText(c: any, prompt: string) {
       schemaVersion: 'ms-v4',
       lang: 'ko',
       source: {
-        charCount: rawText.length,
-        checksum: 'intelligent-template-' + Date.now()
+        charCount: cleanText.length,
+        checksum: 'universal-v2-' + Date.now()
       },
       narrative: {
         text: detailText,  // ✅ 지능형 템플릿 생성 텍스트
@@ -1473,7 +1457,7 @@ ${jsonSchemaHint}
 
   const tryOnce = async (attempt: number, extraRepairNote?: string) => {
     const prompt = extraRepairNote ? `${promptBase}\n\n[수정 지시]\n${extraRepairNote}\n` : promptBase;
-    const raw = await callGeminiText(c, prompt);
+    const raw = await callGeminiText(c, prompt, originalText);  // ✅ 순수 원문 전달
     let obj: any = null;
     try {
       obj = JSON.parse(String(raw));
@@ -1734,7 +1718,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       console.log(`[Matrix V4] ${phase}: Trying LLM Fallback Chain (Ollama → Claude → Gemini → Extractive)`);
       
       const detailPrompt = buildDetailPrompt(rawText);
-      let detailText = await callGeminiText(c, detailPrompt);
+      let detailText = await callGeminiText(c, detailPrompt, rawText);  // ✅ 순수 원문 전달
       detail = safeJsonParse(detailText) as DetailBundle | null;
 
       if (!detail) {
@@ -1744,7 +1728,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           `설명/마크다운 없이, 오직 JSON만 다시 출력하라.`,
           buildDetailPrompt(rawText)
         ].join('\n');
-        detailText = await callGeminiText(c, repairPrompt);
+        detailText = await callGeminiText(c, repairPrompt, rawText);  // ✅ 순수 원문 전달
         detail = safeJsonParse(detailText) as DetailBundle | null;
       }
 
@@ -1865,7 +1849,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           // Detail용 프롬프트로 LLM 시도
           const detailPrompt = `다음 텍스트를 요약하시오. 원문의 핵심 내용을 유지하되 간결하게 작성하시오.\n\n원문:\n${rawText}\n\n요약 (완전한 문장으로, 생략부호 없이):`;
           
-          const detailLLM = await callGeminiText(c, detailPrompt);
+          const detailLLM = await callGeminiText(c, detailPrompt, rawText);  // ✅ 순수 원문 전달
           
           // LLM 응답이 유효하면 사용
           if (detailLLM && detailLLM.length > 50 && !detailLLM.includes('원문에서')) {
@@ -2012,7 +1996,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
 
       if (phase === 'phase2') {
         try {
-          const callLLM = async (prompt: string) => await callGeminiText(c, prompt);
+          const callLLM = async (prompt: string) => await callGeminiText(c, prompt, rawText);  // ✅ 순수 원문 전달
 
           const gateResult = await qualityGateAll({
             originalText: rawText,
@@ -2108,9 +2092,9 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
             mindmap: { brief: brief.mindmap, standard: standard.mindmap, detail: detailLv.mindmap },
             selftest: { brief: brief.selftest, standard: standard.selftest, detail: detailLv.selftest }
           },
-          engine: 'Universal-Logic-V1-Fixed'
+          engine: 'Universal-Logic-V2-RECOVERED'
         },
-        meta: { reqId, elapsedMs: Date.now() - t0, phase, qa, engine: 'Universal-Logic-V1-Fixed' },
+        meta: { reqId, elapsedMs: Date.now() - t0, phase, qa, engine: 'Universal-Logic-V2-RECOVERED' },
         result: { qa }
       };
 
@@ -2118,9 +2102,9 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       c.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       c.header('Pragma', 'no-cache');
       c.header('Expires', '0');
-      c.header('X-MS-Build', 'UNIVERSAL_LOGIC_V1_FIXED_2026-02-06');
+      c.header('X-MS-Build', 'UNIVERSAL_LOGIC_V2_RECOVERED_2026-02-06');
       c.header('X-MS-Phase', phase);
-      c.header('X-MS-Engine', 'Universal-Logic-V1-Fixed');
+      c.header('X-MS-Engine', 'Universal-Logic-V2-RECOVERED');
 
       return c.json(out, 200);
     } catch (e: any) {
