@@ -881,13 +881,11 @@ async function callGeminiText(c: any, prompt: string, rawText: string) {
         checksum: 'universal-v2-' + Date.now()
       },
       narrative: {
-        text: detailText,  // ✅ 지능형 템플릿 생성 텍스트
         coreClaim: coreClaim,
         grounds: sentences.slice(0, 3).filter(Boolean),
         comparisons: keywords.length >= 2 ? [`${keywords[0]}과 ${keywords[1]}의 관계를 비교하면 상호보완적이다.`] : [],
         implications: [`이러한 ${keywords[0] || '개념'}은 향후 ${keywords[1] || '관련 분야'}에 중요한 영향을 미칠 것으로 예상된다.`],
-        summaryDetail: summaryDetail,
-        ratio: 0.45
+        summaryDetail: summaryDetail
       },
       structured: {
         toc: [
@@ -975,11 +973,11 @@ async function callGeminiText(c: any, prompt: string, rawText: string) {
       lang: 'ko',
       source: { charCount: safeText.length, checksum: 'safe-' + Date.now() },
       narrative: {
-        text: safeText,
         coreClaim: safeText.split('.')[0] || safeText.slice(0, 50),
         grounds: [safeText.slice(0, 100)],
-        summaryDetail: safeText,
-        ratio: 0.5
+        comparisons: [],
+        implications: [],
+        summaryDetail: safeText
       },
       structured: {
         toc: [{ level: 1, title: '요약', content: safeText }],
