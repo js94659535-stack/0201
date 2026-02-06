@@ -814,8 +814,8 @@ async function callGeminiText(c: any, prompt: string) {
     // STEP 1: 원문 추출 (프롬프트에서 실제 원문만 추출)
     let rawText = '';
     
-    // 우선순위 1: [원문] 섹션 추출 (가장 정확)
-    const sectionMatch = prompt.match(/\[원문\]\s*\n([\s\S]+?)(?:\n\n\[|$)/);
+    // 우선순위 1: [원문] 섹션 추출 (가장 정확) - [🚫 이전까지만
+    const sectionMatch = prompt.match(/\[원문\]\s*\n([\s\S]+?)(?=\n\n\[🚫|\n\n\[요구)/);
     if (sectionMatch) {
       rawText = sectionMatch[1].trim();
     } else {
@@ -1217,10 +1217,42 @@ function _msIntelligentTemplateSummarizer(originalText: string, level: 'brief' |
   return _msDedupSentences(result);
 }
 
-// 4순위 호출부 수정
+/**
+ * 4순위: 지능형 Extractive Fallback (Template Reconstruction)
+ * - 단순 추출 금지: 문장을 템플릿으로 재조립
+ * - 불용어 강제 제거: 또한, 한편, 그리고, 따라서 등 박멸
+ * - 키워드 기반 재구성: GPT 스타일 템플릿 적용
+ * - 엔진명 명시: engine: "intelligent-template-v5"
+ */
 function _msExtractiveFallback(originalText: string, targetChars: number) {
-  const level = targetChars < 150 ? 'brief' : (targetChars < 400 ? 'standard' : 'detail');
-  return _msIntelligentTemplateSummarizer(originalText, level);
+  // 1. 노이즈 및 불용어 제거 (문장 시작의 '또한' 등 박멸)
+  const clean = originalText
+    .replace(/[-\[]?\d+[-\]]/g, '')
+    .replace(/^(한편|반면에|또한|그리고|따라서|더불어|게다가|뿐만아니라)[,\s]*/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // 2. 키워드 추출 (상위 3개)
+  const keywords = _msTopKeywordsKorean(clean, 3);
+  const mainKw = keywords[0] || '본 내용';
+
+  // 3. 문장 분리 및 첫 문장 확보
+  const sents = _msSplitSentences(clean);
+  const firstSent = sents[0] || '';
+
+  // 4. 지능형 템플릿 재구성 (AI 스타일 문장 생성)
+  let result = '';
+  if (targetChars < 150) {
+    // Brief: 핵심 키워드 중심 간결 요약
+    result = `${mainKw}에 관한 분석 결과, ${firstSent.slice(0, 100)}을 핵심으로 한다. ${keywords.slice(1).join(', ')} 등을 주요 요소로 다루고 있다.`;
+  } else {
+    // Standard/Detail: 체계적 구조 강조
+    const body = sents.slice(1, 4).join(' ');
+    result = `${mainKw}은(는) 다음과 같은 체계를 가진다. ${firstSent} 이를 구체화하면 ${body} 이와 같은 구조는 전체 맥락을 이해하는 데 필수적이다.`;
+  }
+
+  // 5. 중복 제거 및 길이 제한
+  return _msDedupSentences(result.slice(0, targetChars + 50));
 }
 
 /* ============================================================
