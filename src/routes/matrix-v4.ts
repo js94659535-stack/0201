@@ -196,17 +196,22 @@ function checksumSimple(s: string) {
 function smartTrim(s: string, maxChars: number) {
   const t = String(s || '').replace(/\s+/g, ' ').trim();
   if (t.length <= maxChars) return t;
+  
+  // 🎯 [핀셋 3] 문장 단위 절단: 마침표로 끝나는 완결성 보장
   const cut = t.slice(0, maxChars);
-  const lastDot = Math.max(
+  const lastSentenceEnd = Math.max(
     cut.lastIndexOf('.'),
-    cut.lastIndexOf('다.'),
-    cut.lastIndexOf('요.'),
     cut.lastIndexOf('!'),
     cut.lastIndexOf('?')
   );
-  // ✅ 자르지 않고 전체 반환 (생략부호 금지)
-  if (lastDot > Math.floor(maxChars * 0.6)) return cut.slice(0, lastDot + 1).trim();
-  return t; // 전체 문장 반환
+  
+  // 마침표가 50% 이상 지점에 있으면 그곳까지만 반환 (완전한 문장)
+  if (lastSentenceEnd > maxChars * 0.5) {
+    return cut.slice(0, lastSentenceEnd + 1).trim();
+  }
+  
+  // 도저히 마침표가 없으면 그냥 자름 (최후의 수단)
+  return cut;
 }
 
 function safeJsonParse(text: string) {
@@ -863,14 +868,15 @@ async function callGeminiText(c: any, prompt: string, rawText: string) {
     };
     
     const keywords = extractKeywords(cleanText);
+    // 🎯 [핀셋 2] glossary 스키마 통일: definition → def
     const glossary = keywords.map(term => ({
       term,
-      definition: `${term}은 본 주제의 핵심 개념으로, ${sentences.find(s => s.includes(term))?.slice(0, 60) || '중요한 의미를 지닙니다'}.`
+      def: `${term}은 본 주제의 핵심 개념으로, ${sentences.find(s => s.includes(term))?.slice(0, 60) || '중요한 의미를 지닙니다'}.`
     }));
     
     // 최소 1개 보장
     if (glossary.length === 0) {
-      glossary.push({ term: '핵심개념', definition: coreClaim.slice(0, 50) });
+      glossary.push({ term: '핵심개념', def: coreClaim.slice(0, 50) });
     }
     
     const intelligentJSON = {
@@ -982,7 +988,7 @@ async function callGeminiText(c: any, prompt: string, rawText: string) {
       structured: {
         toc: [{ level: 1, title: '요약', content: safeText }],
         hierarchy: [{ heading: '요약', level: 1, children: [] }],
-        glossary: [{ term: '핵심', definition: safeText.slice(0, 40) }]
+        glossary: [{ term: '핵심', def: safeText.slice(0, 40) }]
       },
       mindmap: {
         children: [{ 
@@ -1787,21 +1793,24 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         const charCount = _msCharCount(finalText);
         detailRatio = charCount / baseChars;
 
-        // detail.narrative에 주입 (V5 결과)
-        detail.narrative = {
-          text: finalText,
-          coreClaim: String(narrativeV5.coreClaim ?? '').trim() || (_msSplitSentences(finalText)[0] ?? '').trim(),
-          grounds: Array.isArray(narrativeV5.grounds) ? narrativeV5.grounds.filter(Boolean) : [],
-          comparisons: Array.isArray(narrativeV5.comparisons) ? narrativeV5.comparisons.filter(Boolean) : [],
-          implications: Array.isArray(narrativeV5.implications) ? narrativeV5.implications.filter(Boolean) : [],
+        // 🎯 [핀셋 1] Phase2 Narrative 데이터 구조 유지: 통째로 덮어쓰지 않고 필드별 업데이트
+        // DetailBundle.narrative 스키마: { coreClaim, grounds, comparisons?, implications?, summaryDetail }
+        // ❌ 기존: detail.narrative = { text, ... } → 타입 파괴
+        // ✅ 수정: 기존 구조 유지하며 필드만 업데이트
+        detail.narrative.coreClaim = String(narrativeV5.coreClaim ?? '').trim() || (_msSplitSentences(finalText)[0] ?? '').trim();
+        detail.narrative.grounds = Array.isArray(narrativeV5.grounds) ? narrativeV5.grounds.filter(Boolean) : [];
+        detail.narrative.comparisons = Array.isArray(narrativeV5.comparisons) ? narrativeV5.comparisons.filter(Boolean) : [];
+        detail.narrative.implications = Array.isArray(narrativeV5.implications) ? narrativeV5.implications.filter(Boolean) : [];
+        detail.narrative.summaryDetail = finalText;  // ✅ 요약 본문은 여기에 저장
+        
+        // 메타 정보는 별도 필드로 관리
+        (detail.narrative as any).ratio = detailRatio;
+        (detail.narrative as any).warnings = [];
+        (detail.narrative as any)._localSpec = {
+          usedLLM: !(narrativeV5 as any)._debug?.fallback,
+          charCount,
           ratio: detailRatio,
-          warnings: [],
-          _localSpec: {
-            usedLLM: !(narrativeV5 as any)._debug?.fallback,
-            charCount,
-            ratio: detailRatio,
-          },
-        } as any;
+        };
 
         console.log('[Matrix V4 → V5] Detail narrative generated:', {
           usedLLM: !(narrativeV5 as any)._debug?.fallback,
