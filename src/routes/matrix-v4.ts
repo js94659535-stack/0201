@@ -612,6 +612,8 @@ function buildDetailPrompt(rawText: string) {
     `당신은 학습 콘텐츠를 "재조립"하여 참고서형 지식 구조로 만드는 전문가입니다.`,
     ``,
     `[절대 규칙]`,
+    `- 🚨 원문 문장을 그대로 복사하지 마세요. AI가 직접 새로운 문장으로 재작성하세요.`,
+    `- 🚨 summaryDetail은 반드시 [핵심 정의], [상세 설명], [결론 및 시사점] 슬롯으로 구성하세요.`,
     `- 의미 단위로 재구성해야 하며, 글자를 중간에 자르거나 발췌만 하면 실패입니다.`,
     `- 원문에 있는 단어와 개념만 사용하세요. (외부 예시, 고유명사, 숫자 추가 금지)`,
     `- 아래 JSON 스키마 그대로만 출력하세요. (설명/마크다운/코드블록 금지)`,
@@ -626,11 +628,11 @@ function buildDetailPrompt(rawText: string) {
     `  "lang":"ko",`,
     `  "source":{ "charCount":123, "checksum":"..." },`,
     `  "narrative":{`,
-    `    "coreClaim":"1문장",`,
+    `    "coreClaim":"1문장 (핵심 주장)",`,
     `    "grounds":["근거1","근거2","근거3"],`,
-    `    "comparisons":["비교1"],`,
-    `    "implications":["의미1"],`,
-    `    "summaryDetail":"문단 구분된 3~6단락 서술(\\n\\n 사용)"`,
+    `    "comparisons":["비교1 (있으면)"],`,
+    `    "implications":["의미1 (있으면)"],`,
+    `    "summaryDetail":"[핵심 정의] AI가 새로 작성한 문장.\\n\\n[상세 설명] AI가 새로 작성한 문장.\\n\\n[결론 및 시사점] AI가 새로 작성한 문장. (원문 문장 복사 금지, 슬롯 마커 필수)"`,
     `  },`,
     `  "structured":{`,
     `    "toc":[{"title":"...", "anchor":"..."}],`,
@@ -1534,32 +1536,11 @@ function _grammarNormalize(text: string): string {
  * STEP 4: 구조적 슬롯 템플릿
  * [핵심 정의] - [상세 설명] - [결론 및 시사점] 3단계 슬롯
  */
+// 🚨 [DEPRECATED] 이 함수는 가짜 엔진입니다 - 사용 금지
 function _structuralSlotting(originalText: string, trustList: Set<string>, level: 'brief' | 'standard' | 'detail'): string {
-  // 🚨 [CRITICAL] 이 함수는 원문을 그대로 복사하는 extractive fallback입니다
-  // 품질 게이트에서 차단되어야 하므로, 의도적으로 원문을 그대로 반환
-  console.warn('[Universal-V1] ⚠️ EXTRACTIVE FALLBACK - Will be caught by quality gate');
-  
-  // 문장 분리
-  const sents = _msSplitSentences(originalText);
-  const firstSent = sents[0] || '';
-  const midSents = sents.slice(1, 4).join(' ');
-  const lastSent = sents[sents.length - 1] || '';
-  
-  let slotted = '';
-  
-  if (level === 'brief') {
-    // 원문 그대로 → 품질 게이트가 CONSECUTIVE_COPY 탐지
-    slotted = `[핵심 정의] ${firstSent}`;
-  } else if (level === 'standard') {
-    // 원문 그대로 → 품질 게이트가 SENTENCE_COPY 탐지
-    slotted = `[핵심 정의] ${firstSent} [상세 설명] ${midSents}`;
-  } else {
-    // 원문 그대로 → 품질 게이트가 HIGH_EXTRACTIVE_RATIO 탐지
-    slotted = `[핵심 정의] ${firstSent} [상세 설명] ${midSents} [결론 및 시사점] ${lastSent}`;
-  }
-  
-  console.warn('[Universal-V1] ⚠️ Returning extractive text for quality gate validation');
-  return slotted;
+  console.error('🚨 [FAKE ENGINE CALLED] _structuralSlotting is deprecated and should not be called!');
+  console.error('🚨 This is extractive fallback - original text copy');
+  throw new Error('FAKE_ENGINE_CALLED: _structuralSlotting is deprecated. Use real LLM instead.');
 }
 
 /**
@@ -1567,28 +1548,10 @@ function _structuralSlotting(originalText: string, trustList: Set<string>, level
  * Trust-Anchor 기반 환각 제거 + Regex 문법 정규화 + 구조적 슬롯
  */
 // START: UNIVERSAL LOGIC ENGINE V1 - MAIN SUMMARIZER
+// 🚨 [DEPRECATED] 이 함수는 가짜 엔진입니다 - 사용 금지
 function _msUniversalLogicSummarizer(originalText: string, level: 'brief' | 'standard' | 'detail') {
-  console.log('\n--- 🌐 UNIVERSAL LOGIC ENGINE V1-FIXED START ---');
-  console.log('[Universal-V1-Fixed] Level:', level, '| 원문 길이:', originalText.length);
-  
-  // STEP 1: 동적 키워드 화이트리스트 생성
-  const trustList = _extractTrustList(originalText);
-  
-  // STEP 2: 문법적 정규화
-  const normalized = _grammarNormalize(originalText);
-  
-  // STEP 3: 구조적 슬롯 템플릿 적용
-  // ⚠️ 주의: 템플릿 생성 텍스트이므로 Trust-Anchor 검증 불필요
-  //         (템플릿은 이미 원문 기반이므로 환각 위험 없음)
-  let slotted = _structuralSlotting(normalized, trustList, level);
-  
-  // STEP 4: 최종 중복 제거만 수행 (Trust-Anchor는 LLM 응답에만 적용)
-  const final = _msDedupSentences(slotted);
-  
-  console.log('[Universal-V1-Fixed] 생성 완료:', final.slice(0, 100));
-  console.log('--- 🌐 UNIVERSAL LOGIC ENGINE V1-FIXED END ---\n');
-  
-  return final;
+  console.error('🚨 [FAKE ENGINE CALLED] _msUniversalLogicSummarizer is deprecated!');
+  throw new Error('FAKE_ENGINE_CALLED: _msUniversalLogicSummarizer is deprecated. Use real LLM instead.');
 }
 
 /**
@@ -1597,19 +1560,10 @@ function _msUniversalLogicSummarizer(originalText: string, level: 'brief' | 'sta
  * - 동적 검증: 신뢰 단어 목록 기반 환각 제거
  * - 구조적 슬롯: 일관된 품질 보장
  */
+// 🚨 [DEPRECATED] 이 함수는 가짜 엔진을 호출합니다 - 사용 금지
 function _msExtractiveFallback(originalText: string, targetChars: number) {
-  console.log('[Universal-V1 Fallback] 시작');
-  
-  // 레벨 결정
-  const level = targetChars < 150 ? 'brief' : (targetChars < 400 ? 'standard' : 'detail');
-  
-  // Universal Logic Engine V1 호출
-  const result = _msUniversalLogicSummarizer(originalText, level);
-  
-  console.log('[Universal-V1 Fallback] 완료:', result.slice(0, 80));
-  
-  // 길이 제한
-  return result.slice(0, targetChars + 50);
+  console.error('🚨 [FAKE ENGINE CALLED] _msExtractiveFallback is deprecated!');
+  throw new Error('FAKE_ENGINE_CALLED: _msExtractiveFallback is deprecated. Use real LLM instead.');
 }
 
 /* ============================================================
@@ -2010,23 +1964,48 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       }
 
       if (!detail) {
-        // LLM 완전 실패 → 로컬 Fallback (발췌형)
-        console.log('[S1] ❌ All LLM failed, fallback to extractive');
+        // 🚨 [ZERO TOLERANCE] LLM 완전 실패 → Fallback 금지, 즉시 에러 반환
+        console.error('[S1] ❌ CRITICAL: All LLM attempts failed, NO FALLBACK');
         smPhase = 'S1_FAIL';
         engineMeta = 'fallback-extractive';
-        detail = buildLocalFallbackDetail(rawText);
         
         if (phase === 'phase2') {
           await insertFalseBucket(c.env.DB, {
             source: 'matrix_v4',
-            reason: 'DETAIL_JSON_PARSE_FAIL',
-            errors: ['LLM failed, using extractive fallback'],
+            reason: 'LLM_TOTAL_FAILURE',
+            errors: ['All LLM attempts failed', 'Gemini + Claude + Ollama all failed'],
             input_text: rawText,
             model: c.env.GEMINI_MODEL || 'gemini',
-            retry_count: 0,
+            retry_count: 2,
             meta: { reqId, phase: smPhase, elapsedMs: Date.now() - t0 }
           });
         }
+        
+        // 즉시 에러 응답 반환 (가짜 엔진 호출 금지)
+        return c.json(
+          {
+            ok: false,
+            degraded: true,
+            engine: 'fallback-extractive',
+            mode: requestedLevel,
+            view: requestedView,
+            error: { 
+              code: 'LLM_UNAVAILABLE', 
+              message: '요약 엔진을 사용할 수 없습니다. 잠시 후 다시 시도해주세요.' 
+            },
+            data: null,
+            meta: { 
+              reqId, 
+              elapsedMs: Date.now() - t0, 
+              phase: smPhase,
+              engineMeta: 'fallback-extractive',
+              buildId: BUILD_ID,
+              warnings: ['LLM_TOTAL_FAILURE', 'NO_FAKE_ENGINE_FALLBACK'],
+              qa: makeFailQa('LLM_UNAVAILABLE')
+            }
+          },
+          503  // Service Unavailable
+        );
       }
 
       // 🎯 [S1: QUALITY GATE] 품질 검증
