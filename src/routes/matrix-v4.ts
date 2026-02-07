@@ -1535,7 +1535,9 @@ function _grammarNormalize(text: string): string {
  * [핵심 정의] - [상세 설명] - [결론 및 시사점] 3단계 슬롯
  */
 function _structuralSlotting(originalText: string, trustList: Set<string>, level: 'brief' | 'standard' | 'detail'): string {
-  console.log('[Universal-V1] 구조적 슬롯 적용:', level);
+  // 🚨 [CRITICAL] 이 함수는 원문을 그대로 복사하는 extractive fallback입니다
+  // 품질 게이트에서 차단되어야 하므로, 의도적으로 원문을 그대로 반환
+  console.warn('[Universal-V1] ⚠️ EXTRACTIVE FALLBACK - Will be caught by quality gate');
   
   // 문장 분리
   const sents = _msSplitSentences(originalText);
@@ -1546,16 +1548,17 @@ function _structuralSlotting(originalText: string, trustList: Set<string>, level
   let slotted = '';
   
   if (level === 'brief') {
-    // Brief: [핵심 정의]만 - 원문 그대로 사용
-    slotted = `[핵심 정의] ${firstSent.slice(0, 100)}`;
+    // 원문 그대로 → 품질 게이트가 CONSECUTIVE_COPY 탐지
+    slotted = `[핵심 정의] ${firstSent}`;
   } else if (level === 'standard') {
-    // Standard: [핵심 정의] + [상세 설명]
-    slotted = `[핵심 정의] ${firstSent.slice(0, 80)} [상세 설명] ${midSents.slice(0, 150)}`;
+    // 원문 그대로 → 품질 게이트가 SENTENCE_COPY 탐지
+    slotted = `[핵심 정의] ${firstSent} [상세 설명] ${midSents}`;
   } else {
-    // Detail: [핵심 정의] + [상세 설명] + [결론]
+    // 원문 그대로 → 품질 게이트가 HIGH_EXTRACTIVE_RATIO 탐지
     slotted = `[핵심 정의] ${firstSent} [상세 설명] ${midSents} [결론 및 시사점] ${lastSent}`;
   }
   
+  console.warn('[Universal-V1] ⚠️ Returning extractive text for quality gate validation');
   return slotted;
 }
 
