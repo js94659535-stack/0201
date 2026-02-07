@@ -54,6 +54,32 @@ type Bindings = {
 type Level = 'brief' | 'standard' | 'detail';
 type ViewType = 'narrative' | 'structured' | 'mindmap' | 'selftest';
 
+// 🎯 [3-LAYER] 상태기계 Phase 타입
+type StateMachinePhase = 
+  | 'S0_SANITIZE'      // 입력 정제
+  | 'S1_DETAIL'        // Detail 생성
+  | 'S2_DOWNSAMPLE'    // Brief/Standard 생성
+  | 'S3_ASSEMBLY'      // 응답 조립
+  | 'S0_FAIL'          // S0 단계 실패
+  | 'S1_FAIL'          // S1 단계 실패 (발췌형 오염)
+  | 'S2_FAIL'          // S2 단계 실패
+  | 'S3_FAIL';         // S3 단계 실패
+
+// 🎯 [3-LAYER] 엔진 메타데이터
+type EngineMeta = 
+  | 'matrix-v4'                    // Universal Logic Engine 성공
+  | 'fallback-extractive'          // 발췌형 Fallback
+  | 'fallback-local';              // 로컬 Fallback
+
+// 🎯 [3-LAYER] 품질 게이트 결과
+type QualityGateResult = {
+  passed: boolean;              // 품질 기준 통과 여부
+  degraded: boolean;            // 저하된 품질 (발췌형)
+  warnings: string[];           // 경고 메시지
+  extractiveRatio: number;      // 원문 유사도 (0~1)
+  hasSlotMarkers: boolean;      // 슬롯 마커 존재 여부
+};
+
 type MatrixReq = {
   text: string;
   userId?: string;
@@ -251,6 +277,58 @@ function coerceDetailBundleFromLLM(llmResult: any): DetailBundle | null {
   // 그 외 타입은 실패
   console.warn('[coerceDetailBundle] ⚠️ Invalid type:', typeof llmResult);
   return null;
+}
+
+// 🎯 [3-LAYER] S1 품질 게이트: 발췌형 오염 검출
+function evaluateQuality(summaryText: string, originalText: string): QualityGateResult {
+  const warnings: string[] = [];
+  let degraded = false;
+  
+  // 1. 슬롯 마커 존재 여부
+  const hasSlotMarkers = /\[핵심 정의\]|\[상세 설명\]|\[결론.*시사점\]/i.test(summaryText);
+  if (!hasSlotMarkers) {
+    warnings.push('MISSING_SLOT_MARKERS');
+    degraded = true;
+  }
+  
+  // 2. 원문 유사도 계산 (간단한 토큰 기반)
+  const summaryTokens = new Set(summaryText.replace(/[^\w가-힣]/g, ' ').split(/\s+/).filter(Boolean));
+  const originalTokens = new Set(originalText.replace(/[^\w가-힣]/g, ' ').split(/\s+/).filter(Boolean));
+  
+  let matchCount = 0;
+  summaryTokens.forEach(token => {
+    if (originalTokens.has(token)) matchCount++;
+  });
+  
+  const extractiveRatio = summaryTokens.size > 0 ? matchCount / summaryTokens.size : 1;
+  
+  // 유사도가 90% 이상이면 단순 발췌로 판단
+  if (extractiveRatio > 0.9) {
+    warnings.push('HIGH_EXTRACTIVE_RATIO');
+    degraded = true;
+  }
+  
+  // 3. 생략부호 검사
+  if (/\.{3,}|…/.test(summaryText)) {
+    warnings.push('ELLIPSIS_DETECTED');
+    degraded = true;
+  }
+  
+  // 4. 길이 검사 (너무 짧으면 오염 가능성)
+  if (summaryText.length < 50) {
+    warnings.push('TOO_SHORT');
+    degraded = true;
+  }
+  
+  const passed = !degraded && warnings.length === 0;
+  
+  return {
+    passed,
+    degraded,
+    warnings,
+    extractiveRatio,
+    hasSlotMarkers
+  };
 }
 
 function smartTrim(s: string, maxChars: number) {
@@ -1745,6 +1823,9 @@ function buildNarrativeFromSlots(level: Level, rawText: string, slots: { claim: 
   return out2;
 }
 
+// 🎯 [3-LAYER] Build ID 생성기
+const BUILD_ID = `V4-FORTRESS-${new Date().toISOString().slice(0, 10)}`;
+
 // ------------------------------
 // Hono Route
 // ------------------------------
@@ -1753,6 +1834,11 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
     const t0 = Date.now();
     const reqId = `matrix-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
+    // 🎯 [3-LAYER] 상태기계 초기화
+    let smPhase: StateMachinePhase = 'S0_SANITIZE';
+    let engineMeta: EngineMeta = 'matrix-v4';
+    let qualityResult: QualityGateResult | null = null;
+    
     // 🔒 Phase 판정 (OpenAI/Gemini/Claude/Local 중 하나라도 있으면 phase2)
     const { phase } = detectPhase(c);
     let qa: any = null;
@@ -1775,69 +1861,110 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       const requestedLevel = body.level || 'standard';
       const requestedView = body.viewType || 'narrative';
 
-      // ✅ 입력 전처리(요새화)
+      // 🎯 [S0: SANITIZE] 입력 전처리 및 검증
+      console.log('[S0] Starting input sanitization...');
       const rawText = preprocessRawText(rawInput);
 
       if (!rawText || rawText.length < 20) {
+        smPhase = 'S0_FAIL';
         const failQa = makeFailQa(!rawText ? 'EMPTY_TEXT' : 'TEXT_TOO_SHORT');
+        console.log('[S0] ❌ FAIL: Input validation failed');
+        
         return c.json(
           {
             ok: false,
+            degraded: false,
+            engine: engineMeta,
+            mode: requestedLevel,
+            view: requestedView,
             error: { code: 'INVALID_TEXT', message: 'text가 너무 짧습니다(최소 20자 권장)' },
-            meta: { reqId, elapsedMs: Date.now() - t0, phase, qa: failQa },
-            result: { qa: failQa }
+            data: null,
+            meta: { 
+              reqId, 
+              elapsedMs: Date.now() - t0, 
+              phase: smPhase,  // S0_FAIL
+              engineMeta,
+              buildId: BUILD_ID,
+              qa: failQa 
+            }
           },
           400
         );
       }
+      
+      console.log('[S0] ✅ Input sanitization passed');
 
       const checksum = checksumSimple(rawText);
 
       let detail: DetailBundle | null = null;
 
-      // ✅ Phase1/Phase2 모두 LLM 시도 (Fallback Chain)
-      console.log(`[Matrix V4] ${phase}: Trying LLM Fallback Chain (Ollama → Claude → Gemini → Extractive)`);
+      // 🎯 [S1: DETAIL GENERATION] LLM으로 Detail 생성
+      smPhase = 'S1_DETAIL';
+      console.log('[S1] Starting Detail generation via LLM...');
       
       const detailPrompt = buildDetailPrompt(rawText);
-      let detailText = await callGeminiText(c, detailPrompt, rawText);  // ✅ 순수 원문 전달
+      let detailText = await callGeminiText(c, detailPrompt, rawText);
       
-      // 🎯 [ONE-BLOCK FIX] 스키마 확인형 파싱
+      // 스키마 확인형 파싱
       detail = coerceDetailBundleFromLLM(detailText);
 
       if (!detail) {
-        console.log('[Matrix V4] First attempt failed, trying repair...');
+        console.log('[S1] First attempt failed, trying repair...');
         const repairPrompt = [
           `너의 직전 출력은 JSON 파싱에 실패했다.`,
           `설명/마크다운 없이, 오직 JSON만 다시 출력하라.`,
           buildDetailPrompt(rawText)
         ].join('\n');
-        detailText = await callGeminiText(c, repairPrompt, rawText);  // ✅ 순수 원문 전달
+        detailText = await callGeminiText(c, repairPrompt, rawText);
         detail = coerceDetailBundleFromLLM(detailText);
       }
 
       if (!detail) {
-        // LLM 완전 실패 → 로컬 Fallback으로 전환
-        console.log('[Matrix V4] All LLM attempts failed, using local fallback');
+        // LLM 완전 실패 → 로컬 Fallback (발췌형)
+        console.log('[S1] ❌ All LLM failed, fallback to extractive');
+        smPhase = 'S1_FAIL';
+        engineMeta = 'fallback-extractive';
         detail = buildLocalFallbackDetail(rawText);
         
-        // Phase2에서만 FALSE Bucket 기록 (Phase1은 경고만)
         if (phase === 'phase2') {
           await insertFalseBucket(c.env.DB, {
             source: 'matrix_v4',
             reason: 'DETAIL_JSON_PARSE_FAIL',
-            errors: ['detail JSON 파싱 실패', 'Gemini 응답이 유효한 JSON이 아님'],
+            errors: ['LLM failed, using extractive fallback'],
             input_text: rawText,
             model: c.env.GEMINI_MODEL || 'gemini',
             retry_count: 0,
-            meta: { reqId, phase, elapsedMs: Date.now() - t0 }
+            meta: { reqId, phase: smPhase, elapsedMs: Date.now() - t0 }
           });
         }
       }
 
+      // 🎯 [S1: QUALITY GATE] 품질 검증
+      const summaryText = coerceText(detail?.narrative?.summaryDetail ?? detail?.narrative);
+      qualityResult = evaluateQuality(summaryText, rawText);
+      
+      console.log('[S1] Quality Gate:', {
+        passed: qualityResult.passed,
+        degraded: qualityResult.degraded,
+        warnings: qualityResult.warnings,
+        extractiveRatio: qualityResult.extractiveRatio.toFixed(2),
+        hasSlotMarkers: qualityResult.hasSlotMarkers
+      });
+      
+      // 품질 실패 시 S1_FAIL로 전환 (하지만 응답은 계속)
+      if (qualityResult.degraded) {
+        console.log('[S1] ⚠️ Quality degraded, marking as S1_FAIL');
+        smPhase = 'S1_FAIL';
+        engineMeta = 'fallback-extractive';
+      } else {
+        console.log('[S1] ✅ Quality gate passed');
+        engineMeta = 'matrix-v4';
+      }
+      
       // detail 스키마 검증
       const detailErrs = validateDetailBundle(detail);
       if (detailErrs.length) {
-        // FALSE Bucket: 스키마 검증 실패 기록
+        smPhase = 'S1_FAIL';
         await insertFalseBucket(c.env.DB, {
           source: 'matrix_v4',
           reason: 'DETAIL_VALIDATION_FAIL',
@@ -1846,14 +1973,27 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           model: c.env.GEMINI_MODEL || 'gemini',
           payload: detail,
           retry_count: 0,
-          meta: { reqId, phase, elapsedMs: Date.now() - t0 }
+          meta: { reqId, phase: smPhase, elapsedMs: Date.now() - t0 }
         });
 
         return c.json(
           {
             ok: false,
+            degraded: true,
+            engine: engineMeta,
+            mode: requestedLevel,
+            view: requestedView,
             error: { code: 'DETAIL_VALIDATION_FAIL', message: detailErrs.join(' | ') },
-            meta: { reqId, elapsedMs: Date.now() - t0, phase, qa }
+            data: null,
+            meta: { 
+              reqId, 
+              elapsedMs: Date.now() - t0, 
+              phase: smPhase,
+              engineMeta,
+              buildId: BUILD_ID,
+              warnings: qualityResult?.warnings || [],
+              qa 
+            }
           },
           422
         );
@@ -1905,10 +2045,34 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         console.log('[Matrix V4 → V5] Phase 1: Skipping V5 engine (using existing detail.narrative from fallback)');
       }
 
-      // ✅ downsampleFromDetail()로 brief/standard 생성 (기존 흐름 유지)
-      const briefLv = downsampleFromDetail(detail, 'brief');
-      const standardLv = downsampleFromDetail(detail, 'standard');
-      const detailLv = downsampleFromDetail(detail, 'detail');
+      // 🎯 [S2: DOWNSAMPLE] 오염된 Detail은 전파 차단
+      smPhase = 'S2_DOWNSAMPLE';
+      
+      let briefLv, standardLv, detailLv;
+      
+      if (qualityResult && qualityResult.degraded) {
+        // ⚠️ CRITICAL: 오염된 Detail을 downsample하지 않음 → 즉시 중단
+        console.log('[S2] ❌ BLOCKED: Detail is contaminated, skipping downsample');
+        smPhase = 'S2_FAIL';
+        
+        // 오염된 Detail만 반환 (brief/standard는 null)
+        briefLv = { 
+          narrative: { text: '', coreClaim: '', grounds: [], comparisons: [], implications: [] },
+          structured: { text: '', toc: [], hierarchy: [], glossary: [] },
+          mindmap: { tree: { title: '', children: [] } },
+          selftest: { passScorePct: 90, items: [] }
+        };
+        standardLv = briefLv;
+        detailLv = downsampleFromDetail(detail, 'detail');  // Detail만 생성
+        
+      } else {
+        // ✅ 정상: Brief/Standard/Detail 모두 생성
+        console.log('[S2] ✅ Downsampling to Brief/Standard/Detail...');
+        briefLv = downsampleFromDetail(detail, 'brief');
+        standardLv = downsampleFromDetail(detail, 'standard');
+        detailLv = downsampleFromDetail(detail, 'detail');
+        console.log('[S2] ✅ Downsample completed');
+      }
 
       // 슬롯 기반 "진짜 요약" 강제 (오염/생략부호 차단)
       const slots = {
@@ -2169,63 +2333,97 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         });
       }
 
-      // 🎯 [ONE-BLOCK FINAL FIX] engine, mode, view를 최상위로 이동
+      // 🎯 [S3: ASSEMBLY] 응답 조립 - 프론트엔드 계약 준수
+      smPhase = 'S3_ASSEMBLY';
+      console.log('[S3] Assembling final response...');
+      
+      // 🎯 [3-LAYER] ok는 오직 품질 통과 시에만 true
+      const responseOk = qualityResult ? qualityResult.passed && !qualityResult.degraded : true;
+      const responseDegraded = qualityResult ? qualityResult.degraded : false;
+      
       const out = {
-        ok: true,
-        engine: 'intelligent-template-v5',  // ✅ 최상위로 이동 (프론트엔드 호환)
-        mode: requestedLevel,               // ✅ 최상위로 이동
-        view: requestedView,                // ✅ 최상위로 이동
+        ok: responseOk,                      // ✅ 품질 기준 통과 여부
+        degraded: responseDegraded,          // ✅ 발췌형 fallback 여부
+        engine: engineMeta,                  // ✅ 실제 사용된 엔진
+        mode: requestedLevel,                // ✅ 요청된 모드
+        view: requestedView,                 // ✅ 요청된 뷰
         data: {
           schemaVersion: 'ms-v4',
-          // 🔄 프론트엔드 호환을 위해 narrative/structured/mindmap/selftest 직접 노출
-          narrative: {
-            brief: brief.narrative,
-            standard: standard.narrative,
-            detail: detailLv.narrative
-          },
-          structured: {
-            brief: brief.structured,
-            standard: standard.structured,
-            detail: detailLv.structured
-          },
-          mindmap: {
-            brief: brief.mindmap,
-            standard: standard.mindmap,
-            detail: detailLv.mindmap
-          },
-          selftest: {
-            brief: brief.selftest,
-            standard: standard.selftest,
-            detail: detailLv.selftest
-          },
-          // 🔄 하위 호환성을 위해 levels와 views도 유지
-          levels: { brief, standard, detail: detailLv },
+          // 🎯 [3-LAYER] data.views[viewType][mode] 구조 강제
           views: {
-            narrative: { brief: brief.narrative, standard: standard.narrative, detail: detailLv.narrative },
-            structured: { brief: brief.structured, standard: standard.structured, detail: detailLv.structured },
-            mindmap: { brief: brief.mindmap, standard: standard.mindmap, detail: detailLv.mindmap },
-            selftest: { brief: brief.selftest, standard: standard.selftest, detail: detailLv.selftest }
+            narrative: { 
+              brief: briefLv.narrative, 
+              standard: standardLv.narrative, 
+              detail: detailLv.narrative 
+            },
+            structured: { 
+              brief: briefLv.structured, 
+              standard: standardLv.structured, 
+              detail: detailLv.structured 
+            },
+            mindmap: { 
+              brief: briefLv.mindmap, 
+              standard: standardLv.mindmap, 
+              detail: detailLv.mindmap 
+            },
+            selftest: { 
+              brief: briefLv.selftest, 
+              standard: standardLv.selftest, 
+              detail: detailLv.selftest 
+            }
           }
         },
-        meta: { reqId, elapsedMs: Date.now() - t0, phase, qa, engine: 'intelligent-template-v5' },
-        result: { qa }
+        meta: { 
+          reqId, 
+          elapsedMs: Date.now() - t0, 
+          phase: smPhase,                    // ✅ 상태기계 Phase
+          engineMeta,                        // ✅ 실제 엔진 메타
+          buildId: BUILD_ID,                 // ✅ 빌드 ID (캐시 오염 판별)
+          warnings: qualityResult?.warnings || [],  // ✅ 품질 경고
+          qa 
+        }
       };
+      
+      console.log('[S3] ✅ Response assembled:', {
+        ok: responseOk,
+        degraded: responseDegraded,
+        engine: engineMeta,
+        phase: smPhase,
+        buildId: BUILD_ID
+      });
 
-      // ✅ 캐시 무효화 헤더 (브라우저/프록시 캐시 방지)
+      // 캐시 무효화 헤더
       c.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       c.header('Pragma', 'no-cache');
       c.header('Expires', '0');
-      c.header('X-MS-Build', 'INTELLIGENT_TEMPLATE_V5_2026-02-06');
-      c.header('X-MS-Phase', phase);
-      c.header('X-MS-Engine', 'intelligent-template-v5');
+      c.header('X-MS-Build', BUILD_ID);
+      c.header('X-MS-Phase', smPhase);
+      c.header('X-MS-Engine', engineMeta);
 
       return c.json(out, 200);
     } catch (e: any) {
+      // 🎯 [3-LAYER] 에러도 통일된 구조로 응답
+      smPhase = 'S3_FAIL';
+      console.error('[S3] ❌ Fatal error:', e);
+      
       return c.json(
         {
           ok: false,
+          degraded: true,
+          engine: engineMeta || 'fallback-local',
+          mode: 'standard',
+          view: 'narrative',
           error: { code: 'MATRIX_V4_ERROR', message: e?.message || String(e) },
-          meta: { reqId, elapsedMs: Date.now() - t0, phase, qa }
+          data: null,
+          meta: { 
+            reqId, 
+            elapsedMs: Date.now() - t0, 
+            phase: smPhase,
+            engineMeta: engineMeta || 'fallback-local',
+            buildId: BUILD_ID,
+            warnings: ['FATAL_ERROR'],
+            qa 
+          }
         },
         500
       );
