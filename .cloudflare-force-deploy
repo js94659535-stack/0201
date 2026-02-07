@@ -1,0 +1,4 @@
+# Force Cloudflare redeploy to latest commit (fe568b2)
+# Previous deploy used wrong commit (2880f60)
+# This commit triggers fresh deployment with D1 config removed
+Deploy timestamp: 2026-02-07T08:29:01Z
