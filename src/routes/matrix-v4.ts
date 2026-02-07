@@ -1057,6 +1057,37 @@ function buildLocalFallbackDetail(rawText: string): DetailBundle {
 // ------------------------------
 // START: UNIVERSAL LOGIC ENGINE V1 - CLEAN PROMPT (NO EXAMPLES)
 /**
+ * Detail에서 Brief/Standard를 LLM으로 Paraphrase 생성
+ * @param detailText Detail의 narrative.summaryDetail 텍스트
+ * @param level 'brief' 또는 'standard'
+ */
+async function generateBriefStandardFromDetail(c: any, detailText: string, level: 'brief' | 'standard'): Promise<string> {
+  const targetLength = level === 'brief' ? '2-3문장 (간결)' : '4-5문장 (중간)';
+  const prompt = [
+    `🚨🚨🚨 절대 금지 - 위반 시 즉시 실패 🚨🚨🚨`,
+    `1. 아래 Detail 텍스트의 문장을 복사 금지 → 완전히 다른 문장으로 재작성`,
+    `2. "또한", "즉", "따라서"로 문장 이어붙이기 금지 → 다양한 접속사 사용`,
+    `3. Detail 텍스트의 어순·구조 복사 금지 → 완전히 다른 방식으로 Paraphrase`,
+    ``,
+    `당신은 아래 Detail 요약을 읽고, ${level === 'brief' ? '가장 핵심만' : '중간 수준으로'} 재구성하는 AI입니다.`,
+    ``,
+    `[Detail 요약]`,
+    detailText,
+    ``,
+    `[요구사항]`,
+    `- 길이: ${targetLength}`,
+    `- Detail 텍스트의 문장을 절대 복사하지 마세요`,
+    `- 완전히 다른 어순, 다른 어휘로 재구성하세요`,
+    `- 핵심 의미만 유지하고, 표현은 완전히 바꾸세요`,
+    ``,
+    `JSON 없이 순수 텍스트만 출력하세요:`
+  ].join('\n');
+  
+  const result = await callGeminiText(c, prompt, detailText);
+  return result || detailText.slice(0, level === 'brief' ? 100 : 200);
+}
+
+/**
  * 재생성 프롬프트 생성 (Try별로 다른 설명 책임 강제)
  * @param rawText 원문
  * @param attemptNum 시도 횟수 (1, 2, 3)
@@ -1107,9 +1138,14 @@ ${previousMetrics ? `
   }
   
   return [
-    `당신은 원문을 읽고 학습자가 이해하기 쉽도록 **완전히 새로운 문장으로 재구성**하는 AI 교사입니다.`,
+    `🚨🚨🚨 절대 금지 - 위반 시 즉시 실패 🚨🚨🚨`,
+    `1. Brief의 문장을 Standard에 복사 금지 → 완전히 다른 문장으로 재작성`,
+    `2. Standard의 문장을 Detail에 복사 금지 → 완전히 다른 문장으로 재작성`,
+    `3. "또한", "즉", "따라서"로 문장 이어붙이기 금지 → 다양한 접속사 사용`,
+    `4. 원문 문장 구조 복사 금지 → 어순·어휘를 완전히 바꿔서 Paraphrase`,
     ``,
-    `🚨 핵심 원칙: 원문을 복사-붙여넣기하지 마세요. 당신이 이해한 내용을 당신의 언어로 다시 설명하세요.`,
+    `당신은 원문을 읽고 학습자가 이해하기 쉽도록 **완전히 새로운 문장으로 재구성**하는 AI 교사입니다.`,
+    `핵심 원칙: 원문을 복사-붙여넣기하지 마세요. 당신이 이해한 내용을 당신의 언어로 다시 설명하세요.`,
     retryGuidance,
     ``,
     `[절대 금지 - 이것만큼은 지켜주세요]`,
@@ -2512,11 +2548,25 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         
       } else {
         // ✅ 정상: Brief/Standard/Detail 모두 생성
-        console.log('[S2] ✅ Downsampling to Brief/Standard/Detail...');
-        briefLv = downsampleFromDetail(detail, 'brief');
-        standardLv = downsampleFromDetail(detail, 'standard');
+        console.log('[S2] ✅ Generating Brief/Standard/Detail...');
         detailLv = downsampleFromDetail(detail, 'detail');
-        console.log('[S2] ✅ Downsample completed');
+        
+        // 🔥 FIX: Brief/Standard를 LLM으로 Paraphrase 생성 (문장 이어붙이기 방지)
+        const detailNarrativeText = detailLv.narrative.text || '';
+        console.log('[S2] 🔄 Generating Brief from Detail via LLM...');
+        const briefText = await generateBriefStandardFromDetail(c, detailNarrativeText, 'brief');
+        console.log('[S2] 🔄 Generating Standard from Detail via LLM...');
+        const standardText = await generateBriefStandardFromDetail(c, detailNarrativeText, 'standard');
+        
+        briefLv = {
+          ...downsampleFromDetail(detail, 'brief'),
+          narrative: { ...downsampleFromDetail(detail, 'brief').narrative, text: briefText }
+        };
+        standardLv = {
+          ...downsampleFromDetail(detail, 'standard'),
+          narrative: { ...downsampleFromDetail(detail, 'standard').narrative, text: standardText }
+        };
+        console.log('[S2] ✅ Brief/Standard/Detail generation completed');
       }
 
       // 🔴 [NEW V2] 확장 좀비 감지 + Reject/Regenerate 루프 (최대 3회)
@@ -2574,11 +2624,23 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
             break; // 파싱 실패 시 루프 종료
           }
           
-          // Detail 교체 및 재 downsample
+          // Detail 교체 및 Brief/Standard LLM 재생성
           detail = retryDetail;
-          briefLv = downsampleFromDetail(detail, 'brief');
-          standardLv = downsampleFromDetail(detail, 'standard');
           detailLv = downsampleFromDetail(detail, 'detail');
+          
+          // 🔥 FIX: Brief/Standard를 LLM으로 Paraphrase 생성 (문장 이어붙이기 방지)
+          const detailNarrativeText = detailLv.narrative.text || '';
+          const briefText = await generateBriefStandardFromDetail(c, detailNarrativeText, 'brief');
+          const standardText = await generateBriefStandardFromDetail(c, detailNarrativeText, 'standard');
+          
+          briefLv = {
+            ...downsampleFromDetail(detail, 'brief'),
+            narrative: { ...downsampleFromDetail(detail, 'brief').narrative, text: briefText }
+          };
+          standardLv = {
+            ...downsampleFromDetail(detail, 'standard'),
+            narrative: { ...downsampleFromDetail(detail, 'standard').narrative, text: standardText }
+          };
           
           console.log(`[S2] 🔄 Regeneration complete, retrying quality check...`);
         }
