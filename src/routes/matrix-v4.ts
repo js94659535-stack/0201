@@ -398,7 +398,202 @@ function evaluateQuality(summaryText: string, originalText: string): QualityGate
 }
 
 // ============================================================
-// 🔴 [NEW] 압축률 & 유사도 게이트 - STRICT QUALITY ENFORCEMENT
+// 🔴 [NEW V2] 확장 좀비 자동 감지 & Reject/Regenerate 파이프라인
+// ============================================================
+
+/**
+ * 한글 친화 글자수 계산 (공백 제거)
+ */
+function koreanCharCount(s: string): number {
+  return (s || '').replace(/\s+/g, '').length;
+}
+
+/**
+ * 압축률 범위 검증
+ * @param original 원문
+ * @param text 요약 텍스트
+ * @param target 목표 압축률 (예: 0.15)
+ * @param tol 허용 오차 (기본 ±6%)
+ */
+function withinRatio(original: string, text: string, target: number, tol: number = 0.06): boolean {
+  const o = Math.max(1, koreanCharCount(original));
+  const t = koreanCharCount(text);
+  const r = t / o;
+  return Math.abs(r - target) <= tol;
+}
+
+/**
+ * 유사도 비교용 정규화
+ * - 문장부호/공백 제거
+ * - 단어만 남김
+ */
+function normalizeForSim(s: string): string {
+  return (s || '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')  // 문자/숫자만 유지
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * 동적 유사도 임계값 (원문 길이 기반)
+ * - 짧은 원문: 임계값 완화 (0.82)
+ * - 중간 원문: 표준 (0.75)
+ * - 긴 원문: 임계값 강화 (0.68)
+ */
+function dynamicSimThreshold(original: string): number {
+  const n = koreanCharCount(original);
+  if (n < 800) return 0.82;
+  if (n < 4000) return 0.75;
+  return 0.68;
+}
+
+/**
+ * N-gram 기반 원문 복제율 계산 (정규화된 텍스트용)
+ */
+function getNGramOverlap(original: string, summary: string, ngramSize: number = 10): number {
+  const origChars = original.split('');
+  const summChars = summary.split('');
+  
+  let copiedCount = 0;
+  
+  for (let i = 0; i <= summChars.length - ngramSize; i++) {
+    const ngram = summChars.slice(i, i + ngramSize).join('');
+    if (original.includes(ngram)) {
+      copiedCount += ngramSize;
+      i += ngramSize - 1; // 중복 방지
+    }
+  }
+  
+  return summChars.length > 0 ? copiedCount / summChars.length : 0;
+}
+
+/**
+ * 코사인 유사도 계산 (간단 버전)
+ */
+function getCosineSimilarity(text1: string, text2: string): number {
+  const tokens1 = text1.split(/\s+/).filter(Boolean);
+  const tokens2 = text2.split(/\s+/).filter(Boolean);
+  
+  const freq1 = new Map<string, number>();
+  const freq2 = new Map<string, number>();
+  
+  tokens1.forEach(t => freq1.set(t, (freq1.get(t) || 0) + 1));
+  tokens2.forEach(t => freq2.set(t, (freq2.get(t) || 0) + 1));
+  
+  const allTokens = new Set([...freq1.keys(), ...freq2.keys()]);
+  
+  let dotProduct = 0;
+  let mag1 = 0;
+  let mag2 = 0;
+  
+  allTokens.forEach(token => {
+    const v1 = freq1.get(token) || 0;
+    const v2 = freq2.get(token) || 0;
+    dotProduct += v1 * v2;
+    mag1 += v1 * v1;
+    mag2 += v2 * v2;
+  });
+  
+  if (mag1 === 0 || mag2 === 0) return 0;
+  
+  return dotProduct / (Math.sqrt(mag1) * Math.sqrt(mag2));
+}
+
+/**
+ * 🔴 [CRITICAL] 통합 품질 검증: 3중 필터 (A + B + C)
+ * 
+ * A. 압축률(길이) 체크
+ * B. 레벨 간 유사도 체크 (누적 확장 좀비 탐지)
+ * C. 원문 복제율 체크 (발췌형 오염 탐지)
+ * 
+ * @returns { passed: boolean, metrics: {...} }
+ */
+function isQualityStandardPassed(
+  original: string,
+  results: { brief: string; standard: string; detail: string },
+  ratios: { b: number; s: number; d: number }
+): {
+  passed: boolean;
+  metrics: {
+    ratioOK: boolean;
+    b_s_sim: number;
+    s_d_sim: number;
+    simThr: number;
+    copyRate: number;
+    levelSimOK: boolean;
+    copyOK: boolean;
+    briefRatio: number;
+    standardRatio: number;
+    detailRatio: number;
+  };
+} {
+  const { brief, standard, detail } = results;
+  
+  // A) 압축률(길이) 체크
+  const ratioOK =
+    withinRatio(original, brief, ratios.b) &&
+    withinRatio(original, standard, ratios.s) &&
+    withinRatio(original, detail, ratios.d);
+  
+  const briefRatio = koreanCharCount(brief) / Math.max(1, koreanCharCount(original));
+  const standardRatio = koreanCharCount(standard) / Math.max(1, koreanCharCount(original));
+  const detailRatio = koreanCharCount(detail) / Math.max(1, koreanCharCount(original));
+  
+  // B) 레벨 간 유사도 체크 (누적 확장 탐지)
+  const thr = dynamicSimThreshold(original);
+  const b_s_sim = getCosineSimilarity(normalizeForSim(brief), normalizeForSim(standard));
+  const s_d_sim = getCosineSimilarity(normalizeForSim(standard), normalizeForSim(detail));
+  const levelSimOK = (b_s_sim < thr) && (s_d_sim < thr);
+  
+  // C) 원문 복제율 체크 (발췌형 오염 탐지)
+  const copyRate = getNGramOverlap(normalizeForSim(original), normalizeForSim(detail), 10);
+  const copyOK = copyRate < 0.20;
+  
+  console.log('[QualityCheck] A) Ratios:', {
+    brief: `${(briefRatio * 100).toFixed(1)}% (target: ${(ratios.b * 100).toFixed(0)}% ±6%)`,
+    standard: `${(standardRatio * 100).toFixed(1)}% (target: ${(ratios.s * 100).toFixed(0)}% ±6%)`,
+    detail: `${(detailRatio * 100).toFixed(1)}% (target: ${(ratios.d * 100).toFixed(0)}% ±6%)`,
+    ratioOK
+  });
+  
+  console.log('[QualityCheck] B) Similarity:', {
+    'brief-standard': b_s_sim.toFixed(3),
+    'standard-detail': s_d_sim.toFixed(3),
+    threshold: thr.toFixed(3),
+    levelSimOK
+  });
+  
+  console.log('[QualityCheck] C) Copy Rate:', {
+    detail: `${(copyRate * 100).toFixed(1)}%`,
+    threshold: '20%',
+    copyOK
+  });
+  
+  const passed = ratioOK && levelSimOK && copyOK;
+  
+  return {
+    passed,
+    metrics: {
+      ratioOK,
+      b_s_sim,
+      s_d_sim,
+      simThr: thr,
+      copyRate,
+      levelSimOK,
+      copyOK,
+      briefRatio,
+      standardRatio,
+      detailRatio
+    }
+  };
+}
+
+// ============================================================
+// END: 확장 좀비 감지
+// ============================================================
+
+// ============================================================
+// 🔴 [OLD] 압축률 & 유사도 게이트 - STRICT QUALITY ENFORCEMENT (DEPRECATED)
 // ============================================================
 
 /**
@@ -805,9 +1000,59 @@ function buildLocalFallbackDetail(rawText: string): DetailBundle {
 // Detail 생성 프롬프트
 // ------------------------------
 // START: UNIVERSAL LOGIC ENGINE V1 - CLEAN PROMPT (NO EXAMPLES)
-function buildDetailPrompt(rawText: string) {
+/**
+ * 재생성 프롬프트 생성 (Try별로 다른 설명 책임 강제)
+ * @param rawText 원문
+ * @param attemptNum 시도 횟수 (1, 2, 3)
+ * @param previousMetrics 이전 실패 메트릭 (optional)
+ */
+function buildDetailPromptWithRetry(rawText: string, attemptNum: number, previousMetrics?: any): string {
+  let retryGuidance = '';
+  
+  if (attemptNum === 1) {
+    // Try 1: What/How/SoWhat 규칙
+    retryGuidance = `
+[설명 책임 분리 규칙 - Try ${attemptNum}/3]
+- Brief = WHAT (무엇인가): 핵심 개념 정의만
+- Standard = HOW (어떻게): 작동 원리 또는 방법론
+- Detail = SO WHAT (왜 중요한가): 의미와 영향력
+
+각 레벨은 반드시 다른 관점에서 서술하세요.
+Brief의 문장을 Standard에서 재사용하면 실패입니다.`;
+  } else if (attemptNum === 2) {
+    // Try 2: 문장 재사용 금지 + 패턴 금지
+    retryGuidance = `
+[문장 구조 금지어 - Try ${attemptNum}/3]
+🚨 이전 시도가 실패했습니다. 다음 규칙을 엄격히 준수하세요:
+
+1. 이전 레벨의 문장을 포함/재사용하면 즉시 실패
+2. 정의문 반복 금지: "~는 ~이다" 패턴을 한 번만 사용
+3. 동일 문장 패턴 금지: "~하며, ~한다" 접속 패턴 변경
+4. Brief와 Standard는 완전히 다른 어순/표현 사용
+
+${previousMetrics ? `이전 실패 이유: Brief-Standard 유사도 ${previousMetrics.b_s_sim?.toFixed(2)} (임계값: ${previousMetrics.simThr?.toFixed(2)} 미만 필수)` : ''}`;
+  } else {
+    // Try 3: 표현 변환 강제
+    retryGuidance = `
+[표현 변환 강제 - Try ${attemptNum}/3 (최종)]
+🚨🚨 마지막 기회입니다. 아래 규칙을 반드시 지키세요:
+
+1. 동일 어순 금지: 원문과 다른 문장 골격 사용
+2. 동일 접속어 패턴 금지: "또한", "따라서" 등을 다른 표현으로 변경
+3. 원문 고유명사만 유지: 나머지는 환언(paraphrase) 필수
+4. Brief/Standard/Detail이 "이어붙이기"처럼 보이면 즉시 실패
+
+${previousMetrics ? `
+이전 실패 분석:
+- Brief-Standard 유사도: ${previousMetrics.b_s_sim?.toFixed(2)}
+- Standard-Detail 유사도: ${previousMetrics.s_d_sim?.toFixed(2)}
+- 원문 복사율: ${(previousMetrics.copyRate * 100).toFixed(1)}%
+임계값: 유사도 < ${previousMetrics.simThr?.toFixed(2)}, 복사율 < 20%` : ''}`;
+  }
+  
   return [
     `당신은 학습 콘텐츠를 "재조립"하여 참고서형 지식 구조로 만드는 전문가입니다.`,
+    retryGuidance,
     ``,
     `[절대 규칙]`,
     `- 🚨 원문 문장을 그대로 복사하지 마세요. AI가 직접 새로운 문장으로 재작성하세요.`,
@@ -858,6 +1103,14 @@ function buildDetailPrompt(rawText: string) {
     rawText
   ].join('\n');
 }
+
+/**
+ * 기존 buildDetailPrompt() - 첫 시도용
+ */
+function buildDetailPrompt(rawText: string) {
+  return buildDetailPromptWithRetry(rawText, 1);
+}
+
 // END: UNIVERSAL LOGIC ENGINE V1 - CLEAN PROMPT
 
 // ------------------------------
@@ -1676,19 +1929,11 @@ ${jsonSchemaHint}
   let r1 = await tryOnce(1);
   if (r1.v.ok) return { ...r1.v.normalized, _debug: { attempts: 1 } };
 
-  // ✅ 환각 감지 시 즉시 Extractive Fallback 사용
+  // 🚨 환각 감지 시 즉시 실패 (Extractive Fallback 금지)
   const hasHallucination = r1.v.errors.some(e => e.includes('topic_contamination'));
   if (hasHallucination) {
-    console.log('[🚫 환각 감지] LLM이 원문에 없는 정보를 추가함 → Extractive Fallback 사용');
-    const fb = _msExtractiveFallback(originalText, targets.targetChars);
-    return {
-      text: fb,
-      coreClaim: (_msSplitSentences(fb)[0] ?? '').trim(),
-      grounds: _msSplitSentences(fb).slice(1, 4).map(s => s.trim()).filter(Boolean),
-      comparisons: [],
-      implications: [],
-      _debug: { fallback: 'extractive_due_to_hallucination', llmErrors: r1.v.errors }
-    };
+    console.log('[🚫 환각 감지] LLM이 원문에 없는 정보를 추가함 → NULL 반환 (503 트리거)');
+    return null;  // ✅ Zero Tolerance: 억지로 데이터 만들지 않음
   }
 
   // 2차 repair (환각이 없는 경우만)
@@ -1704,18 +1949,10 @@ ${jsonSchemaHint}
 `;
   let r2 = await tryOnce(2, repairNote1);
   
-  // 2차에서도 환각 감지 시 Extractive 사용
+  // 🚨 2차에서도 환각 감지 시 즉시 실패
   if (r2.v.errors.some(e => e.includes('topic_contamination'))) {
-    console.log('[🚫 2차 환각 감지] Extractive Fallback 사용');
-    const fb = _msExtractiveFallback(originalText, targets.targetChars);
-    return {
-      text: fb,
-      coreClaim: (_msSplitSentences(fb)[0] ?? '').trim(),
-      grounds: _msSplitSentences(fb).slice(1, 4).map(s => s.trim()).filter(Boolean),
-      comparisons: [],
-      implications: [],
-      _debug: { fallback: 'extractive_after_2nd_attempt', llmErrors: r2.v.errors }
-    };
+    console.log('[🚫 2차 환각 감지] NULL 반환 (503 트리거)');
+    return null;  // ✅ Zero Tolerance
   }
   
   if (r2.v.ok) return { ...r2.v.normalized, _debug: { attempts: 2, repairedFrom: r1.v.errors } };
@@ -1729,16 +1966,10 @@ ${jsonSchemaHint}
   let r3 = await tryOnce(3, repairNote2);
   if (r3.v.ok) return { ...r3.v.normalized, _debug: { attempts: 3, repairedFrom: [...r1.v.errors, ...r2.v.errors] } };
 
-  // 최종 fallback (extractive)
-  const fb = _msExtractiveFallback(originalText, targets.targetChars);
-  return {
-    text: fb,
-    coreClaim: (_msSplitSentences(fb)[0] ?? '').trim(),
-    grounds: _msSplitSentences(fb).slice(1, 4).map(s => s.trim()).filter(Boolean),
-    comparisons: [],
-    implications: [],
-    _debug: { attempts: 3, fallback: true, errors: [...r1.v.errors, ...r2.v.errors, ...r3.v.errors] },
-  };
+  // 🚨 최종 실패: NULL 반환 (Extractive Fallback 금지)
+  console.error('[❌ CRITICAL] _msGenerateNarrativeDetailV5: 3회 시도 모두 실패, NULL 반환 → 503 트리거');
+  console.error('[실패 원인]', [...r1.v.errors, ...r2.v.errors, ...r3.v.errors]);
+  return null;  // ✅ Zero Tolerance: 원문 복사 금지, 정직하게 실패
 }
 
 // =====================================================================
@@ -2076,11 +2307,64 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         console.log('[Matrix V4 → V5] Phase 2: Generating detail.narrative with Gemini (V5 Engine)');
         const narrativeV5 = await _msGenerateNarrativeDetailV5(c, rawText);
 
+        // 🚨 Zero Tolerance: LLM 실패 시 즉시 503
+        if (!narrativeV5) {
+          console.error('[❌ CRITICAL] narrativeV5 is null → LLM TOTAL FAILURE');
+          smPhase = 'S1_FAIL';
+          return c.json({
+            ok: false,
+            degraded: true,
+            engine: 'fallback-extractive',
+            mode: requestedLevel,
+            view: requestedView,
+            error: {
+              code: 'LLM_TOTAL_FAILURE',
+              message: 'All LLM attempts failed. NO FAKE ENGINE FALLBACK.'
+            },
+            data: null,
+            meta: {
+              reqId,
+              elapsedMs: Date.now() - t0,
+              phase: smPhase,
+              engineMeta: 'fallback-extractive',
+              buildId: BUILD_ID,
+              warnings: ['LLM_TOTAL_FAILURE', 'NO_FAKE_ENGINE_FALLBACK'],
+              qa
+            }
+          }, 503);
+        }
+
         // 최종 safety: 중복/말줄임 제거 1회 더
         const cleanedText = _msDedupSentences(String(narrativeV5.text ?? ''));
-        const finalText = _msHasEllipsisOrTrunc(cleanedText) 
-          ? _msExtractiveFallback(rawText, Math.floor(baseChars * 0.42)) 
-          : cleanedText;
+        
+        // 🚨 Ellipsis 감지 시 즉시 실패 (Extractive Fallback 금지)
+        if (_msHasEllipsisOrTrunc(cleanedText)) {
+          console.error('[❌ CRITICAL] Ellipsis detected in narrativeV5 → REJECT');
+          smPhase = 'S1_FAIL';
+          return c.json({
+            ok: false,
+            degraded: true,
+            engine: 'fallback-extractive',
+            mode: requestedLevel,
+            view: requestedView,
+            error: {
+              code: 'ELLIPSIS_DETECTED',
+              message: 'Summary contains ellipsis or truncation. Zero Tolerance Policy.'
+            },
+            data: null,
+            meta: {
+              reqId,
+              elapsedMs: Date.now() - t0,
+              phase: smPhase,
+              engineMeta: 'fallback-extractive',
+              buildId: BUILD_ID,
+              warnings: ['ELLIPSIS_DETECTED', 'ZERO_TOLERANCE_ENFORCEMENT'],
+              qa
+            }
+          }, 503);
+        }
+        
+        const finalText = cleanedText;
 
         const charCount = _msCharCount(finalText);
         detailRatio = charCount / baseChars;
@@ -2143,12 +2427,21 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         console.log('[S2] ✅ Downsample completed');
       }
 
-      // 🔴 [NEW] 엄격한 품질 게이트 - 압축률 & 유사도 & 원문 복사율 검증
+      // 🔴 [NEW V2] 확장 좀비 감지 + Reject/Regenerate 루프 (최대 3회)
       smPhase = 'S2_QUALITY_GATE';
-      console.log('[S2] 🔴 STRICT Quality Gate - Validating compression, similarity, copy rate...');
+      console.log('[S2] 🔴 확장 좀비 감지 & 재생성 루프 시작...');
       
-      try {
-        const qualityGateResult = validateSummaryQuality(
+      const MAX_REGENERATE_ATTEMPTS = 3;
+      let regenerateAttempt = 0;
+      let qualityCheckResult: ReturnType<typeof isQualityStandardPassed> | null = null;
+      
+      // 재생성 루프
+      while (regenerateAttempt < MAX_REGENERATE_ATTEMPTS) {
+        regenerateAttempt++;
+        console.log(`[S2] Attempt ${regenerateAttempt}/${MAX_REGENERATE_ATTEMPTS}: Quality Check...`);
+        
+        // 품질 검증
+        qualityCheckResult = isQualityStandardPassed(
           rawText,
           {
             brief: briefLv.narrative.text,
@@ -2156,37 +2449,66 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
             detail: detailLv.narrative.text
           },
           {
-            brief: 0.15,   // 15% 압축률
-            standard: 0.26, // 26% 압축률
-            detail: 0.42    // 42% 압축률
+            b: 0.12,   // Brief: 12% (±6% → 6~18%)
+            s: 0.30,   // Standard: 30% (±6% → 24~36%)
+            d: 0.50    // Detail: 50% (±6% → 44~56%)
           }
         );
         
-        console.log('[S2] ✅ STRICT Quality Gate PASSED:', qualityGateResult.metrics);
+        if (qualityCheckResult.passed) {
+          console.log(`[S2] ✅ Quality Check PASSED on attempt ${regenerateAttempt}`);
+          break;
+        }
         
-        // 메트릭을 meta에 저장 (투명성)
-        qualityResult = {
-          passed: true,
-          degraded: false,
-          warnings: [],
-          extractiveRatio: qualityGateResult.metrics.detailCopyRate,
-          hasSlotMarkers: true,
-          strictMetrics: qualityGateResult.metrics  // 🔴 추가: 엄격한 메트릭
-        };
-        
-      } catch (error: any) {
-        // 🚨 품질 게이트 실패 → 즉시 503 에러
-        console.error('[S2] ❌ STRICT Quality Gate FAILED:', error.message);
-        smPhase = 'S2_QUALITY_FAIL';
+        // 실패 - 마지막 시도가 아니면 재생성
+        if (regenerateAttempt < MAX_REGENERATE_ATTEMPTS) {
+          console.error(`[S2] ❌ Quality Check FAILED (attempt ${regenerateAttempt}/${MAX_REGENERATE_ATTEMPTS})`);
+          console.error('[S2] Failed metrics:', qualityCheckResult.metrics);
+          console.log(`[S2] 🔄 REGENERATING with Try ${regenerateAttempt + 1} prompt...`);
+          
+          // 재생성: 새로운 프롬프트로 Detail 다시 생성
+          const retryPrompt = buildDetailPromptWithRetry(rawText, regenerateAttempt + 1, qualityCheckResult.metrics);
+          const retryDetailText = await callGeminiText(c, retryPrompt, rawText);
+          
+          if (!retryDetailText) {
+            console.error('[S2] ❌ Regeneration failed: LLM returned null');
+            break; // LLM 실패 시 루프 종료
+          }
+          
+          // 재파싱
+          const retryDetail = coerceDetailBundleFromLLM(retryDetailText);
+          if (!retryDetail) {
+            console.error('[S2] ❌ Regeneration failed: Invalid JSON');
+            break; // 파싱 실패 시 루프 종료
+          }
+          
+          // Detail 교체 및 재 downsample
+          detail = retryDetail;
+          briefLv = downsampleFromDetail(detail, 'brief');
+          standardLv = downsampleFromDetail(detail, 'standard');
+          detailLv = downsampleFromDetail(detail, 'detail');
+          
+          console.log(`[S2] 🔄 Regeneration complete, retrying quality check...`);
+        }
+      }
+      
+      // 최종 결과 판정
+      if (!qualityCheckResult || !qualityCheckResult.passed) {
+        // 🚨 3회 모두 실패 → 503 에러
+        console.error(`[S2] ❌ FINAL FAILURE after ${MAX_REGENERATE_ATTEMPTS} attempts`);
+        smPhase = 'S2_REGENERATE_FAIL';
         
         await insertFalseBucket(c.env.DB, {
           source: 'matrix_v4',
-          reason: 'STRICT_QUALITY_GATE_FAIL',
-          errors: [error.message],
+          reason: 'QUALITY_REGENERATE_EXHAUSTED',
+          errors: [
+            `Failed after ${regenerateAttempt} attempts`,
+            JSON.stringify(qualityCheckResult?.metrics || {})
+          ],
           input_text: rawText,
           model: c.env.GEMINI_MODEL || 'gemini',
-          payload: { brief: briefLv, standard: standardLv, detail: detailLv },
-          retry_count: 0,
+          payload: { brief: briefLv, standard: standardLv, detail: detailLv, finalMetrics: qualityCheckResult?.metrics },
+          retry_count: regenerateAttempt,
           meta: { reqId, phase: smPhase, elapsedMs: Date.now() - t0 }
         });
         
@@ -2198,8 +2520,8 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
             mode: requestedLevel,
             view: requestedView,
             error: { 
-              code: 'STRICT_QUALITY_GATE_FAIL', 
-              message: `품질 기준 미달: ${error.message}` 
+              code: 'QUALITY_REGENERATE_EXHAUSTED', 
+              message: `품질 기준 미달: ${regenerateAttempt}회 재생성 후에도 통과 실패. 원문 복사 금지.` 
             },
             data: null,
             meta: { 
@@ -2208,13 +2530,36 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
               phase: smPhase,
               engineMeta: 'fallback-extractive',
               buildId: BUILD_ID,
-              warnings: ['STRICT_QUALITY_GATE_FAIL', error.message],
+              warnings: [
+                'QUALITY_REGENERATE_EXHAUSTED',
+                `Attempts: ${regenerateAttempt}/${MAX_REGENERATE_ATTEMPTS}`,
+                ...(qualityCheckResult?.metrics ? [
+                  `RatioOK: ${qualityCheckResult.metrics.ratioOK}`,
+                  `SimOK: ${qualityCheckResult.metrics.levelSimOK}`,
+                  `CopyOK: ${qualityCheckResult.metrics.copyOK}`
+                ] : [])
+              ],
+              finalMetrics: qualityCheckResult?.metrics,
               qa: makeFailQa('QUALITY_GATE_FAIL')
             }
           },
           503
         );
       }
+      
+      // ✅ 품질 검증 통과
+      console.log(`[S2] ✅ Final Quality Check PASSED (attempt ${regenerateAttempt}/${MAX_REGENERATE_ATTEMPTS})`);
+      qualityResult = {
+        passed: true,
+        degraded: false,
+        warnings: regenerateAttempt > 1 ? [`REGENERATED_${regenerateAttempt}_TIMES`] : [],
+        extractiveRatio: qualityCheckResult.metrics.copyRate,
+        hasSlotMarkers: true,
+        strictMetrics: {
+          ...qualityCheckResult.metrics,
+          regenerateAttempts: regenerateAttempt  // 투명성: 몇 번 재생성했는지 공개
+        } as any
+      };
 
       // 슬롯 기반 "진짜 요약" 강제 (오염/생략부호 차단)
       const slots = {
