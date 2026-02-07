@@ -200,28 +200,29 @@ function hasUsableKey(v?: string) {
    Phase1: 모두 없으면 Phase1 (Local Fallback만 사용)
    ============================================================ */
 function detectPhase(c: any) {
-  // 🔧 FIX: Cloudflare Pages에서 환경 변수는 process.env에도 있을 수 있음
-  const getEnv = (key: string) => {
-    const val = c.env?.[key] || (typeof process !== 'undefined' ? process.env?.[key] : undefined);
-    return val;
-  };
-
-  const useMock = String(getEnv('USE_MOCK') || '').toLowerCase() === 'true';
+  // 🚨 CRITICAL FIX: Cloudflare Pages/Workers는 process.env를 사용하지 않음
+  // c.env만 사용해야 함 (Pages Functions의 환경 변수 바인딩)
+  
+  // 🔍 DEBUG: c.env의 모든 키 출력 (바인딩 확인)
+  console.log('[ENV_KEYS] Available env keys:', c.env ? Object.keys(c.env).join(', ') : 'NONE');
+  console.log('[ENV_KEYS] c.env object exists:', !!c.env);
+  
+  const useMock = String(c.env?.USE_MOCK || '').toLowerCase() === 'true';
   if (useMock) return { phase: 'phase1' as const, useMock: true };
 
-  const geminiKey = getEnv('GEMINI_API_KEY');
-  const claudeKey = getEnv('ANTHROPIC_API_KEY');
-  const localUrl = getEnv('LOCAL_LLM_URL');
+  // 🚨 CRITICAL: process.env 제거, c.env만 사용
+  const geminiKey = c.env?.GEMINI_API_KEY;
+  const claudeKey = c.env?.ANTHROPIC_API_KEY;
+  const localUrl = c.env?.LOCAL_LLM_URL;
 
   const hasGemini = hasUsableKey(geminiKey);
   const hasClaude = hasUsableKey(claudeKey);
   const hasLocal = !!(localUrl && String(localUrl).trim().length > 8);
 
-  // 🔍 DEBUG: 환경 변수 확인
-  console.log('[ENV DEBUG] c.env:', !!c.env, 'process.env:', typeof process !== 'undefined' && !!process.env);
-  console.log('[ENV DEBUG] GEMINI_API_KEY (c.env):', c.env?.GEMINI_API_KEY ? 'SET' : 'NOT SET');
-  console.log('[ENV DEBUG] GEMINI_API_KEY (process.env):', typeof process !== 'undefined' && process.env?.GEMINI_API_KEY ? 'SET' : 'NOT SET');
-  console.log('[ENV DEBUG] GEMINI_API_KEY (final):', geminiKey ? `${String(geminiKey).slice(0, 10)}... (length: ${String(geminiKey).length})` : 'NOT SET');
+  // 🔍 DEBUG: 환경 변수 상세 확인
+  console.log('[ENV DEBUG] GEMINI_API_KEY:', geminiKey ? `${String(geminiKey).slice(0, 10)}... (length: ${String(geminiKey).length})` : '❌ NOT SET');
+  console.log('[ENV DEBUG] ANTHROPIC_API_KEY:', claudeKey ? 'SET' : '❌ NOT SET');
+  console.log('[ENV DEBUG] LOCAL_LLM_URL:', localUrl ? 'SET' : '❌ NOT SET');
   console.log('[ENV DEBUG] hasGemini:', hasGemini, '| hasClaude:', hasClaude, '| hasLocal:', hasLocal);
 
   // ✅ OpenAI 완전 제거, Local/Gemini/Claude 중 하나라도 있으면 Phase2
@@ -1556,10 +1557,10 @@ async function callGeminiText(c: any, prompt: string, rawText: string) {
   }
 
   // 2순위: Gemini API - 15%
-  const geminiKey = c?.env?.GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : undefined) || '';
-  console.log('[LLM DEBUG] Gemini key check (c.env):', c?.env?.GEMINI_API_KEY ? 'SET' : 'NOT SET');
-  console.log('[LLM DEBUG] Gemini key check (process.env):', typeof process !== 'undefined' && process.env?.GEMINI_API_KEY ? 'SET' : 'NOT SET');
-  console.log('[LLM DEBUG] Gemini key check (final):', geminiKey ? `${geminiKey.slice(0, 10)}... (length: ${geminiKey.length})` : 'EMPTY');
+  // 🚨 CRITICAL FIX: process.env 제거, c.env만 사용
+  const geminiKey = c?.env?.GEMINI_API_KEY || '';
+  console.log('[LLM DEBUG] Gemini key check (c.env):', c?.env?.GEMINI_API_KEY ? 'SET' : '❌ NOT SET');
+  console.log('[LLM DEBUG] Gemini key (final):', geminiKey ? `${geminiKey.slice(0, 10)}... (length: ${geminiKey.length})` : '❌ EMPTY');
   if (geminiKey) {
     try {
       console.log('[LLM] 2/3 Gemini API 시도...');
@@ -2226,8 +2227,9 @@ function buildNarrativeFromSlots(level: Level, rawText: string, slots: { claim: 
   return out2;
 }
 
-// 🎯 [3-LAYER] Build ID 생성기
-const BUILD_ID = `V4-FORTRESS-${new Date().toISOString().slice(0, 10)}`;
+// 🎯 [3-LAYER] Build ID 생성기 (빌드마다 고유 ID 생성)
+const BUILD_TIMESTAMP = new Date().toISOString();
+const BUILD_ID = `V4-FORTRESS-${BUILD_TIMESTAMP.slice(0, 19).replace(/:/g, '-')}`;
 
 // ------------------------------
 // Hono Route

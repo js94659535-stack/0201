@@ -240,6 +240,10 @@
 
     // Render result
     function renderResult(response) {
+      // 🚨 CRITICAL DEBUG: 원시 응답 전체 출력
+      console.log('🚨 RAW_RESPONSE:', JSON.stringify(response, null, 2));
+      console.log('🚨 RAW_RESPONSE (object):', response);
+      
       // 🔴 [FIX] engine/mode/view는 최상위에서 읽기 (백엔드 응답 구조 반영)
       const { data, meta, engine, mode, view } = response;
       
@@ -252,7 +256,8 @@
         mode,
         view,
         metaEngine: meta?.engine,
-        metaEngineMetaengineMetadata: meta?.engineMeta
+        metaEngineMetaengineMetadata: meta?.engineMeta,
+        buildId: meta?.buildId  // ✅ Build ID 확인
       });
       
       let html = '';
@@ -318,7 +323,7 @@
           }
         }, 100);
         // 🔴 [FIX] engine은 최상위 response.engine에서 읽기
-        resultMeta.textContent = `엔진: ${engine || meta?.engineMeta || 'unknown'} | 모드: ${mode || 'unknown'} | 뷰: ${view || 'unknown'} | 캐시: ${meta?.cached ? 'HIT' : 'MISS'} | 시간: ${meta?.elapsedMs || 0}ms`;
+        resultMeta.textContent = `엔진: ${engine || meta?.engineMeta || 'unknown'} | 모드: ${mode || 'unknown'} | 뷰: ${view || 'unknown'} | 빌드: ${meta?.buildId || 'unknown'} | 시간: ${meta?.elapsedMs || 0}ms`;
         resultSection.classList.remove('hidden');
         return;
       } else if (currentView === 'selftest' && data.selftest) {
@@ -340,8 +345,8 @@
       }
 
       resultContent.innerHTML = html;
-      // 🔴 [FIX] engine은 최상위에서 읽기
-      resultMeta.textContent = `엔진: ${engine || meta?.engineMeta || 'unknown'} | 모드: ${mode || 'unknown'} | 뷰: ${view || 'unknown'} | 캐시: ${meta?.cached ? 'HIT' : 'MISS'} | 시간: ${meta?.elapsedMs || 0}ms`;
+      // 🔴 [FIX] engine은 최상위에서 읽기 + Build ID 표시
+      resultMeta.textContent = `엔진: ${engine || meta?.engineMeta || 'unknown'} | 모드: ${mode || 'unknown'} | 뷰: ${view || 'unknown'} | 빌드: ${meta?.buildId || 'unknown'} | 시간: ${meta?.elapsedMs || 0}ms`;
       resultSection.classList.remove('hidden');
     }
 
@@ -404,15 +409,28 @@
       loadingIndicator.classList.remove('hidden');
 
       try {
-        const response = await fetch('/api/engine', {
+        // 🚨 CRITICAL FIX: /api/matrix 호출 (matrix-v4.ts)
+        console.log('🚀 [API CALL] Calling /api/matrix with:', {
+          text: text.slice(0, 50) + '...',
+          mode: currentMode,
+          viewType: currentView
+        });
+        
+        const response = await fetch('/api/matrix', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             text,
-            mode: currentMode,
+            level: currentMode,  // ✅ level (not mode)
             viewType: currentView,
             userId: 'web_user'
           })
+        });
+
+        console.log('📡 [API RESPONSE] Status:', response.status, 'Headers:', {
+          buildId: response.headers.get('X-MS-Build'),
+          phase: response.headers.get('X-MS-Phase'),
+          engine: response.headers.get('X-MS-Engine')
         });
 
         if (!response.ok) {
@@ -420,6 +438,7 @@
         }
 
         const result = await response.json();
+        console.log('✅ [API RESULT] Received:', result);
 
         if (!result.ok) {
           // 🔴 FIX: error가 객체일 때 JSON.stringify 사용
