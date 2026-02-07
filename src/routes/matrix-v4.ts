@@ -1409,6 +1409,12 @@ function validateLevelSeparation(levels: { brief: LevelBundle; standard: LevelBu
    ============================================================ */
 // ✅ 수정: rawText를 별도 파라미터로 받아서 Fallback 시 프롬프트가 아닌 순수 원문만 사용
 async function callGeminiText(c: any, prompt: string, rawText: string) {
+  // 🚨 [FORCE ERROR TEST] 강제 에러 주입 - LLM 호출 차단 테스트
+  if (c?.env?.FORCE_LLM_ERROR === 'true') {
+    console.error('[FORCE ERROR TEST] LLM 호출 강제 차단됨');
+    return null;
+  }
+  
   const MIN_OK_LEN = 80;  // 최소 응답 길이
   
   // 1순위: LOCAL_LLM_URL (Ollama/LM Studio/vLLM 등) - 80%
@@ -2648,33 +2654,22 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           );
         }
         
-        // ✅ LLM 성공 - Brief/Standard/Detail 생성
-        __d_text = detailLLM.trim();
-        console.log('[Matrix V4] Phase 1: LLM 요약 성공');
+        // 🚨 [ZOMBIE ELIMINATED] Phase1 문장 자르기 로직 완전 삭제
+        // Phase1도 이제 downsample 결과를 사용하도록 강제
+        // Quality Gate를 거치지 않은 문장 자르기는 누적 확장 좀비의 원인
         
-        const sentences = __d_text.split(/[.!?]\s+/).filter(Boolean);
-        __b_text = sentences.slice(0, 1).join('. ') + '.';
-        __s_text = sentences.slice(0, Math.min(2, sentences.length)).join('. ') + '.';
-        
-        __b_ratio = _msCharCount(__b_text) / baseChars;
-        __s_ratio = _msCharCount(__s_text) / baseChars;
-        __d_ratio = _msCharCount(__d_text) / baseChars;
-        
-        console.log('[Matrix V4] Phase 1 최종:', {
-          brief: { length: _msCharCount(__b_text), ratio: __b_ratio.toFixed(3) },
-          standard: { length: _msCharCount(__s_text), ratio: __s_ratio.toFixed(3) },
-          detail: { length: _msCharCount(__d_text), ratio: __d_ratio.toFixed(3) }
-        });
-      } else {
-        // Phase2: downsample 결과 사용 (이미 위에서 설정됨)
-        __b_text = briefLv.narrative.text;
-        __s_text = standardLv.narrative.text;
-        __d_text = detailLv.narrative.text;
-        
-        __b_ratio = _msCharCount(__b_text) / baseChars;
-        __s_ratio = _msCharCount(__s_text) / baseChars;
-        __d_ratio = detailRatio;
+        console.log('[Matrix V4] 🚨 Phase 1 is DEPRECATED - Forcing Phase 2 quality gate');
+        console.log('[Matrix V4] Phase 1 요청은 자동으로 Phase 2로 승격됩니다.');
       }
+      
+      // ✅ 모든 경로에서 downsample 결과 사용 (Quality Gate 통과 후)
+      __b_text = briefLv.narrative.text;
+      __s_text = standardLv.narrative.text;
+      __d_text = detailLv.narrative.text;
+      
+      __b_ratio = _msCharCount(__b_text) / baseChars;
+      __s_ratio = _msCharCount(__s_text) / baseChars;
+      __d_ratio = detailRatio;
 
       // 🎯 [ONE-BLOCK FIX] coerceText 적용: [object Object] 차단
       briefLv.narrative.text = coerceText(__b_text);
