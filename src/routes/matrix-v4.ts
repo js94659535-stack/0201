@@ -2126,14 +2126,36 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         });
       }
 
-      // 🎯 [ONE-BLOCK FINAL FIX] engine, mode, view 명시적 할당
+      // 🎯 [ONE-BLOCK FINAL FIX] engine, mode, view를 최상위로 이동
       const out = {
         ok: true,
+        engine: 'intelligent-template-v5',  // ✅ 최상위로 이동 (프론트엔드 호환)
+        mode: requestedLevel,               // ✅ 최상위로 이동
+        view: requestedView,                // ✅ 최상위로 이동
         data: {
           schemaVersion: 'ms-v4',
-          engine: 'intelligent-template-v5',  // ✅ undefined 박멸
-          mode: requestedLevel,               // ✅ 요청된 모드 명시
-          view: requestedView,                // ✅ 요청된 뷰 명시
+          // 🔄 프론트엔드 호환을 위해 narrative/structured/mindmap/selftest 직접 노출
+          narrative: {
+            brief: brief.narrative,
+            standard: standard.narrative,
+            detail: detailLv.narrative
+          },
+          structured: {
+            brief: brief.structured,
+            standard: standard.structured,
+            detail: detailLv.structured
+          },
+          mindmap: {
+            brief: brief.mindmap,
+            standard: standard.mindmap,
+            detail: detailLv.mindmap
+          },
+          selftest: {
+            brief: brief.selftest,
+            standard: standard.selftest,
+            detail: detailLv.selftest
+          },
+          // 🔄 하위 호환성을 위해 levels와 views도 유지
           levels: { brief, standard, detail: detailLv },
           views: {
             narrative: { brief: brief.narrative, standard: standard.narrative, detail: detailLv.narrative },
