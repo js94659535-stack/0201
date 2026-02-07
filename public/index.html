@@ -235,7 +235,21 @@
 
     // Render result
     function renderResult(response) {
-      const { data, meta } = response;
+      // 🔴 [FIX] engine/mode/view는 최상위에서 읽기 (백엔드 응답 구조 반영)
+      const { data, meta, engine, mode, view } = response;
+      
+      // 디버깅: 응답 구조 로깅
+      console.log('[Response Structure]', {
+        hasEngine: !!engine,
+        hasMode: !!mode,
+        hasView: !!view,
+        engine,
+        mode,
+        view,
+        metaEngine: meta?.engine,
+        metaEngineMetaengineMetadata: meta?.engineMeta
+      });
+      
       let html = '';
 
       if (currentView === 'narrative' && data.narrative) {
@@ -298,7 +312,8 @@
             container.innerHTML = '<div style="padding:20px; color:#ef4444;">MS_renderMindmapFromEngineMindmap 함수가 없습니다.</div>';
           }
         }, 100);
-        resultMeta.textContent = `엔진: ${meta?.engine || 'local'} | 캐시: ${meta?.cached ? 'HIT' : 'MISS'} | 시간: ${meta?.elapsedMs || 0}ms`;
+        // 🔴 [FIX] engine은 최상위 response.engine에서 읽기
+        resultMeta.textContent = `엔진: ${engine || meta?.engineMeta || 'unknown'} | 모드: ${mode || 'unknown'} | 뷰: ${view || 'unknown'} | 캐시: ${meta?.cached ? 'HIT' : 'MISS'} | 시간: ${meta?.elapsedMs || 0}ms`;
         resultSection.classList.remove('hidden');
         return;
       } else if (currentView === 'selftest' && data.selftest) {
@@ -320,7 +335,8 @@
       }
 
       resultContent.innerHTML = html;
-      resultMeta.textContent = `엔진: ${meta?.engine || 'local'} | 캐시: ${meta?.cached ? 'HIT' : 'MISS'} | 시간: ${meta?.elapsedMs || 0}ms`;
+      // 🔴 [FIX] engine은 최상위에서 읽기
+      resultMeta.textContent = `엔진: ${engine || meta?.engineMeta || 'unknown'} | 모드: ${mode || 'unknown'} | 뷰: ${view || 'unknown'} | 캐시: ${meta?.cached ? 'HIT' : 'MISS'} | 시간: ${meta?.elapsedMs || 0}ms`;
       resultSection.classList.remove('hidden');
     }
 

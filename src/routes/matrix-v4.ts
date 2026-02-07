@@ -2980,6 +2980,61 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
     }
   });
 
+  // 🧪 [TEST] 503 에러 강제 테스트 엔드포인트
+  app.post('/api/matrix/test-503', async (c) => {
+    console.log('[TEST] 503 에러 강제 테스트 시작');
+    
+    const body = await c.req.json();
+    const { text } = body;
+    
+    // 원문을 그대로 "요약"으로 사용 (100% 복사)
+    const fakeResult = {
+      brief: text.substring(0, 100),
+      standard: text.substring(0, 200),
+      detail: text  // 100% 복사!
+    };
+    
+    // Quality Gate 실행
+    const qualityCheck = isQualityStandardPassed(
+      text,
+      fakeResult,
+      { b: 0.12, s: 0.30, d: 0.50 }
+    );
+    
+    console.log('[TEST] Quality Check Result:', qualityCheck);
+    
+    if (!qualityCheck.passed) {
+      console.log('[TEST] ✅ Quality Gate가 제대로 차단했습니다!');
+      console.log('[TEST] Failed metrics:', qualityCheck.metrics);
+      
+      return c.json({
+        ok: false,
+        degraded: true,
+        engine: 'test-extractive',
+        mode: 'standard',
+        view: 'narrative',
+        error: {
+          code: 'QUALITY_GATE_FAIL',
+          message: '서술형 요약 품질 기준 미달 (503) - 원문 복사 감지됨'
+        },
+        data: null,
+        meta: {
+          testMode: true,
+          qualityMetrics: qualityCheck.metrics,
+          buildId: BUILD_ID
+        }
+      }, 503);
+    } else {
+      console.log('[TEST] ❌ Quality Gate가 통과시켰습니다 (문제!)');
+      return c.json({
+        ok: true,
+        testMode: true,
+        message: 'Quality Gate가 이 복사본을 통과시켰습니다 (버그)',
+        metrics: qualityCheck.metrics
+      }, 200);
+    }
+  });
+
   // Selftest 채점 API
   app.post('/api/selftest/grade', async (c) => {
     try {
