@@ -277,16 +277,33 @@ function coerceText(v: any): string {
 
   // 🔍 흔한 중첩 케이스들까지 커버 (후보 체인)
   if (typeof v === 'object') {
+    // 1순위: v.text (직접 텍스트)
     if (typeof v.text === 'string') return v.text.trim();
+    
+    // 2순위: v.summaryDetail (Detail 번들)
     if (typeof v.summaryDetail === 'string') return v.summaryDetail.trim();
+    
+    // 3순위: v.narrative.summaryDetail (중첩 1단계)
     if (v.narrative && typeof v.narrative.summaryDetail === 'string') {
       return v.narrative.summaryDetail.trim();
     }
+    
+    // 4순위: v.narrative.text (중첩 1단계)
     if (v.narrative && typeof v.narrative.text === 'string') {
       return v.narrative.text.trim();
     }
-    // ✅ JSON.stringify 금지 → 요약칸 오염 재발 방지
-    console.warn('[coerceText] ⚠️ Object without valid text field, returning empty');
+    
+    // 5순위: v.coreClaim (Fallback - 최소한 핵심 주장이라도)
+    if (typeof v.coreClaim === 'string') return v.coreClaim.trim();
+    
+    // 6순위: v.narrative.coreClaim (중첩 1단계)
+    if (v.narrative && typeof v.narrative.coreClaim === 'string') {
+      return v.narrative.coreClaim.trim();
+    }
+    
+    // 🚨 CRITICAL: [object Object] 방지 - 디버그 로그 출력
+    console.error('[coerceText] ❌ Object without valid text field:', Object.keys(v).join(', '));
+    console.error('[coerceText] ❌ Object structure:', JSON.stringify(v, null, 2).slice(0, 500));
     return '';
   }
   return String(v).trim();
@@ -3027,6 +3044,10 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       const responseOk = qualityResult ? qualityResult.passed && !qualityResult.degraded : true;
       const responseDegraded = qualityResult ? qualityResult.degraded : false;
       
+      // 🔴 CRITICAL FIX: 프론트엔드 호환 구조로 응답 생성
+      // 프론트엔드는 data.narrative (문자열) 을 기대함
+      const selectedLevel = requestedLevel === 'brief' ? briefLv : requestedLevel === 'standard' ? standardLv : detailLv;
+      
       const out = {
         ok: responseOk,                      // ✅ 품질 기준 통과 여부
         degraded: responseDegraded,          // ✅ 발췌형 fallback 여부
@@ -3035,7 +3056,12 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         view: requestedView,                 // ✅ 요청된 뷰
         data: {
           schemaVersion: 'ms-v4',
-          // 🎯 [3-LAYER] data.views[viewType][mode] 구조 강제
+          // 🔴 FIX: 프론트엔드가 기대하는 형태로 직접 제공
+          narrative: coerceText(selectedLevel.narrative),  // ✅ 문자열로 변환
+          structured: selectedLevel.structured,
+          mindmap: selectedLevel.mindmap,
+          selftest: selectedLevel.selftest,
+          // 🎯 [3-LAYER] 전체 레벨 데이터는 views에 보관
           views: {
             narrative: { 
               brief: briefLv.narrative, 
