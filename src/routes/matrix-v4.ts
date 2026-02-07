@@ -193,18 +193,64 @@ function checksumSimple(s: string) {
   return (h >>> 0).toString(16);
 }
 
-// 🎯 [ONE-BLOCK FIX] coerceText: [object Object] 발생 0% 차단
-function coerceText(value: any): string {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'object') {
-    // 객체가 .text 필드를 가지고 있으면 그것을 사용
-    if ('text' in value && typeof value.text === 'string') return value.text;
-    // 그 외의 경우 JSON 문자열로 변환하지 말고 빈 문자열 반환
-    console.warn('[coerceText] Object detected, returning empty string:', value);
+// 🎯 [ONE-BLOCK FIX] coerceText 안전형: JSON.stringify 금지, 후보 체인 탐색
+function coerceText(v: any): string {
+  if (typeof v === 'string') return v.trim();
+  if (!v) return '';
+
+  // 🔍 흔한 중첩 케이스들까지 커버 (후보 체인)
+  if (typeof v === 'object') {
+    if (typeof v.text === 'string') return v.text.trim();
+    if (typeof v.summaryDetail === 'string') return v.summaryDetail.trim();
+    if (v.narrative && typeof v.narrative.summaryDetail === 'string') {
+      return v.narrative.summaryDetail.trim();
+    }
+    if (v.narrative && typeof v.narrative.text === 'string') {
+      return v.narrative.text.trim();
+    }
+    // ✅ JSON.stringify 금지 → 요약칸 오염 재발 방지
+    console.warn('[coerceText] ⚠️ Object without valid text field, returning empty');
     return '';
   }
-  return String(value);
+  return String(v).trim();
+}
+
+// 🎯 [ONE-BLOCK FIX] DetailBundle 스키마 확인 함수
+function looksLikeDetailBundle(x: any): boolean {
+  return !!(
+    x &&
+    typeof x === 'object' &&
+    x.narrative &&
+    typeof x.narrative === 'object' &&
+    // summaryDetail 또는 coreClaim/grounds 중 하나라도 존재해야 통과
+    (typeof x.narrative.summaryDetail === 'string' ||
+     typeof x.narrative.coreClaim === 'string' ||
+     Array.isArray(x.narrative.grounds))
+  );
+}
+
+// 🎯 [ONE-BLOCK FIX] LLM 결과를 안전하게 DetailBundle로 변환
+function coerceDetailBundleFromLLM(llmResult: any): DetailBundle | null {
+  if (!llmResult) return null;
+
+  // 이미 DetailBundle 형태면 그대로 반환
+  if (looksLikeDetailBundle(llmResult)) {
+    return llmResult as DetailBundle;
+  }
+
+  // 문자열이면 파싱 시도
+  if (typeof llmResult === 'string') {
+    const parsed = safeJsonParse(llmResult);
+    if (looksLikeDetailBundle(parsed)) {
+      return parsed as DetailBundle;
+    }
+    console.warn('[coerceDetailBundle] ⚠️ Parsed result is not DetailBundle');
+    return null;
+  }
+
+  // 그 외 타입은 실패
+  console.warn('[coerceDetailBundle] ⚠️ Invalid type:', typeof llmResult);
+  return null;
 }
 
 function smartTrim(s: string, maxChars: number) {
@@ -470,25 +516,21 @@ function downsampleFromDetail(detail: DetailBundle, level: Level): LevelBundle {
   let implications: string[] = [];
 
   if (level === 'detail') {
-    // 🎯 [핀셋 4.1] summaryDetail은 항상 문자열 (JSON 파싱 후)
-    let rawSummary = detail.narrative?.summaryDetail || detail.narrative || '';
+    // 🎯 [ONE-BLOCK FIX] 후보 체인: summaryDetail → narrative.text → 기타
+    // ✅ 원문 복사 차단, 요약 본문 후보 체인
+    const baseNarr = coerceText(
+      detail?.narrative?.summaryDetail ??
+      (detail as any)?.narrativeDetail?.text ??
+      (detail as any)?.narrative?.text ??
+      ''
+    );
     
-    // 🚨 CRITICAL DEFENSE: summaryDetail이 객체/undefined면 에러
-    if (typeof rawSummary === 'object' && rawSummary !== null) {
-      console.error('[DOWN] ❌ summaryDetail is OBJECT!');
-      console.error('[DOWN] Type:', typeof rawSummary);
-      console.error('[DOWN] Keys:', Object.keys(rawSummary).join(', '));
-      console.error('[DOWN] Full detail structure:', JSON.stringify(detail).slice(0, 200));
-      
-      // 강제 추출: summaryDetail이 객체라면 coreClaim을 사용
-      if ('coreClaim' in rawSummary && typeof rawSummary.coreClaim === 'string') {
-        narrativeText = rawSummary.coreClaim;
-        console.warn('[DOWN] ⚠️ Using coreClaim as fallback:', narrativeText.slice(0, 50));
-      } else {
-        narrativeText = '';
-      }
-    } else {
-      narrativeText = String(rawSummary).trim();
+    narrativeText = baseNarr;
+    
+    // 🚨 DEFENSE: 텍스트가 비어있으면 경고
+    if (!narrativeText) {
+      console.warn('[DOWN] ⚠️ Detail narrative is empty, using coreClaim fallback');
+      narrativeText = claim || '요약 내용을 생성할 수 없습니다.';
     }
     
     coreClaim = claim;
@@ -1758,8 +1800,9 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       
       const detailPrompt = buildDetailPrompt(rawText);
       let detailText = await callGeminiText(c, detailPrompt, rawText);  // ✅ 순수 원문 전달
-      // 🎯 [핀셋 4.1] 모든 LLM이 JSON 문자열을 반환하도록 통일
-      detail = safeJsonParse(detailText) as DetailBundle | null;
+      
+      // 🎯 [ONE-BLOCK FIX] 스키마 확인형 파싱
+      detail = coerceDetailBundleFromLLM(detailText);
 
       if (!detail) {
         console.log('[Matrix V4] First attempt failed, trying repair...');
@@ -1769,7 +1812,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           buildDetailPrompt(rawText)
         ].join('\n');
         detailText = await callGeminiText(c, repairPrompt, rawText);  // ✅ 순수 원문 전달
-        detail = safeJsonParse(detailText) as DetailBundle | null;
+        detail = coerceDetailBundleFromLLM(detailText);
       }
 
       if (!detail) {
