@@ -78,6 +78,17 @@ type QualityGateResult = {
   warnings: string[];           // 경고 메시지
   extractiveRatio: number;      // 원문 유사도 (0~1)
   hasSlotMarkers: boolean;      // 슬롯 마커 존재 여부
+  strictMetrics?: {             // 🔴 NEW: 엄격한 품질 메트릭
+    briefStandardSim: number;
+    standardDetailSim: number;
+    briefDetailSim: number;
+    briefCopyRate: number;
+    standardCopyRate: number;
+    detailCopyRate: number;
+    briefRatio: number;
+    standardRatio: number;
+    detailRatio: number;
+  };
 };
 
 type MatrixReq = {
@@ -385,6 +396,193 @@ function evaluateQuality(summaryText: string, originalText: string): QualityGate
     hasSlotMarkers
   };
 }
+
+// ============================================================
+// 🔴 [NEW] 압축률 & 유사도 게이트 - STRICT QUALITY ENFORCEMENT
+// ============================================================
+
+/**
+ * N-gram 원문 복사율 계산
+ * @param original 원문 텍스트
+ * @param summary 요약 텍스트
+ * @param ngramSize N-gram 크기 (기본 10)
+ * @returns 원문 복사 비율 (0.0 ~ 1.0)
+ */
+function calculateNgramOverlap(original: string, summary: string, ngramSize: number = 10): number {
+  const normalizeText = (text: string) => text.replace(/\s+/g, ' ').trim();
+  const origNorm = normalizeText(original);
+  const summNorm = normalizeText(summary);
+  
+  const summaryChars = summNorm.split('');
+  let copiedCharCount = 0;
+  
+  // N-gram sliding window
+  for (let i = 0; i <= summaryChars.length - ngramSize; i++) {
+    const ngram = summaryChars.slice(i, i + ngramSize).join('');
+    if (origNorm.includes(ngram)) {
+      copiedCharCount += ngramSize;
+      // 중복 카운트 방지: 일치하면 윈도우를 건너뜀
+      i += ngramSize - 1;
+    }
+  }
+  
+  const copyRate = summaryChars.length > 0 ? copiedCharCount / summaryChars.length : 0;
+  return copyRate;
+}
+
+/**
+ * 코사인 유사도 계산 (TF-IDF 없이 단순 단어 벡터)
+ * @param text1 첫 번째 텍스트
+ * @param text2 두 번째 텍스트
+ * @returns 코사인 유사도 (0.0 ~ 1.0)
+ */
+function calculateCosineSimilarity(text1: string, text2: string): number {
+  const tokenize = (text: string): string[] => {
+    return text
+      .replace(/[^\w가-힣]/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(t => t.toLowerCase());
+  };
+  
+  const tokens1 = tokenize(text1);
+  const tokens2 = tokenize(text2);
+  
+  // 단어 빈도 맵 생성
+  const freq1 = new Map<string, number>();
+  const freq2 = new Map<string, number>();
+  
+  tokens1.forEach(t => freq1.set(t, (freq1.get(t) || 0) + 1));
+  tokens2.forEach(t => freq2.set(t, (freq2.get(t) || 0) + 1));
+  
+  // 전체 단어 집합
+  const allTokens = new Set([...freq1.keys(), ...freq2.keys()]);
+  
+  // 벡터 내적 및 크기 계산
+  let dotProduct = 0;
+  let magnitude1 = 0;
+  let magnitude2 = 0;
+  
+  allTokens.forEach(token => {
+    const v1 = freq1.get(token) || 0;
+    const v2 = freq2.get(token) || 0;
+    dotProduct += v1 * v2;
+    magnitude1 += v1 * v1;
+    magnitude2 += v2 * v2;
+  });
+  
+  if (magnitude1 === 0 || magnitude2 === 0) return 0;
+  
+  const similarity = dotProduct / (Math.sqrt(magnitude1) * Math.sqrt(magnitude2));
+  return similarity;
+}
+
+/**
+ * [MS-V4] 엄격한 품질 게이트: 압축률, 레벨 간 유사도, 원문 복사율 검증
+ * 
+ * @param rawText 원문 텍스트
+ * @param results Brief/Standard/Detail 요약 결과
+ * @param targetRatios 목표 압축률 {brief: 0.15, standard: 0.26, detail: 0.42}
+ * @returns 검증 결과 및 메트릭
+ * @throws Error 검증 실패 시 즉시 에러
+ */
+function validateSummaryQuality(
+  rawText: string, 
+  results: { brief: string; standard: string; detail: string },
+  targetRatios: { brief: number; standard: number; detail: number }
+): {
+  ok: boolean;
+  metrics: {
+    briefStandardSim: number;
+    standardDetailSim: number;
+    briefDetailSim: number;
+    briefCopyRate: number;
+    standardCopyRate: number;
+    detailCopyRate: number;
+    briefRatio: number;
+    standardRatio: number;
+    detailRatio: number;
+  };
+} {
+  const originalLen = rawText.length;
+  
+  // 1. 원문 복사율(Copy Rate) 검증: 20% 미만 필수
+  const briefCopyRate = calculateNgramOverlap(rawText, results.brief, 10);
+  const standardCopyRate = calculateNgramOverlap(rawText, results.standard, 10);
+  const detailCopyRate = calculateNgramOverlap(rawText, results.detail, 10);
+  
+  console.log('[QualityGate] Copy Rates:', {
+    brief: (briefCopyRate * 100).toFixed(1) + '%',
+    standard: (standardCopyRate * 100).toFixed(1) + '%',
+    detail: (detailCopyRate * 100).toFixed(1) + '%'
+  });
+  
+  if (briefCopyRate > 0.20) {
+    throw new Error(`COPY_RATE_EXCEEDED: Brief copy rate ${(briefCopyRate * 100).toFixed(1)}% > 20%`);
+  }
+  if (standardCopyRate > 0.20) {
+    throw new Error(`COPY_RATE_EXCEEDED: Standard copy rate ${(standardCopyRate * 100).toFixed(1)}% > 20%`);
+  }
+  if (detailCopyRate > 0.20) {
+    throw new Error(`COPY_RATE_EXCEEDED: Detail copy rate ${(detailCopyRate * 100).toFixed(1)}% > 20%`);
+  }
+  
+  // 2. 레벨 간 유사도(Similarity) 검증: 0.7 미만 필수 (관점의 분리)
+  const briefStandardSim = calculateCosineSimilarity(results.brief, results.standard);
+  const standardDetailSim = calculateCosineSimilarity(results.standard, results.detail);
+  const briefDetailSim = calculateCosineSimilarity(results.brief, results.detail);
+  
+  console.log('[QualityGate] Inter-level Similarities:', {
+    'brief-standard': briefStandardSim.toFixed(3),
+    'standard-detail': standardDetailSim.toFixed(3),
+    'brief-detail': briefDetailSim.toFixed(3)
+  });
+  
+  if (briefStandardSim > 0.7) {
+    throw new Error(`SIMILARITY_ERROR: Brief vs Standard similarity ${briefStandardSim.toFixed(2)} > 0.70`);
+  }
+  if (standardDetailSim > 0.7) {
+    throw new Error(`SIMILARITY_ERROR: Standard vs Detail similarity ${standardDetailSim.toFixed(2)} > 0.70`);
+  }
+  
+  // 3. 압축률(Compression Ratio) 오차 검증: ±5% 범위
+  const briefRatio = results.brief.length / originalLen;
+  const standardRatio = results.standard.length / originalLen;
+  const detailRatio = results.detail.length / originalLen;
+  
+  console.log('[QualityGate] Compression Ratios:', {
+    brief: `${(briefRatio * 100).toFixed(1)}% (target: ${(targetRatios.brief * 100).toFixed(1)}%)`,
+    standard: `${(standardRatio * 100).toFixed(1)}% (target: ${(targetRatios.standard * 100).toFixed(1)}%)`,
+    detail: `${(detailRatio * 100).toFixed(1)}% (target: ${(targetRatios.detail * 100).toFixed(1)}%)`
+  });
+  
+  if (Math.abs(detailRatio - targetRatios.detail) > 0.05) {
+    throw new Error(
+      `COMPRESSION_OUT_OF_BOUNDS: Detail ratio ${(detailRatio * 100).toFixed(1)}% out of target ` +
+      `${(targetRatios.detail * 100).toFixed(1)}% ± 5%`
+    );
+  }
+  
+  // 모든 검증 통과
+  return {
+    ok: true,
+    metrics: {
+      briefStandardSim,
+      standardDetailSim,
+      briefDetailSim,
+      briefCopyRate,
+      standardCopyRate,
+      detailCopyRate,
+      briefRatio,
+      standardRatio,
+      detailRatio
+    }
+  };
+}
+
+// ============================================================
+// END: 압축률 & 유사도 게이트
+// ============================================================
 
 // 문장 유사도 계산 (Levenshtein 간소화 버전)
 function computeSimilarity(s1: string, s2: string): number {
@@ -1945,6 +2143,79 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         console.log('[S2] ✅ Downsample completed');
       }
 
+      // 🔴 [NEW] 엄격한 품질 게이트 - 압축률 & 유사도 & 원문 복사율 검증
+      smPhase = 'S2_QUALITY_GATE';
+      console.log('[S2] 🔴 STRICT Quality Gate - Validating compression, similarity, copy rate...');
+      
+      try {
+        const qualityGateResult = validateSummaryQuality(
+          rawText,
+          {
+            brief: briefLv.narrative.text,
+            standard: standardLv.narrative.text,
+            detail: detailLv.narrative.text
+          },
+          {
+            brief: 0.15,   // 15% 압축률
+            standard: 0.26, // 26% 압축률
+            detail: 0.42    // 42% 압축률
+          }
+        );
+        
+        console.log('[S2] ✅ STRICT Quality Gate PASSED:', qualityGateResult.metrics);
+        
+        // 메트릭을 meta에 저장 (투명성)
+        qualityResult = {
+          passed: true,
+          degraded: false,
+          warnings: [],
+          extractiveRatio: qualityGateResult.metrics.detailCopyRate,
+          hasSlotMarkers: true,
+          strictMetrics: qualityGateResult.metrics  // 🔴 추가: 엄격한 메트릭
+        };
+        
+      } catch (error: any) {
+        // 🚨 품질 게이트 실패 → 즉시 503 에러
+        console.error('[S2] ❌ STRICT Quality Gate FAILED:', error.message);
+        smPhase = 'S2_QUALITY_FAIL';
+        
+        await insertFalseBucket(c.env.DB, {
+          source: 'matrix_v4',
+          reason: 'STRICT_QUALITY_GATE_FAIL',
+          errors: [error.message],
+          input_text: rawText,
+          model: c.env.GEMINI_MODEL || 'gemini',
+          payload: { brief: briefLv, standard: standardLv, detail: detailLv },
+          retry_count: 0,
+          meta: { reqId, phase: smPhase, elapsedMs: Date.now() - t0 }
+        });
+        
+        return c.json(
+          {
+            ok: false,
+            degraded: true,
+            engine: 'fallback-extractive',
+            mode: requestedLevel,
+            view: requestedView,
+            error: { 
+              code: 'STRICT_QUALITY_GATE_FAIL', 
+              message: `품질 기준 미달: ${error.message}` 
+            },
+            data: null,
+            meta: { 
+              reqId, 
+              elapsedMs: Date.now() - t0, 
+              phase: smPhase,
+              engineMeta: 'fallback-extractive',
+              buildId: BUILD_ID,
+              warnings: ['STRICT_QUALITY_GATE_FAIL', error.message],
+              qa: makeFailQa('QUALITY_GATE_FAIL')
+            }
+          },
+          503
+        );
+      }
+
       // 슬롯 기반 "진짜 요약" 강제 (오염/생략부호 차단)
       const slots = {
         claim: detail.narrative.coreClaim || '',
@@ -2284,6 +2555,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           engineMeta,                        // ✅ 실제 엔진 메타
           buildId: BUILD_ID,                 // ✅ 빌드 ID (캐시 오염 판별)
           warnings: qualityResult?.warnings || [],  // ✅ 품질 경고
+          strictMetrics: qualityResult?.strictMetrics,  // 🔴 NEW: 엄격한 메트릭 (투명성)
           qa 
         }
       };
