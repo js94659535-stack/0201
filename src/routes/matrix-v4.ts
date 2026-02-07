@@ -279,10 +279,14 @@ function coerceDetailBundleFromLLM(llmResult: any): DetailBundle | null {
   return null;
 }
 
-// 🎯 [3-LAYER] S1 품질 게이트: 발췌형 오염 검출
+// 🎯 [3-LAYER] S1 품질 게이트: 발췌형 오염 검출 (강화판)
 function evaluateQuality(summaryText: string, originalText: string): QualityGateResult {
   const warnings: string[] = [];
   let degraded = false;
+  
+  // 정규화 (비교용)
+  const normalizeSummary = summaryText.replace(/\s+/g, ' ').trim();
+  const normalizeOriginal = originalText.replace(/\s+/g, ' ').trim();
   
   // 1. 슬롯 마커 존재 여부
   const hasSlotMarkers = /\[핵심 정의\]|\[상세 설명\]|\[결론.*시사점\]/i.test(summaryText);
@@ -291,9 +295,61 @@ function evaluateQuality(summaryText: string, originalText: string): QualityGate
     degraded = true;
   }
   
-  // 2. 원문 유사도 계산 (간단한 토큰 기반)
-  const summaryTokens = new Set(summaryText.replace(/[^\w가-힣]/g, ' ').split(/\s+/).filter(Boolean));
-  const originalTokens = new Set(originalText.replace(/[^\w가-힣]/g, ' ').split(/\s+/).filter(Boolean));
+  // 2. 🎯 연속 N-gram 일치 검사 (원문 그대로 복사 탐지)
+  // 5-gram 이상 연속 일치하면 발췌로 판단
+  const summaryWords = normalizeSummary.split(/\s+/).filter(Boolean);
+  const originalWords = normalizeOriginal.split(/\s+/).filter(Boolean);
+  
+  let maxConsecutiveMatch = 0;
+  for (let i = 0; i <= summaryWords.length - 5; i++) {
+    const ngramSummary = summaryWords.slice(i, i + 5).join(' ');
+    if (normalizeOriginal.includes(ngramSummary)) {
+      // 연속 일치 길이 확장
+      let matchLen = 5;
+      while (i + matchLen < summaryWords.length) {
+        const extendedGram = summaryWords.slice(i, i + matchLen + 1).join(' ');
+        if (normalizeOriginal.includes(extendedGram)) {
+          matchLen++;
+        } else {
+          break;
+        }
+      }
+      maxConsecutiveMatch = Math.max(maxConsecutiveMatch, matchLen);
+    }
+  }
+  
+  if (maxConsecutiveMatch >= 8) {
+    warnings.push(`CONSECUTIVE_COPY_${maxConsecutiveMatch}_WORDS`);
+    degraded = true;
+  }
+  
+  // 3. 🎯 문장 단위 일치 검사 (원문 문장 그대로 복사)
+  const summarySentences = normalizeSummary.split(/[.!?]\s+/).filter(s => s.length > 10);
+  const originalSentences = normalizeOriginal.split(/[.!?]\s+/).filter(s => s.length > 10);
+  
+  let exactSentenceMatches = 0;
+  summarySentences.forEach(sumSent => {
+    originalSentences.forEach(origSent => {
+      // 90% 이상 일치하면 동일 문장으로 판단
+      const similarity = computeSimilarity(sumSent, origSent);
+      if (similarity > 0.9) {
+        exactSentenceMatches++;
+      }
+    });
+  });
+  
+  const sentenceMatchRatio = summarySentences.length > 0 
+    ? exactSentenceMatches / summarySentences.length 
+    : 0;
+  
+  if (sentenceMatchRatio > 0.6) {
+    warnings.push(`SENTENCE_COPY_RATIO_${(sentenceMatchRatio * 100).toFixed(0)}%`);
+    degraded = true;
+  }
+  
+  // 4. 토큰 기반 유사도 (기존 로직)
+  const summaryTokens = new Set(normalizeSummary.replace(/[^\w가-힣]/g, ' ').split(/\s+/).filter(Boolean));
+  const originalTokens = new Set(normalizeOriginal.replace(/[^\w가-힣]/g, ' ').split(/\s+/).filter(Boolean));
   
   let matchCount = 0;
   summaryTokens.forEach(token => {
@@ -302,19 +358,18 @@ function evaluateQuality(summaryText: string, originalText: string): QualityGate
   
   const extractiveRatio = summaryTokens.size > 0 ? matchCount / summaryTokens.size : 1;
   
-  // 유사도가 90% 이상이면 단순 발췌로 판단
   if (extractiveRatio > 0.9) {
     warnings.push('HIGH_EXTRACTIVE_RATIO');
     degraded = true;
   }
   
-  // 3. 생략부호 검사
+  // 5. 생략부호 검사
   if (/\.{3,}|…/.test(summaryText)) {
     warnings.push('ELLIPSIS_DETECTED');
     degraded = true;
   }
   
-  // 4. 길이 검사 (너무 짧으면 오염 가능성)
+  // 6. 길이 검사
   if (summaryText.length < 50) {
     warnings.push('TOO_SHORT');
     degraded = true;
@@ -329,6 +384,38 @@ function evaluateQuality(summaryText: string, originalText: string): QualityGate
     extractiveRatio,
     hasSlotMarkers
   };
+}
+
+// 문장 유사도 계산 (Levenshtein 간소화 버전)
+function computeSimilarity(s1: string, s2: string): number {
+  const longer = s1.length > s2.length ? s1 : s2;
+  const shorter = s1.length > s2.length ? s2 : s1;
+  
+  if (longer.length === 0) return 1.0;
+  
+  const editDistance = levenshteinDistance(shorter, longer);
+  return (longer.length - editDistance) / longer.length;
+}
+
+function levenshteinDistance(s1: string, s2: string): number {
+  const costs: number[] = [];
+  for (let i = 0; i <= s1.length; i++) {
+    let lastValue = i;
+    for (let j = 0; j <= s2.length; j++) {
+      if (i === 0) {
+        costs[j] = j;
+      } else if (j > 0) {
+        let newValue = costs[j - 1];
+        if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+          newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+        }
+        costs[j - 1] = lastValue;
+        lastValue = newValue;
+      }
+    }
+    if (i > 0) costs[s2.length] = lastValue;
+  }
+  return costs[s2.length];
 }
 
 function smartTrim(s: string, maxChars: number) {
