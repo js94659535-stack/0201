@@ -196,15 +196,28 @@ function hasUsableKey(v?: string) {
    Phase1: 모두 없으면 Phase1 (Local Fallback만 사용)
    ============================================================ */
 function detectPhase(c: any) {
-  const useMock = String(c.env?.USE_MOCK || '').toLowerCase() === 'true';
+  // 🔧 FIX: Cloudflare Pages에서 환경 변수는 process.env에도 있을 수 있음
+  const getEnv = (key: string) => {
+    const val = c.env?.[key] || (typeof process !== 'undefined' ? process.env?.[key] : undefined);
+    return val;
+  };
+
+  const useMock = String(getEnv('USE_MOCK') || '').toLowerCase() === 'true';
   if (useMock) return { phase: 'phase1' as const, useMock: true };
 
-  const hasGemini = hasUsableKey(c.env?.GEMINI_API_KEY);
-  const hasClaude = hasUsableKey(c.env?.ANTHROPIC_API_KEY);
-  const hasLocal = !!(c.env?.LOCAL_LLM_URL && String(c.env.LOCAL_LLM_URL).trim().length > 8);
+  const geminiKey = getEnv('GEMINI_API_KEY');
+  const claudeKey = getEnv('ANTHROPIC_API_KEY');
+  const localUrl = getEnv('LOCAL_LLM_URL');
+
+  const hasGemini = hasUsableKey(geminiKey);
+  const hasClaude = hasUsableKey(claudeKey);
+  const hasLocal = !!(localUrl && String(localUrl).trim().length > 8);
 
   // 🔍 DEBUG: 환경 변수 확인
-  console.log('[ENV DEBUG] GEMINI_API_KEY:', c.env?.GEMINI_API_KEY ? `${String(c.env.GEMINI_API_KEY).slice(0, 10)}... (length: ${String(c.env.GEMINI_API_KEY).length})` : 'NOT SET');
+  console.log('[ENV DEBUG] c.env:', !!c.env, 'process.env:', typeof process !== 'undefined' && !!process.env);
+  console.log('[ENV DEBUG] GEMINI_API_KEY (c.env):', c.env?.GEMINI_API_KEY ? 'SET' : 'NOT SET');
+  console.log('[ENV DEBUG] GEMINI_API_KEY (process.env):', typeof process !== 'undefined' && process.env?.GEMINI_API_KEY ? 'SET' : 'NOT SET');
+  console.log('[ENV DEBUG] GEMINI_API_KEY (final):', geminiKey ? `${String(geminiKey).slice(0, 10)}... (length: ${String(geminiKey).length})` : 'NOT SET');
   console.log('[ENV DEBUG] hasGemini:', hasGemini, '| hasClaude:', hasClaude, '| hasLocal:', hasLocal);
 
   // ✅ OpenAI 완전 제거, Local/Gemini/Claude 중 하나라도 있으면 Phase2
@@ -1090,19 +1103,38 @@ ${previousMetrics ? `
   }
   
   return [
-    `당신은 학습 콘텐츠를 "재조립"하여 참고서형 지식 구조로 만드는 전문가입니다.`,
+    `당신은 원문을 읽고 학습자가 이해하기 쉽도록 **완전히 새로운 문장으로 재구성**하는 AI 교사입니다.`,
+    ``,
+    `🚨 핵심 원칙: 원문을 복사-붙여넣기하지 마세요. 당신이 이해한 내용을 당신의 언어로 다시 설명하세요.`,
     retryGuidance,
     ``,
-    `[절대 규칙]`,
-    `- 🚨 원문 문장을 그대로 복사하지 마세요. AI가 직접 새로운 문장으로 재작성하세요.`,
-    `- 🚨 summaryDetail은 반드시 [핵심 정의], [상세 설명], [결론 및 시사점] 슬롯으로 구성하세요.`,
-    `- 의미 단위로 재구성해야 하며, 글자를 중간에 자르거나 발췌만 하면 실패입니다.`,
-    `- 원문에 있는 단어와 개념만 사용하세요. (외부 예시, 고유명사, 숫자 추가 금지)`,
-    `- 아래 JSON 스키마 그대로만 출력하세요. (설명/마크다운/코드블록 금지)`,
-    `- 같은 문장을 반복하면 실패입니다.`,
-    `- structured.glossary는 반드시 "용어: 정의" 성격의 문장으로 작성하세요.`,
-    `- mindmap은 2레벨 노드마다 pack(1~3개)과 explain(100~140자)을 최대한 채우세요.`,
-    `- selftest는 passScorePct=90, 문항 2~4개. 루브릭(mustInclude 등) 포함.`,
+    `[절대 금지 - 이것만큼은 지켜주세요]`,
+    `1. 원문 문장을 그대로 옮기지 마세요 (발췌 금지)`,
+    `2. 여러 문장을 단순히 이어붙이지 마세요 (조립 금지)`,
+    `3. 문장 중간을 자르지 마세요 (완전한 문장만)`,
+    `4. 같은 문장 구조를 반복하지 마세요 (다양한 표현 사용)`,
+    ``,
+    `[서술형 요약 구조 - summaryDetail 필수 형식]`,
+    `반드시 아래 3개 슬롯을 포함하세요:`,
+    ``,
+    `[핵심 정의]`,
+    `원문의 가장 중요한 개념을 **당신의 말로** 1-2문장으로 설명하세요.`,
+    `예: "선행학습이란 학생이 정규 교육과정보다 앞서 학습하는 것을 의미합니다."`,
+    ``,
+    `[상세 설명]`,
+    `왜 중요한지, 어떻게 작동하는지를 **당신이 이해한 대로** 2-3문장으로 풀어 설명하세요.`,
+    `예: "이는 학생들의 학습 속도 차이를 고려한 맞춤형 교육의 한 형태입니다. 그러나 과도한 선행학습은..."`,
+    ``,
+    `[결론 및 시사점]`,
+    `이 내용이 교육 현장에 주는 의미를 **당신의 관점으로** 1-2문장으로 마무리하세요.`,
+    `예: "따라서 선행학습은 학생의 자율성을 존중하되, 교육 불평등을 심화시키지 않도록 균형잡힌 정책이 필요합니다."`,
+    ``,
+    `[추가 규칙]`,
+    `- 원문의 고유명사와 핵심 용어만 유지하고, 나머지는 환언하세요`,
+    `- 아래 JSON 스키마 외에는 아무것도 출력하지 마세요`,
+    `- structured.glossary는 "용어: 정의" 형식`,
+    `- mindmap은 2레벨 노드마다 pack(1~3개) + explain(100~140자)`,
+    `- selftest는 passScorePct=90, 문항 2~4개`,
     ``,
     `[JSON 스키마]`,
     `{`,
@@ -1484,8 +1516,10 @@ async function callGeminiText(c: any, prompt: string, rawText: string) {
   }
 
   // 2순위: Gemini API - 15%
-  const geminiKey = c?.env?.GEMINI_API_KEY || '';
-  console.log('[LLM DEBUG] Gemini key check:', geminiKey ? `${geminiKey.slice(0, 10)}... (length: ${geminiKey.length})` : 'EMPTY');
+  const geminiKey = c?.env?.GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : undefined) || '';
+  console.log('[LLM DEBUG] Gemini key check (c.env):', c?.env?.GEMINI_API_KEY ? 'SET' : 'NOT SET');
+  console.log('[LLM DEBUG] Gemini key check (process.env):', typeof process !== 'undefined' && process.env?.GEMINI_API_KEY ? 'SET' : 'NOT SET');
+  console.log('[LLM DEBUG] Gemini key check (final):', geminiKey ? `${geminiKey.slice(0, 10)}... (length: ${geminiKey.length})` : 'EMPTY');
   if (geminiKey) {
     try {
       console.log('[LLM] 2/3 Gemini API 시도...');
