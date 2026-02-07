@@ -4,10 +4,28 @@
   "compatibility_date": "2024-01-01",
   "pages_build_output_dir": "./dist",
   "compatibility_flags": ["nodejs_compat"],
+  
+  "//": "========================================",
+  "//": "🔴 CRITICAL: Environment Variables Setup",
+  "//": "========================================",
+  "//": "These variables MUST be set in Cloudflare Dashboard:",
+  "//": "Path: Dashboard → Workers & Pages → webapp → Settings → Environment variables → Production",
+  "//": "",
+  "//": "REQUIRED (메인 LLM):",
+  "//": "  GEMINI_API_KEY = AIzaSy... (39+ chars, from Google AI Studio)",
+  "//": "  GEMINI_MODEL = gemini-2.0-flash-exp (optional, default provided)",
+  "//": "",
+  "//": "OPTIONAL (폴백 LLM):",
+  "//": "  ANTHROPIC_API_KEY = sk-ant-... (Claude API)",
+  "//": "  ANTHROPIC_MODEL = claude-3-5-sonnet-20241022",
+  "//": "  LOCAL_LLM_URL = https://your-llm-endpoint.com (Ollama/LM Studio)",
+  "//": "  LOCAL_LLM_MODEL = llama3.1:8b",
+  "//": "",
+  "//": "DEBUG:",
+  "//": "  USE_MOCK = true (테스트용, LLM 호출 우회)",
+  "//": "========================================",
+  
   "vars": {
     "NODE_ENV": "production"
-  },
-  "//": "⚠️ CRITICAL: GEMINI_API_KEY must be set in Cloudflare Dashboard",
-  "//": "Path: Dashboard → Workers & Pages → webapp → Settings → Environment variables → Production",
-  "//": "Required: GEMINI_API_KEY = AIzaSy... (your Gemini API key)"
+  }
 }

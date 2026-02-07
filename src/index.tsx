@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serveStatic } from 'hono/cloudflare-workers'
 import { mountMatrixV4 } from './routes/matrix-v4'
+import healthCheckApp from './routes/health-check'
 
 type Bindings = {
   DB?: D1Database
@@ -14,6 +15,9 @@ const app = new Hono<{ Bindings: Bindings }>()
 
 app.use('/api/*', cors())
 app.use('/static/*', serveStatic({ root: './public' }))
+
+// 🔍 STEP 1: Health Check - API 키 체크부터!
+app.route('/', healthCheckApp)
 
 // ✅ ONE-BLOCK MATRIX V4: Detail 1회 + 강제 다운샘플 + 검증
 mountMatrixV4(app)
