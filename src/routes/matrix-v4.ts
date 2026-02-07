@@ -204,11 +204,17 @@ function detectPhase(c: any) {
   // c.env만 사용해야 함 (Pages Functions의 환경 변수 바인딩)
   
   // 🔍 DEBUG: c.env의 모든 키 출력 (바인딩 확인)
-  console.log('[ENV_KEYS] Available env keys:', c.env ? Object.keys(c.env).join(', ') : 'NONE');
+  const envKeys = c.env ? Object.keys(c.env) : [];
+  console.log('[ENV_KEYS] Available env keys:', envKeys.length > 0 ? envKeys.join(', ') : 'NONE');
   console.log('[ENV_KEYS] c.env object exists:', !!c.env);
+  console.log('[ENV_KEYS] c.env type:', typeof c.env);
   
   const useMock = String(c.env?.USE_MOCK || '').toLowerCase() === 'true';
-  if (useMock) return { phase: 'phase1' as const, useMock: true };
+  if (useMock) return { 
+    phase: 'phase1' as const, 
+    useMock: true,
+    debug: { envKeys, hasGemini: false, hasClaude: false, hasLocal: false }
+  };
 
   // 🚨 CRITICAL: process.env 제거, c.env만 사용
   const geminiKey = c.env?.GEMINI_API_KEY;
@@ -228,7 +234,18 @@ function detectPhase(c: any) {
   // ✅ OpenAI 완전 제거, Local/Gemini/Claude 중 하나라도 있으면 Phase2
   const phase = (hasLocal || hasGemini || hasClaude) ? ('phase2' as const) : ('phase1' as const);
   console.log('[ENV DEBUG] Detected phase:', phase);
-  return { phase, useMock: false };
+  
+  return { 
+    phase, 
+    useMock: false,
+    debug: {
+      envKeys,
+      hasGemini,
+      hasClaude,
+      hasLocal,
+      geminiKeyLength: geminiKey ? String(geminiKey).length : 0
+    }
+  };
 }
 /* ============================================================
    END: PHASE DETECTION
@@ -2245,7 +2262,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
     let qualityResult: QualityGateResult | null = null;
     
     // 🔒 Phase 판정 (OpenAI/Gemini/Claude/Local 중 하나라도 있으면 phase2)
-    const { phase } = detectPhase(c);
+    const { phase, debug: envDebug } = detectPhase(c);
     let qa: any = null;
 
     function makeFailQa(code: string) {
@@ -2288,8 +2305,10 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
               reqId, 
               elapsedMs: Date.now() - t0, 
               phase: smPhase,  // S0_FAIL
+              detectedPhase: phase,
               engineMeta,
               buildId: BUILD_ID,
+              envDebug,  // 🔴 ENV 디버깅 추가
               qa: failQa 
             }
           },
@@ -2359,9 +2378,11 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
               reqId, 
               elapsedMs: Date.now() - t0, 
               phase: smPhase,
+              detectedPhase: phase,  // 🔴 Phase 판정 결과
               engineMeta: 'fallback-extractive',
               buildId: BUILD_ID,
               warnings: ['LLM_TOTAL_FAILURE', 'NO_FAKE_ENGINE_FALLBACK'],
+              envDebug,  // 🔴 ENV 디버깅 정보
               qa: makeFailQa('LLM_UNAVAILABLE')
             }
           },
@@ -3042,10 +3063,12 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
           reqId, 
           elapsedMs: Date.now() - t0, 
           phase: smPhase,                    // ✅ 상태기계 Phase
+          detectedPhase: phase,              // 🔴 NEW: detectPhase() 결과
           engineMeta,                        // ✅ 실제 엔진 메타
           buildId: BUILD_ID,                 // ✅ 빌드 ID (캐시 오염 판별)
           warnings: qualityResult?.warnings || [],  // ✅ 품질 경고
           strictMetrics: qualityResult?.strictMetrics,  // 🔴 NEW: 엄격한 메트릭 (투명성)
+          envDebug,                          // 🔴 NEW: 환경 변수 디버깅
           qa 
         }
       };
