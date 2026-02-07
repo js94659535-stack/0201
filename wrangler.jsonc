@@ -6,5 +6,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "NODE_ENV": "production"
-  }
+  },
+  "//": "⚠️ CRITICAL: GEMINI_API_KEY must be set in Cloudflare Dashboard",
+  "//": "Path: Dashboard → Workers & Pages → webapp → Settings → Environment variables → Production",
+  "//": "Required: GEMINI_API_KEY = AIzaSy... (your Gemini API key)"
 }
