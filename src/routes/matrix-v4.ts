@@ -436,15 +436,21 @@ function normalizeForSim(s: string): string {
 
 /**
  * 동적 유사도 임계값 (원문 길이 기반)
- * - 짧은 원문: 임계값 완화 (0.82)
- * - 중간 원문: 표준 (0.75)
- * - 긴 원문: 임계값 강화 (0.68)
+ * 
+ * 📐 로직: passed = similarity < threshold
+ * - threshold가 클수록 → 통과 쉬움 (완화)
+ * - threshold가 작을수록 → 통과 어려움 (강화)
+ * 
+ * 📏 원문 길이별 전략:
+ * - 짧은 원문 (< 800자): 0.82 (완화) ← 겹침 불가피하므로 관대하게
+ * - 중간 원문 (< 4000자): 0.75 (표준) ← 균형
+ * - 긴 원문 (≥ 4000자): 0.68 (강화) ← 누적 확장 엄격히 차단
  */
 function dynamicSimThreshold(original: string): number {
   const n = koreanCharCount(original);
-  if (n < 800) return 0.82;
-  if (n < 4000) return 0.75;
-  return 0.68;
+  if (n < 800) return 0.82;      // 짧은 글: 완화 (겹침 허용)
+  if (n < 4000) return 0.75;     // 중간 글: 표준
+  return 0.68;                   // 긴 글: 강화 (누적 확장 차단)
 }
 
 /**
@@ -522,6 +528,9 @@ function isQualityStandardPassed(
     copyRate: number;
     levelSimOK: boolean;
     copyOK: boolean;
+    containmentOK: boolean;
+    briefInStandard: number;
+    standardInDetail: number;
     briefRatio: number;
     standardRatio: number;
     detailRatio: number;
@@ -549,6 +558,21 @@ function isQualityStandardPassed(
   const copyRate = getNGramOverlap(normalizeForSim(original), normalizeForSim(detail), 10);
   const copyOK = copyRate < 0.20;
   
+  // D) 🔴 [NEW] 포함 금지 (Containment Ban) - 누적 확장 좀비 탐지
+  // Brief가 Standard 안에 "거의 그대로" 포함되면 Reject
+  // Standard가 Detail 안에 "거의 그대로" 포함되면 Reject
+  const briefNorm = normalizeForSim(brief);
+  const standardNorm = normalizeForSim(standard);
+  const detailNorm = normalizeForSim(detail);
+  
+  // 포함률 계산: Brief의 10-gram이 Standard에 얼마나 포함되는가?
+  const briefInStandard = getNGramOverlap(standardNorm, briefNorm, 10);
+  const standardInDetail = getNGramOverlap(detailNorm, standardNorm, 10);
+  
+  // 임계값: 70% 이상 포함되면 "이어붙이기"로 간주
+  const CONTAINMENT_THRESHOLD = 0.70;
+  const containmentOK = (briefInStandard < CONTAINMENT_THRESHOLD) && (standardInDetail < CONTAINMENT_THRESHOLD);
+  
   console.log('[QualityCheck] A) Ratios:', {
     brief: `${(briefRatio * 100).toFixed(1)}% (target: ${(ratios.b * 100).toFixed(0)}% ±6%)`,
     standard: `${(standardRatio * 100).toFixed(1)}% (target: ${(ratios.s * 100).toFixed(0)}% ±6%)`,
@@ -569,7 +593,14 @@ function isQualityStandardPassed(
     copyOK
   });
   
-  const passed = ratioOK && levelSimOK && copyOK;
+  console.log('[QualityCheck] D) 🔴 Containment Check (누적 확장 탐지):', {
+    'brief→standard': `${(briefInStandard * 100).toFixed(1)}%`,
+    'standard→detail': `${(standardInDetail * 100).toFixed(1)}%`,
+    threshold: `${(CONTAINMENT_THRESHOLD * 100).toFixed(0)}%`,
+    containmentOK
+  });
+  
+  const passed = ratioOK && levelSimOK && copyOK && containmentOK;
   
   return {
     passed,
@@ -581,6 +612,9 @@ function isQualityStandardPassed(
       copyRate,
       levelSimOK,
       copyOK,
+      containmentOK,
+      briefInStandard,
+      standardInDetail,
       briefRatio,
       standardRatio,
       detailRatio
