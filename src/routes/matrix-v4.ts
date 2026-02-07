@@ -203,8 +203,13 @@ function detectPhase(c: any) {
   const hasClaude = hasUsableKey(c.env?.ANTHROPIC_API_KEY);
   const hasLocal = !!(c.env?.LOCAL_LLM_URL && String(c.env.LOCAL_LLM_URL).trim().length > 8);
 
+  // 🔍 DEBUG: 환경 변수 확인
+  console.log('[ENV DEBUG] GEMINI_API_KEY:', c.env?.GEMINI_API_KEY ? `${String(c.env.GEMINI_API_KEY).slice(0, 10)}... (length: ${String(c.env.GEMINI_API_KEY).length})` : 'NOT SET');
+  console.log('[ENV DEBUG] hasGemini:', hasGemini, '| hasClaude:', hasClaude, '| hasLocal:', hasLocal);
+
   // ✅ OpenAI 완전 제거, Local/Gemini/Claude 중 하나라도 있으면 Phase2
   const phase = (hasLocal || hasGemini || hasClaude) ? ('phase2' as const) : ('phase1' as const);
+  console.log('[ENV DEBUG] Detected phase:', phase);
   return { phase, useMock: false };
 }
 /* ============================================================
@@ -1480,10 +1485,12 @@ async function callGeminiText(c: any, prompt: string, rawText: string) {
 
   // 2순위: Gemini API - 15%
   const geminiKey = c?.env?.GEMINI_API_KEY || '';
+  console.log('[LLM DEBUG] Gemini key check:', geminiKey ? `${geminiKey.slice(0, 10)}... (length: ${geminiKey.length})` : 'EMPTY');
   if (geminiKey) {
     try {
       console.log('[LLM] 2/3 Gemini API 시도...');
       const model = c.env.GEMINI_MODEL || 'gemini-2.0-flash-exp';
+      console.log('[LLM] Model:', model);
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
         {
@@ -1496,17 +1503,24 @@ async function callGeminiText(c: any, prompt: string, rawText: string) {
         }
       );
 
+      console.log('[LLM] Gemini response status:', res.status);
       if (res.ok) {
         const json = await res.json();
         const text = json?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
+        console.log('[LLM] Gemini response length:', text.length);
         if (text.length >= MIN_OK_LEN) {
           console.log('[LLM] ✓ Gemini 성공');
           return text;
         }
+      } else {
+        const errorText = await res.text();
+        console.log('[LLM] ✗ Gemini HTTP Error:', res.status, errorText.slice(0, 200));
       }
     } catch (e) {
       console.log('[LLM] ✗ Gemini 실패:', (e as Error).message);
     }
+  } else {
+    console.log('[LLM] ⚠️ Gemini key is EMPTY - skipping');
   }
 
   // 3순위: Claude API - 4%
