@@ -193,6 +193,20 @@ function checksumSimple(s: string) {
   return (h >>> 0).toString(16);
 }
 
+// 🎯 [ONE-BLOCK FIX] coerceText: [object Object] 발생 0% 차단
+function coerceText(value: any): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    // 객체가 .text 필드를 가지고 있으면 그것을 사용
+    if ('text' in value && typeof value.text === 'string') return value.text;
+    // 그 외의 경우 JSON 문자열로 변환하지 말고 빈 문자열 반환
+    console.warn('[coerceText] Object detected, returning empty string:', value);
+    return '';
+  }
+  return String(value);
+}
+
 function smartTrim(s: string, maxChars: number) {
   const t = String(s || '').replace(/\s+/g, ' ').trim();
   if (t.length <= maxChars) return t;
@@ -457,7 +471,26 @@ function downsampleFromDetail(detail: DetailBundle, level: Level): LevelBundle {
 
   if (level === 'detail') {
     // 🎯 [핀셋 4.1] summaryDetail은 항상 문자열 (JSON 파싱 후)
-    narrativeText = String(detail.narrative.summaryDetail || '').trim();
+    let rawSummary = detail.narrative?.summaryDetail || detail.narrative || '';
+    
+    // 🚨 CRITICAL DEFENSE: summaryDetail이 객체/undefined면 에러
+    if (typeof rawSummary === 'object' && rawSummary !== null) {
+      console.error('[DOWN] ❌ summaryDetail is OBJECT!');
+      console.error('[DOWN] Type:', typeof rawSummary);
+      console.error('[DOWN] Keys:', Object.keys(rawSummary).join(', '));
+      console.error('[DOWN] Full detail structure:', JSON.stringify(detail).slice(0, 200));
+      
+      // 강제 추출: summaryDetail이 객체라면 coreClaim을 사용
+      if ('coreClaim' in rawSummary && typeof rawSummary.coreClaim === 'string') {
+        narrativeText = rawSummary.coreClaim;
+        console.warn('[DOWN] ⚠️ Using coreClaim as fallback:', narrativeText.slice(0, 50));
+      } else {
+        narrativeText = '';
+      }
+    } else {
+      narrativeText = String(rawSummary).trim();
+    }
+    
     coreClaim = claim;
     grounds = groundSlots;
     comparisons = comparisonSlots;
@@ -556,9 +589,10 @@ function downsampleFromDetail(detail: DetailBundle, level: Level): LevelBundle {
     answerKey: it.answerKey ? smartTrim(it.answerKey, isBrief ? 160 : 260) : undefined
   }));
 
+  // 🎯 [ONE-BLOCK FIX] coerceText 적용
   return {
-    narrative: { text: narrativeText, coreClaim, grounds, comparisons, implications },
-    structured: { text: structuredText, toc, hierarchy, glossary },
+    narrative: { text: coerceText(narrativeText), coreClaim, grounds, comparisons, implications },
+    structured: { text: coerceText(structuredText), toc, hierarchy, glossary },
     mindmap: { tree },
     selftest: { passScorePct: 90, items }
   };
@@ -1696,6 +1730,8 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
     try {
       const body = (await c.req.json()) as Partial<MatrixReq>;
       const rawInput = String(body.text || '').trim();
+      const requestedLevel = body.level || 'standard';
+      const requestedView = body.viewType || 'narrative';
 
       // ✅ 입력 전처리(요새화)
       const rawText = preprocessRawText(rawInput);
@@ -1903,9 +1939,10 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         __d_ratio = detailRatio;
       }
 
-      briefLv.narrative.text = __b_text;
-      standardLv.narrative.text = __s_text;
-      detailLv.narrative.text = __d_text;
+      // 🎯 [ONE-BLOCK FIX] coerceText 적용: [object Object] 차단
+      briefLv.narrative.text = coerceText(__b_text);
+      standardLv.narrative.text = coerceText(__s_text);
+      detailLv.narrative.text = coerceText(__d_text);
 
       (briefLv.narrative as any).ratio = __b_ratio;
       (standardLv.narrative as any).ratio = __s_ratio;
@@ -2036,9 +2073,10 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
             qa = qa || null;
           }
 
-          brief.narrative.text = finalNarrative.brief;
-          standard.narrative.text = finalNarrative.standard;
-          detailLv.narrative.text = finalNarrative.detail;
+          // 🎯 [ONE-BLOCK FIX] coerceText 적용
+          brief.narrative.text = coerceText(finalNarrative.brief);
+          standard.narrative.text = coerceText(finalNarrative.standard);
+          detailLv.narrative.text = coerceText(finalNarrative.detail);
 
           console.log('[Matrix V4] Phase 2 Quality Gate 완료:', { cross_ok: qa?.cross_ok, ratios: qa?.ratios });
         } catch (gateErr: any) {
@@ -2088,18 +2126,21 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         });
       }
 
+      // 🎯 [ONE-BLOCK FINAL FIX] engine, mode, view 명시적 할당
       const out = {
         ok: true,
         data: {
           schemaVersion: 'ms-v4',
+          engine: 'intelligent-template-v5',  // ✅ undefined 박멸
+          mode: requestedLevel,               // ✅ 요청된 모드 명시
+          view: requestedView,                // ✅ 요청된 뷰 명시
           levels: { brief, standard, detail: detailLv },
           views: {
             narrative: { brief: brief.narrative, standard: standard.narrative, detail: detailLv.narrative },
             structured: { brief: brief.structured, standard: standard.structured, detail: detailLv.structured },
             mindmap: { brief: brief.mindmap, standard: standard.mindmap, detail: detailLv.mindmap },
             selftest: { brief: brief.selftest, standard: standard.selftest, detail: detailLv.selftest }
-          },
-          engine: 'intelligent-template-v5'
+          }
         },
         meta: { reqId, elapsedMs: Date.now() - t0, phase, qa, engine: 'intelligent-template-v5' },
         result: { qa }
