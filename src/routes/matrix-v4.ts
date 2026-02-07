@@ -1963,39 +1963,48 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
       let __d_ratio = 0;
 
       if (phase === 'phase1') {
-        // ✅ Phase1에서도 Fallback Chain 시도 (Ollama → Claude → Gemini → Extractive)
-        console.log('[Matrix V4] Phase 1: Trying LLM Fallback Chain...');
+        // 🚨 [ZERO TOLERANCE] Phase1에서도 LLM 실패 시 extractive 금지
+        console.log('[Matrix V4] Phase 1: Trying LLM...');
         
-        try {
-          // Detail용 프롬프트로 LLM 시도
-          const detailPrompt = `다음 텍스트를 요약하시오. 원문의 핵심 내용을 유지하되 간결하게 작성하시오.\n\n원문:\n${rawText}\n\n요약 (완전한 문장으로, 생략부호 없이):`;
-          
-          const detailLLM = await callGeminiText(c, detailPrompt, rawText);  // ✅ 순수 원문 전달
-          
-          // LLM 응답이 유효하면 사용
-          if (detailLLM && detailLLM.length > 50 && !detailLLM.includes('원문에서')) {
-            __d_text = detailLLM.trim();
-            console.log('[Matrix V4] Phase 1: LLM 요약 성공 (Fallback Chain)');
-            
-            // Brief/Standard는 Detail을 줄여서 생성
-            const sentences = __d_text.split(/[.!?]\s+/).filter(Boolean);
-            __b_text = sentences.slice(0, 1).join('. ') + '.';
-            __s_text = sentences.slice(0, Math.min(2, sentences.length)).join('. ') + '.';
-          } else {
-            throw new Error('LLM 응답 부적합');
-          }
-        } catch (e) {
-          // LLM 실패 시 Extractive Fallback
-          console.log('[Matrix V4] Phase 1: LLM 실패, Extractive 사용:', (e as Error).message);
-          
-          const briefTarget = Math.floor(baseChars * 0.15);
-          const standardTarget = Math.floor(baseChars * 0.26);
-          const detailTarget = Math.floor(baseChars * 0.42);
-          
-          __b_text = _msExtractiveFallback(rawText, briefTarget);
-          __s_text = _msExtractiveFallback(rawText, standardTarget);
-          __d_text = _msExtractiveFallback(rawText, detailTarget);
+        const detailPrompt = `다음 텍스트를 요약하시오. 원문의 핵심 내용을 유지하되 간결하게 작성하시오.\n\n원문:\n${rawText}\n\n요약 (완전한 문장으로, 생략부호 없이):`;
+        const detailLLM = await callGeminiText(c, detailPrompt, rawText);
+        
+        if (!detailLLM || detailLLM.length < 50) {
+          // ❌ Phase1도 LLM 실패 시 503 반환
+          console.error('[Matrix V4] Phase 1: ❌ LLM FAILED - NO FALLBACK');
+          return c.json(
+            {
+              ok: false,
+              degraded: true,
+              engine: 'fallback-extractive',
+              mode: requestedLevel,
+              view: requestedView,
+              error: { 
+                code: 'LLM_UNAVAILABLE', 
+                message: '요약 엔진을 사용할 수 없습니다. 잠시 후 다시 시도해주세요.' 
+              },
+              data: null,
+              meta: { 
+                reqId, 
+                elapsedMs: Date.now() - t0, 
+                phase: 'phase1',
+                engineMeta: 'fallback-extractive',
+                buildId: BUILD_ID,
+                warnings: ['PHASE1_LLM_FAILURE', 'NO_FALLBACK'],
+                qa: makeFailQa('LLM_UNAVAILABLE')
+              }
+            },
+            503
+          );
         }
+        
+        // ✅ LLM 성공 - Brief/Standard/Detail 생성
+        __d_text = detailLLM.trim();
+        console.log('[Matrix V4] Phase 1: LLM 요약 성공');
+        
+        const sentences = __d_text.split(/[.!?]\s+/).filter(Boolean);
+        __b_text = sentences.slice(0, 1).join('. ') + '.';
+        __s_text = sentences.slice(0, Math.min(2, sentences.length)).join('. ') + '.';
         
         __b_ratio = _msCharCount(__b_text) / baseChars;
         __s_ratio = _msCharCount(__s_text) / baseChars;
@@ -2051,8 +2060,20 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         return c.json(
           {
             ok: false,
+            degraded: true,
+            engine: engineMeta,
+            mode: requestedLevel,
+            view: requestedView,
             error: { code: 'NARRATIVE_FORTRESS_FAIL', message: hardFailReasons.join(' | ') },
-            meta: { reqId, elapsedMs: Date.now() - t0, phase, qa }
+            data: null,
+            meta: { 
+              reqId, 
+              elapsedMs: Date.now() - t0, 
+              phase, 
+              engineMeta,
+              buildId: BUILD_ID,
+              qa 
+            }
           },
           422
         );
@@ -2100,8 +2121,20 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
         return c.json(
           {
             ok: false,
+            degraded: true,
+            engine: engineMeta,
+            mode: requestedLevel,
+            view: requestedView,
             error: { code: 'LEVEL_SEPARATION_FAIL', message: sepErrs.join(' | ') },
-            meta: { reqId, elapsedMs: Date.now() - t0, phase, qa }
+            data: null,
+            meta: { 
+              reqId, 
+              elapsedMs: Date.now() - t0, 
+              phase, 
+              engineMeta,
+              buildId: BUILD_ID,
+              qa 
+            }
           },
           422
         );
