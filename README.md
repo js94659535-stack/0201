@@ -324,3 +324,4 @@ npx wrangler pages deploy dist --project-name webapp
 ## 📄 라이선스
 
 MIT License
+# Force redeploy Sun Feb  8 03:50:29 UTC 2026
