@@ -2313,7 +2313,7 @@ function buildNarrativeFromSlots(level: Level, rawText: string, slots: { claim: 
 
 // 🎯 [3-LAYER] Build ID 생성기 (빌드마다 고유 ID 생성)
 const BUILD_TIMESTAMP = new Date().toISOString();
-const BUILD_ID = `V4-FORTRESS-${BUILD_TIMESTAMP.slice(0, 19).replace(/:/g, '-')}`;
+const BUILD_ID = `V4-LLM-DEBUG-2026-02-08-12-30-${Math.random().toString(36).slice(2, 8)}`;
 
 // ------------------------------
 // Hono Route
