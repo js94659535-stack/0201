@@ -1520,10 +1520,24 @@ function validateLevelSeparation(levels: { brief: LevelBundle; standard: LevelBu
    OpenAI removed completely
    ============================================================ */
 // ✅ 수정: rawText를 별도 파라미터로 받아서 Fallback 시 프롬프트가 아닌 순수 원문만 사용
+// 🔍 LLM 디버그 정보 전역 저장 (응답에 포함할 수 있도록)
+let GLOBAL_LLM_DEBUG: Array<{
+  provider: string;
+  status?: number;
+  error?: string;
+  responsePreview?: string;
+  timestamp: string;
+}> = [];
+
 async function callGeminiText(c: any, prompt: string, rawText: string) {
   // 🚨 [FORCE ERROR TEST] 강제 에러 주입 - LLM 호출 차단 테스트
   if (c?.env?.FORCE_LLM_ERROR === 'true') {
     console.error('[FORCE ERROR TEST] LLM 호출 강제 차단됨');
+    GLOBAL_LLM_DEBUG.push({
+      provider: 'FORCE_ERROR_TEST',
+      error: 'LLM 호출 강제 차단됨',
+      timestamp: new Date().toISOString()
+    });
     return null;
   }
   
@@ -1622,22 +1636,50 @@ async function callGeminiText(c: any, prompt: string, rawText: string) {
         console.log('[LLM] Gemini response length:', text.length);
         console.log('[LLM] Gemini response preview:', text.slice(0, 100));
         
+        // 🔍 디버그 정보 저장
+        GLOBAL_LLM_DEBUG.push({
+          provider: 'Gemini',
+          status: res.status,
+          responsePreview: text.slice(0, 200),
+          timestamp: new Date().toISOString()
+        });
+        
         if (text.length >= MIN_OK_LEN) {
           console.log('[LLM] ✓ Gemini 성공');
           return text;
         } else {
           console.log('[LLM] ⚠️ Gemini response too short:', text.length, '<', MIN_OK_LEN);
+          GLOBAL_LLM_DEBUG[GLOBAL_LLM_DEBUG.length - 1].error = `Response too short: ${text.length} < ${MIN_OK_LEN}`;
         }
       } else {
         const errorText = await res.text();
         console.log('[LLM] ✗ Gemini HTTP Error:', res.status, errorText);
+        // 🔍 디버그 정보 저장
+        GLOBAL_LLM_DEBUG.push({
+          provider: 'Gemini',
+          status: res.status,
+          error: errorText.slice(0, 500),
+          timestamp: new Date().toISOString()
+        });
       }
     } catch (e) {
       console.log('[LLM] ✗ Gemini 실패 (exception):', (e as Error).message);
       console.log('[LLM] ✗ Gemini stack:', (e as Error).stack);
+      // 🔍 디버그 정보 저장
+      GLOBAL_LLM_DEBUG.push({
+        provider: 'Gemini',
+        error: `Exception: ${(e as Error).message}`,
+        timestamp: new Date().toISOString()
+      });
     }
   } else {
     console.log('[LLM] ⚠️ Gemini key is EMPTY - skipping');
+    // 🔍 디버그 정보 저장
+    GLOBAL_LLM_DEBUG.push({
+      provider: 'Gemini',
+      error: 'API key is EMPTY',
+      timestamp: new Date().toISOString()
+    });
   }
 
   // 3순위: Claude API - 4%
@@ -2281,6 +2323,9 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
     const t0 = Date.now();
     const reqId = `matrix-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
+    // 🔍 LLM 디버그 정보 초기화
+    GLOBAL_LLM_DEBUG = [];
+
     // 🎯 [3-LAYER] 상태기계 초기화
     let smPhase: StateMachinePhase = 'S0_SANITIZE';
     let engineMeta: EngineMeta = 'matrix-v4';
@@ -2408,6 +2453,7 @@ export function mountMatrixV4(app: Hono<{ Bindings: Bindings }>) {
               buildId: BUILD_ID,
               warnings: ['LLM_TOTAL_FAILURE', 'NO_FAKE_ENGINE_FALLBACK'],
               envDebug,  // 🔴 ENV 디버깅 정보
+              llmDebug: GLOBAL_LLM_DEBUG,  // 🔍 LLM 호출 디버그 정보
               qa: makeFailQa('LLM_UNAVAILABLE')
             }
           },
