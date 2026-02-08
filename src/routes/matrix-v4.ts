@@ -35,6 +35,32 @@ import {
 
 import { insertFalseBucket } from '../lib/false-bucket';
 
+// ====================================================================
+// [DEFENSE 1] 캐시 파괴를 위한 런타임 빌드 식별자
+// 1970년으로 표시되는 문제를 해결하기 위해 한국 시간과 난수를 강제로 결합합니다.
+// ====================================================================
+const DEPLOY_DATE = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+const RANDOM_ID = Math.random().toString(36).substring(2, 7).toUpperCase();
+const BUILD_ID = `V4-FORTRESS-LIVE-[${DEPLOY_DATE}]-${RANDOM_ID}`;
+
+// ====================================================================
+// [DEFENSE 2] API 키 오염(391자) 방지 함수
+// ====================================================================
+function getSanitizedKey(rawKey: string | undefined): string {
+  if (!rawKey) return "";
+  
+  // 공백, 줄바꿈을 완전히 제거합니다.
+  const cleanKey = rawKey.replace(/\s+/g, '').trim();
+  
+  // 만약 키가 여전히 비정상적으로 길다면(예: 391자), 
+  // 시스템이 조용히 넘기지 않고 로그에 명확한 흔적을 남기게 합니다.
+  if (cleanKey.length !== 39) {
+    console.error(`[CRITICAL_AUTH_ERROR] API Key length is ${cleanKey.length}. (Expected: 39)`);
+  }
+  
+  return cleanKey;
+}
+
 type Bindings = {
   DB?: D1Database;
 
@@ -1605,13 +1631,13 @@ async function callGeminiText(c: any, prompt: string, rawText: string) {
   }
 
   // 2순위: Gemini API - 15%
-  // 🚨 CRITICAL FIX: process.env 제거, c.env만 사용
-  const geminiKey = c?.env?.GEMINI_API_KEY || '';
+  // 🚨 CRITICAL FIX: process.env 제거, c.env만 사용 + 키 정제 적용
+  const geminiKey = getSanitizedKey(c?.env?.GEMINI_API_KEY);
   console.log('[LLM DEBUG] Gemini key check (c.env):', c?.env?.GEMINI_API_KEY ? 'SET' : '❌ NOT SET');
-  console.log('[LLM DEBUG] Gemini key (final):', geminiKey ? `${geminiKey.slice(0, 10)}... (length: ${geminiKey.length})` : '❌ EMPTY');
-  if (geminiKey) {
+  console.log('[LLM DEBUG] Gemini key (sanitized):', geminiKey ? `${geminiKey.slice(0, 10)}... (length: ${geminiKey.length})` : '❌ EMPTY');
+  if (geminiKey && geminiKey.length === 39) {
     try {
-      console.log('[LLM] 2/3 Gemini API 시도...');
+      console.log('[LLM] 2/3 Gemini API 시도... (키 길이 검증 완료)');
       const model = c.env.GEMINI_MODEL || 'gemini-2.0-flash-exp';
       console.log('[LLM] Model:', model);
       const res = await fetch(
@@ -1673,11 +1699,12 @@ async function callGeminiText(c: any, prompt: string, rawText: string) {
       });
     }
   } else {
-    console.log('[LLM] ⚠️ Gemini key is EMPTY - skipping');
+    const errMsg = !geminiKey ? 'API key is EMPTY' : `API key length invalid: ${geminiKey.length} (expected: 39)`;
+    console.log(`[LLM] ⚠️ Gemini skipped: ${errMsg}`);
     // 🔍 디버그 정보 저장
     GLOBAL_LLM_DEBUG.push({
       provider: 'Gemini',
-      error: 'API key is EMPTY',
+      error: errMsg,
       timestamp: new Date().toISOString()
     });
   }
@@ -2311,9 +2338,8 @@ function buildNarrativeFromSlots(level: Level, rawText: string, slots: { claim: 
   return out2;
 }
 
-// 🎯 [3-LAYER] Build ID 생성기 (빌드마다 고유 ID 생성)
-const BUILD_TIMESTAMP = new Date().toISOString();
-const BUILD_ID = `V4-LLM-DEBUG-2026-02-08-12-30-${Math.random().toString(36).slice(2, 8)}`;
+// 🎯 [3-LAYER] Build ID는 파일 상단에 이미 정의되어 있음 (DEFENSE 1)
+// 여기서는 제거하고 상단의 BUILD_ID를 사용
 
 // ------------------------------
 // Hono Route
