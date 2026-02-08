@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Gemini API Direct Test</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1a1a2e; color: #eee; }
+    button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #16213e; color: #fff; border: none; border-radius: 5px; }
+    button:hover { background: #0f3460; }
+    pre { background: #0f3460; padding: 15px; border-radius: 5px; overflow-x: auto; }
+    .error { color: #ff4757; }
+    .success { color: #2ed573; }
+  </style>
+</head>
+<body>
+  <h1>🔍 Gemini API Direct Test</h1>
+  <p>Cloudflare 환경 변수에 설정된 GEMINI_API_KEY가 실제로 작동하는지 테스트합니다.</p>
+  
+  <button onclick="testGeminiAPI()">Test Gemini API</button>
+  
+  <h2>Results:</h2>
+  <pre id="output">Click the button to test...</pre>
+
+  <script>
+    async function testGeminiAPI() {
+      const output = document.getElementById('output');
+      output.innerHTML = '⏳ Testing Gemini API...\n\n';
+
+      try {
+        // Step 1: Get API key from /api/health
+        output.innerHTML += '📡 Step 1: Fetching API key from /api/health...\n';
+        const healthRes = await fetch('/api/health');
+        const health = await healthRes.json();
+        
+        output.innerHTML += `✅ Health Check Response:\n${JSON.stringify(health, null, 2)}\n\n`;
+        
+        if (!health.env_debug?.gemini?.detected) {
+          throw new Error('❌ GEMINI_API_KEY not detected in health check!');
+        }
+        
+        const keyPreview = health.env_debug.gemini.key_preview;
+        const keyLength = health.env_debug.gemini.key_length;
+        output.innerHTML += `✅ API Key Found: ${keyPreview} (length: ${keyLength})\n\n`;
+        
+        // Step 2: Try actual /api/matrix call
+        output.innerHTML += '📡 Step 2: Calling /api/matrix...\n';
+        const matrixRes = await fetch('/api/matrix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: '인공지능은 인간의 지능을 모방하는 기술이다. 기계 학습과 딥러닝이 핵심이다.',
+            level: 'brief'
+          })
+        });
+        
+        const matrix = await matrixRes.json();
+        output.innerHTML += `\n📊 Matrix Response (Status: ${matrixRes.status}):\n${JSON.stringify(matrix, null, 2)}\n\n`;
+        
+        if (matrixRes.status === 503) {
+          output.innerHTML += `<span class="error">❌ 503 Service Unavailable - LLM Call Failed</span>\n\n`;
+          
+          // Check warnings
+          if (matrix.meta?.warnings) {
+            output.innerHTML += `⚠️ Warnings: ${JSON.stringify(matrix.meta.warnings)}\n\n`;
+          }
+          
+          // Check envDebug
+          if (matrix.meta?.envDebug) {
+            output.innerHTML += `🔍 EnvDebug:\n${JSON.stringify(matrix.meta.envDebug, null, 2)}\n\n`;
+          }
+          
+          output.innerHTML += `\n💡 Possible Issues:\n`;
+          output.innerHTML += `1. Gemini API key might be invalid or expired\n`;
+          output.innerHTML += `2. Gemini API quota exceeded\n`;
+          output.innerHTML += `3. Network/firewall blocking requests to generativelanguage.googleapis.com\n`;
+          output.innerHTML += `4. Gemini API service temporarily down\n\n`;
+          output.innerHTML += `🔧 Next Steps:\n`;
+          output.innerHTML += `1. Check Cloudflare Dashboard logs for detailed error\n`;
+          output.innerHTML += `2. Verify API key at https://aistudio.google.com/app/apikey\n`;
+          output.innerHTML += `3. Test key with: curl 'https://generativelanguage.googleapis.com/v1beta/models?key=YOUR_KEY'\n`;
+        } else if (matrixRes.ok) {
+          output.innerHTML += `<span class="success">✅ SUCCESS! Matrix API is working!</span>\n`;
+          output.innerHTML += `📝 Narrative: ${matrix.data?.narrative || 'N/A'}\n`;
+        }
+        
+      } catch (error) {
+        output.innerHTML += `<span class="error">\n❌ Error: ${error.message}\n${error.stack}</span>\n`;
+      }
+    }
+  </script>
+</body>
+</html>
