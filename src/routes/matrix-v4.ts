@@ -37,9 +37,10 @@ import { insertFalseBucket } from '../lib/false-bucket';
 
 // ====================================================================
 // [DEFENSE 1] 캐시 파괴를 위한 런타임 빌드 식별자
-// 1970년으로 표시되는 문제를 해결하기 위해 한국 시간과 난수를 강제로 결합합니다.
+// 1970년으로 표시되는 문제를 해결하기 위해 ISO 시간과 난수를 강제로 결합합니다.
+// Workers 환경에서 안전하게 작동하도록 ISO 포맷 사용
 // ====================================================================
-const DEPLOY_DATE = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+const DEPLOY_DATE = new Date().toISOString().replace('T', ' ').substring(0, 19);
 const RANDOM_ID = Math.random().toString(36).substring(2, 7).toUpperCase();
 const BUILD_ID = `V4-FORTRESS-LIVE-[${DEPLOY_DATE}]-${RANDOM_ID}`;
 
