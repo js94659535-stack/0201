@@ -1613,20 +1613,28 @@ async function callGeminiText(c: any, prompt: string, rawText: string) {
       );
 
       console.log('[LLM] Gemini response status:', res.status);
+      console.log('[LLM] Gemini response headers:', JSON.stringify(Object.fromEntries(res.headers.entries())));
+      
       if (res.ok) {
         const json = await res.json();
+        console.log('[LLM] Gemini raw response:', JSON.stringify(json).slice(0, 500));
         const text = json?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
         console.log('[LLM] Gemini response length:', text.length);
+        console.log('[LLM] Gemini response preview:', text.slice(0, 100));
+        
         if (text.length >= MIN_OK_LEN) {
           console.log('[LLM] ✓ Gemini 성공');
           return text;
+        } else {
+          console.log('[LLM] ⚠️ Gemini response too short:', text.length, '<', MIN_OK_LEN);
         }
       } else {
         const errorText = await res.text();
-        console.log('[LLM] ✗ Gemini HTTP Error:', res.status, errorText.slice(0, 200));
+        console.log('[LLM] ✗ Gemini HTTP Error:', res.status, errorText);
       }
     } catch (e) {
-      console.log('[LLM] ✗ Gemini 실패:', (e as Error).message);
+      console.log('[LLM] ✗ Gemini 실패 (exception):', (e as Error).message);
+      console.log('[LLM] ✗ Gemini stack:', (e as Error).stack);
     }
   } else {
     console.log('[LLM] ⚠️ Gemini key is EMPTY - skipping');
